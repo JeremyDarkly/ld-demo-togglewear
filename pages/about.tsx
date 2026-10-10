@@ -14,22 +14,25 @@ import { categoryHref } from "@/lib/products";
 // exist: the hero's full-bleed black treatment for the opening, the inset
 // white SectionPanel for the body, the quote break reused as it stands, and
 // the drop promo to give the page somewhere to go. No new type sizes, no new
-// colours, no photography — the three columns carry it, which also means
-// nothing here is waiting on Jen.
+// colours, no photography — the three columns carry it, each under a pose of
+// Albert, the mascot, which also means nothing here is waiting on Jen.
 //
 // It is our own page rather than a redirect to launchdarkly.com because
 // sending a prospect off to the marketing site in the middle of a demo loses
 // the thread. The outbound link lives in the middle column instead.
 const COLUMNS = [
   {
+    albert: { src: "/images/illustrations/albert-proud-full.png", width: 429, height: 580 },
     heading: "Made for the team, not the launch",
     body: "Most company swag is printed for one conference and worn once. Ours is specified like something you would actually buy — heavyweight combed cotton, pre-shrunk, cut relaxed with dropped shoulders. The drop changes every season, so there is always something new worth wearing.",
   },
   {
+    albert: { src: "/images/illustrations/albert-hi-full.png", width: 456, height: 564 },
     heading: "Part of LaunchDarkly",
     body: "ToggleWear is LaunchDarkly's store, and the mark on every piece is the same one engineering teams see on the dashboard they ship software with. If you came for the feature management rather than the fleece, that lives on the main site.",
   },
   {
+    albert: { src: "/images/illustrations/albert-juggling-full.png", width: 529, height: 819 },
     heading: "Every drop is limited",
     body: "We print what a season needs and then we stop. When a run goes it does not come back in the same colourway, which is why a product page that says Limited Run means it. Members see each drop before anyone else.",
   },
@@ -67,12 +70,22 @@ export default function About() {
       <SectionPanel className="bg-grays-white">
         <div className="flex flex-col gap-12 px-6 pb-16 pt-12 md:px-10 md:pb-20 md:pt-16 xl:px-16 xl:pb-[100px] xl:pt-[75px]">
           <div className="grid grid-cols-1 gap-x-16 gap-y-12 md:grid-cols-2 xl:grid-cols-3">
-            {COLUMNS.map(({ heading, body }, index) => (
+            {COLUMNS.map(({ albert, heading, body }, index) => (
               <Reveal
                 key={heading}
                 delay={index * 120}
                 className="flex flex-col gap-4"
               >
+                {/* One height for all three so the headings line up, whatever
+                    each pose's proportions. Decorative, since the heading
+                    beside it says what the column is about. */}
+                <img
+                  src={albert.src}
+                  alt=""
+                  width={albert.width}
+                  height={albert.height}
+                  className="mb-4 h-40 w-auto max-w-none self-start"
+                />
                 <h2 className="font-sora text-h6 font-semibold text-grays-ld-black">
                   {heading}
                 </h2>
