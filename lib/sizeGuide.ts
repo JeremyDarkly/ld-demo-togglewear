@@ -15,14 +15,16 @@ type SizeSystem = {
 const APPAREL: SizeSystem = {
   columns: ["To fit chest", "Body length"],
   measurements: {
-    XS: ['34–36"', '26"'],
-    S: ['36–38"', '27"'],
-    M: ['38–40"', '28"'],
-    L: ['42–44"', '29"'],
-    XL: ['46–48"', '30"'],
-    "2XL": ['50–52"', '31"'],
+    // Each range starts where the last one ends. The old grade jumped from
+    // M's 40" to L's 42", leaving anyone in between with no size at all.
+    XS: ['32–35"', '26"'],
+    S: ['35–38"', '27"'],
+    M: ['38–41"', '28"'],
+    L: ['41–44"', '29"'],
+    XL: ['44–47"', '30"'],
+    "2XL": ['47–50"', '31"'],
   },
-  note: "Measure around the fullest part of your chest with the tape level. Everything is cut relaxed with dropped shoulders, so size down for a closer fit.",
+  note: "Measurements are approximate. Measure around the fullest part of your chest with the tape level. Everything is cut relaxed with dropped shoulders, so size down for a closer fit.",
 };
 
 const SOCKS: SizeSystem = {
