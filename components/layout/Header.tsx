@@ -73,8 +73,13 @@ export default function Header({
 
             <Link
               href="/"
-              className="font-sora text-[24px] font-bold leading-[1.1] tracking-[-0.48px] text-grays-white"
+              className="flex items-center gap-2 font-sora text-[24px] font-bold leading-[1.1] tracking-[-0.48px] text-grays-white"
             >
+              {/* Mark first, as in LaunchDarkly's own lockup. Sized to the
+                  wordmark's tallest letters rather than its capitals: the
+                  mark is all thin strokes and looked lost beside the bold
+                  type at cap height. */}
+              <img src="/icons/ld-logo-white.svg" alt="" width={22} height={22} />
               ToggleWear
             </Link>
           </div>
