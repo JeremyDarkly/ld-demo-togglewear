@@ -1,3 +1,4 @@
+import ProfileIllustration from "@/components/ui/ProfileIllustration";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import type { LoyaltyTier } from "@/lib/shopper";
 
@@ -27,11 +28,16 @@ export default function ProfileCard({ tier }: { tier: LoyaltyTier }) {
 
   return (
     <section className="flex flex-col gap-5 rounded-[12px] bg-grays-white p-6">
-      <div className="flex flex-col gap-[11px]">
-        <p className="font-sohne text-h6 font-medium text-grays-ld-black">
-          {person.name}
-        </p>
-        <p className="font-sohne text-xsmall text-grays-04">{person.email}</p>
+      <div className="flex items-center gap-4">
+        <ProfileIllustration person={person} size={56} />
+        <div className="flex min-w-0 flex-col gap-[11px]">
+          <p className="font-sohne text-h6 font-medium text-grays-ld-black">
+            {person.name}
+          </p>
+          <p className="truncate font-sohne text-xsmall text-grays-04">
+            {person.email}
+          </p>
+        </div>
       </div>
 
       {/* The badge is the one entitlement-driven thing in this card. A

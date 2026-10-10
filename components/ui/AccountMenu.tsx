@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 
 import { useCart } from "@/components/cart/CartProvider";
+import ProfileIllustration from "@/components/ui/ProfileIllustration";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import {
   ROLES,
@@ -25,30 +26,32 @@ import {
 // about, and it lists the attributes LaunchDarkly is about to receive rather
 // than just a face.
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("");
-}
-
 function roleLabel(person: Person) {
   return ROLES.find((r) => r.id === person.role)?.label ?? person.role;
 }
 
-function Avatar({ person, active }: { person: Person; active?: boolean }) {
+// Everyone shows the same generic figure until their row is pointed at, when
+// it cross-fades to the pose of Albert they get once picked — so hovering
+// previews who you are about to become. The circle goes white rather than
+// staying grey, because Albert is white and would sit muddy on grey against
+// the row's lime.
+function Avatar({ person }: { person: Person }) {
   return (
-    <span
-      className={`flex size-9 shrink-0 items-center justify-center rounded-full font-sohne text-small font-medium transition-colors ${
-        active
-          ? "bg-grays-ld-black text-base-lime"
-          : // Takes the selected treatment on hover, so pointing at a row
-            // previews what picking it will look like.
-            "bg-grays-01 text-grays-04 group-hover:bg-grays-ld-black group-hover:text-base-lime"
-      }`}
-    >
-      {initials(person.name)}
+    <span className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grays-01 transition-colors duration-300 group-hover:bg-grays-white group-focus-visible:bg-grays-white">
+      <img
+        src="/images/illustrations/user.png"
+        alt=""
+        width={22}
+        height={22}
+        className="max-w-none transition-opacity duration-300 group-hover:opacity-0 group-focus-visible:opacity-0"
+      />
+      <img
+        src={person.portrait}
+        alt=""
+        width={36}
+        height={36}
+        className="absolute inset-0 size-full max-w-none object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100"
+      />
     </span>
   );
 }
@@ -100,7 +103,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
       className="animate-drop-in absolute right-0 top-[calc(100%+12px)] z-50 flex w-[340px] flex-col overflow-hidden rounded-[20px] bg-grays-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
     >
       <div className="flex items-center gap-3 px-5 py-4">
-        <Avatar person={person} active />
+        <ProfileIllustration person={person} size={36} />
         <div className="flex min-w-0 flex-col">
           <p className="truncate font-sohne text-small font-medium text-grays-ld-black">
             {person.name}

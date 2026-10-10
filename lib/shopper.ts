@@ -55,10 +55,6 @@ export const TIER_LABELS: Record<LoyaltyTier, string> = {
 // orderCount is the one borderline field. It changes, so it is a state in the
 // strict sense, but it only changes by checking out, so it is stable enough to
 // seed per person and it is what "new customer" is read from.
-//
-// No image field, unlike core-demo's personaimage. Jen has not drawn these
-// four and asking her for portraits is a worse trade than rendering initials,
-// which costs nothing and never looks like a stock photo.
 export type Person = {
   // Ours, for React keys and session storage. Whether this also becomes the
   // LaunchDarkly context key is a separate decision: a fixed key per person
@@ -75,6 +71,10 @@ export type Person = {
   // Why this person is in the roster at all. Surfaced in the switcher so the
   // demo explains itself instead of relying on whoever is driving to remember.
   demonstrates: string;
+  // A pose of the mascot, Albert, cropped to head and shoulders, picked to fit
+  // what the person demonstrates. Not sent to LaunchDarkly: contextFor lists
+  // the attributes it sends by name.
+  portrait: string;
 };
 
 // Five people, not six. There is no "shopper with an abandoned cart" here on
@@ -97,6 +97,7 @@ export const SHOPPERS: Person[] = [
     region: "North America",
     demonstrates:
       "Member pricing, members-only products and tier progress. The only one Jen designed for.",
+    portrait: "/images/illustrations/albert-hi.png",
   },
   {
     id: "diane-whitaker",
@@ -109,6 +110,7 @@ export const SHOPPERS: Person[] = [
     region: "North America",
     demonstrates:
       "The top of the ladder: her own hero, the deepest discount and free shipping.",
+    portrait: "/images/illustrations/albert-proud.png",
   },
   {
     id: "tyler-brooks",
@@ -121,6 +123,7 @@ export const SHOPPERS: Person[] = [
     region: "North America",
     demonstrates:
       "Has never ordered, so first-order offers apply and no member pricing does.",
+    portrait: "/images/illustrations/albert-thinking.png",
   },
   {
     id: "megan-caldwell",
@@ -133,6 +136,7 @@ export const SHOPPERS: Person[] = [
     region: "Europe",
     demonstrates:
       "Opted into early access, so she sees drops before they are generally available.",
+    portrait: "/images/illustrations/albert-juggling.png",
   },
   {
     id: "chris-donovan",
@@ -145,6 +149,7 @@ export const SHOPPERS: Person[] = [
     region: "North America",
     demonstrates:
       "Staff, so he is the first ring of a progressive rollout and sees internal flags.",
+    portrait: "/images/illustrations/albert-glitch.png",
   },
 ];
 
