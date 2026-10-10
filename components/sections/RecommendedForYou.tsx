@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import ProductCard from "@/components/ui/ProductCard";
+import Reveal from "@/components/ui/Reveal";
 import {
   categoryHref,
   type PricingVariant,
@@ -26,7 +27,10 @@ export default function RecommendedForYou({
 }) {
   return (
     <section className="w-full bg-grays-ld-black">
-      <div className="mx-auto max-w-[1440px] py-16 xl:py-[52px]">
+      {/* Revealed as one piece rather than card by card like the best
+          sellers grid: the row scrolls sideways, so cards off the right edge
+          would otherwise rise into place in the middle of a swipe. */}
+      <Reveal className="mx-auto max-w-[1440px] py-16 xl:py-[52px]">
         <header className="mb-8 flex items-end justify-between gap-6 px-6 md:px-10 xl:px-[52px]">
           <h2 className="font-sora text-[28px] font-semibold leading-[1.05] tracking-[-1.4px] text-grays-white md:text-h3">
             Recommended for you
@@ -62,7 +66,7 @@ export default function RecommendedForYou({
             </div>
           ))}
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 }

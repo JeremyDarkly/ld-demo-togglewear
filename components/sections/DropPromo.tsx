@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import SectionPanel from "@/components/layout/SectionPanel";
+import Reveal from "@/components/ui/Reveal";
 import { categoryHref } from "@/lib/products";
 
 // Figma "the drop pomo" (63:3648). A white panel split into an 820px photo
@@ -49,7 +50,10 @@ export default function DropPromo({ flushTop = false }: { flushTop?: boolean }) 
         </div>
       </div>
 
-      <div className="flex flex-col justify-between gap-12 border-grays-02 p-8 md:p-12 xl:h-full xl:w-[600px] xl:shrink-0 xl:border-l xl:p-16">
+      {/* Only the copy moves. The photo fills its half of the panel edge to
+          edge, so rising into place would open a strip of bare panel under
+          it for the length of the animation. */}
+      <Reveal className="flex flex-col justify-between gap-12 border-grays-02 p-8 md:p-12 xl:h-full xl:w-[600px] xl:shrink-0 xl:border-l xl:p-16">
         <div className="flex flex-col gap-[30px]">
           <p className="font-sohne text-small font-medium text-grays-04">
             The Drop
@@ -80,7 +84,7 @@ export default function DropPromo({ flushTop = false }: { flushTop?: boolean }) 
             className="max-w-none"
           />
         </Link>
-      </div>
+      </Reveal>
     </SectionPanel>
   );
 }

@@ -5,6 +5,7 @@ import Footer from "@/components/layout/Footer";
 import SectionPanel from "@/components/layout/SectionPanel";
 import QuoteBreak from "@/components/sections/QuoteBreak";
 import DropPromo from "@/components/sections/DropPromo";
+import Reveal from "@/components/ui/Reveal";
 import SwagAssistant from "@/components/ui/SwagAssistant";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import { categoryHref } from "@/lib/products";
@@ -66,17 +67,21 @@ export default function About() {
       <SectionPanel className="bg-grays-white">
         <div className="flex flex-col gap-12 px-6 pb-16 pt-12 md:px-10 md:pb-20 md:pt-16 xl:px-16 xl:pb-[100px] xl:pt-[75px]">
           <div className="grid grid-cols-1 gap-x-16 gap-y-12 md:grid-cols-2 xl:grid-cols-3">
-            {COLUMNS.map(({ heading, body }) => (
-              <div key={heading} className="flex flex-col gap-4">
+            {COLUMNS.map(({ heading, body }, index) => (
+              <Reveal
+                key={heading}
+                delay={index * 120}
+                className="flex flex-col gap-4"
+              >
                 <h2 className="font-sora text-h6 font-semibold text-grays-ld-black">
                   {heading}
                 </h2>
                 <p className="font-sohne text-small text-grays-04">{body}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
 
-          <div className="flex flex-col gap-6 border-t border-grays-02 pt-10 sm:flex-row sm:items-center sm:gap-10">
+          <Reveal className="flex flex-col gap-6 border-t border-grays-02 pt-10 sm:flex-row sm:items-center sm:gap-10">
             <Link
               href={categoryHref()}
               className="flex h-12 w-fit items-center justify-center gap-2.5 rounded-[12px] border border-grays-ld-black bg-base-lime pl-4 pr-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black focus-visible:ring-offset-2"
@@ -111,7 +116,7 @@ export default function About() {
                 className="max-w-none"
               />
             </a>
-          </div>
+          </Reveal>
         </div>
       </SectionPanel>
 

@@ -1,3 +1,5 @@
+import Reveal from "@/components/ui/Reveal";
+
 // Figma "quote break" (63:3647). Unlike the item block and the drop promo,
 // this section has no inset white card — the type sits directly on the
 // full-bleed LD Black, so it needs no SectionPanel.
@@ -13,16 +15,19 @@ export default function QuoteBreak() {
   return (
     <section className="w-full bg-grays-ld-black">
       <div className="mx-auto flex max-w-[1440px] flex-col items-center gap-8 px-6 py-20 md:px-10 md:py-28 xl:px-40 xl:py-[120px]">
-        <p className="w-full max-w-[920px] text-center font-sora text-[36px] font-bold leading-none tracking-[-1.8px] text-grays-white md:text-[48px] md:tracking-[-2.4px] xl:text-h1">
-          {`"Swag that’s built for the team — not just the launch."`}
-        </p>
+        <Reveal className="w-full max-w-[920px]">
+          <p className="text-center font-sora text-[36px] font-bold leading-none tracking-[-1.8px] text-grays-white md:text-[48px] md:tracking-[-2.4px] xl:text-h1">
+            {`"Swag that’s built for the team — not just the launch."`}
+          </p>
+        </Reveal>
 
-        <div className="flex items-center gap-3">
+        {/* A beat behind the quote, the way an attribution follows the line. */}
+        <Reveal delay={200} className="flex items-center gap-3">
           <div className="h-px w-8 shrink-0 bg-grays-02" />
           <p className="font-sohne text-small font-medium text-grays-02">
             ToggleWear Team
           </p>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
