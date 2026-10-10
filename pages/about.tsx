@@ -26,7 +26,7 @@ const COLUMNS = [
   },
   {
     heading: "Part of LaunchDarkly",
-    body: "ToggleWear is LaunchDarkly's store, and the mark on every piece is the one on the dashboard that ships software for thousands of engineering teams. If you came for the feature management rather than the fleece, that lives on the main site.",
+    body: "ToggleWear is LaunchDarkly's store, and the mark on every piece is the same one engineering teams see on the dashboard they ship software with. If you came for the feature management rather than the fleece, that lives on the main site.",
   },
   {
     heading: "Every drop is limited",
