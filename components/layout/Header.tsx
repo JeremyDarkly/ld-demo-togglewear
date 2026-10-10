@@ -92,7 +92,7 @@ export default function Header({
             ))}
           </nav>
 
-          <div className="flex items-center gap-5 md:gap-[25px]">
+          <div className="flex items-center gap-5 self-stretch md:gap-[25px]">
             <button
               type="button"
               aria-label="Search"
@@ -102,8 +102,10 @@ export default function Header({
             </button>
             {/* The icon opens the account menu rather than navigating, which
                 is where the shopper is switched. The account page itself is a
-                link inside that menu. */}
-            <div className="relative flex items-center">
+                link inside that menu. Stretched to the bar's full height so
+                the menu hangs from the bar's bottom edge rather than the
+                icon's: the menu's black top would otherwise run into the bar. */}
+            <div className="relative flex items-center self-stretch">
               <button
                 type="button"
                 data-account-trigger

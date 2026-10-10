@@ -32,12 +32,11 @@ function roleLabel(person: Person) {
 
 // Everyone shows the same generic figure until their row is pointed at, when
 // it cross-fades to the pose of Albert they get once picked — so hovering
-// previews who you are about to become. The circle goes white rather than
-// staying grey, because Albert is white and would sit muddy on grey against
-// the row's lime.
+// previews who you are about to become. The circle goes black because Albert
+// is white: on a white circle only his outlines showed and he all but vanished.
 function Avatar({ person }: { person: Person }) {
   return (
-    <span className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grays-01 transition-colors duration-300 group-hover:bg-grays-white group-focus-visible:bg-grays-white">
+    <span className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grays-01 transition-colors duration-300 group-hover:bg-grays-ld-black group-focus-visible:bg-grays-ld-black">
       <img
         src="/images/illustrations/user.png"
         alt=""
@@ -102,19 +101,19 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
       aria-label="Account"
       className="animate-drop-in absolute right-0 top-[calc(100%+12px)] z-50 flex w-[340px] flex-col overflow-hidden rounded-[20px] bg-grays-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
     >
-      <div className="flex items-center gap-3 px-5 py-4">
+      {/* Black like the header it drops from, so who you are reads apart
+          from the list of who you could switch to. */}
+      <div className="flex items-center gap-3 bg-grays-ld-black px-5 py-4">
         <ProfileIllustration person={person} size={36} />
         <div className="flex min-w-0 flex-col">
-          <p className="truncate font-sohne text-small font-medium text-grays-ld-black">
+          <p className="truncate font-sohne text-small font-medium text-grays-white">
             {person.name}
           </p>
-          <p className="truncate font-sohne text-xsmall text-grays-04">
+          <p className="truncate font-sohne text-xsmall text-grays-03">
             {person.email}
           </p>
         </div>
       </div>
-
-      <div className="mx-5 h-px bg-grays-hairline" />
 
       <div className="flex flex-col py-2">
         <p className="px-5 py-2 font-sohne-mono text-xsmall-mono uppercase text-grays-04">
