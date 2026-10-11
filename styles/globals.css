@@ -84,9 +84,15 @@
      the white body through it. Raising the content slightly is also what makes
      this read as movement rather than as a fade, which at any duration is the
      difference between smooth and flickery. The long tail on the curve does
-     most of that work. */
+     most of that work.
+
+     backwards rather than both, so nothing is held once the entrance ends.
+     Holding the final frame kept every section on its own compositing layer,
+     and two black sections meeting on a fractional pixel were each rounded
+     separately, leaving a white hairline between them until a resize forced
+     a repaint. */
   [data-page-transition] > :not(header) {
-    animation: page-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: page-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
 
   /* Scroll reveals, set by components/ui/Reveal.tsx. The same curve as the
