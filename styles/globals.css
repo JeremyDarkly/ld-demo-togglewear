@@ -15,6 +15,19 @@
   }
 }
 
+/* The recommendation carousel's track holds its cards twice over, so moving
+   it by exactly one set lands the copy where the original started and the
+   loop restarts without a visible jump. Half the track is that one set plus
+   half its leading inset, which is why the inset is added back. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-50% + var(--marquee-inset, 0px) / 2));
+  }
+}
+
 @layer base {
   body {
     @apply bg-grays-white font-sohne text-main text-grays-ld-black;

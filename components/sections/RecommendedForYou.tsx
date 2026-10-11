@@ -18,6 +18,44 @@ import {
 //
 // This is where the recommendation agent plugs in — the third AgentControl
 // surface. Until then the products are passed in.
+
+// About 30px a second at the desktop card width: slow enough to read a name
+// and price as it passes, quick enough to be seen moving.
+const SECONDS_PER_CARD = 9.5;
+
+// The right padding stands in for a flex gap. A gap would leave no space
+// after the last card, so the two copies would meet one gap short and the
+// loop would hitch at the seam.
+function CardSet({
+  products,
+  variant,
+  className = "",
+  duplicate = false,
+}: {
+  products: Product[];
+  variant: PricingVariant;
+  className?: string;
+  duplicate?: boolean;
+}) {
+  return (
+    <div
+      className={`flex ${className}`}
+      aria-hidden={duplicate || undefined}
+      inert={duplicate || undefined}
+    >
+      {products.map((product) => (
+        <div key={product.slug} className="w-[247px] shrink-0 pr-6 md:w-[284px]">
+          <ProductCard
+            product={product}
+            memberPricing={variant === "loyaltyGold"}
+            onDark
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function RecommendedForYou({
   products,
   variant = "default",
@@ -53,18 +91,25 @@ export default function RecommendedForYou({
           </Link>
         </header>
 
-        {/* Scroll padding matches the header inset so the first card lines up
-            with the heading and the last one can still reach the edge. */}
-        <div className="flex gap-6 overflow-x-auto px-6 pb-2 md:px-10 xl:px-[52px]">
-          {products.map((product) => (
-            <div key={product.slug} className="w-[223px] shrink-0 md:w-[260px]">
-              <ProductCard
-                product={product}
-                memberPricing={variant === "loyaltyGold"}
-                onDark
-              />
-            </div>
-          ))}
+        {/* A slow carousel that stops while the pointer or keyboard focus is
+            on it, so nobody has to chase the card they are reading. The
+            inset matches the header so the first card starts under the
+            heading. With reduced motion it is the plain swipeable row. */}
+        <div className="overflow-hidden pb-2 motion-reduce:overflow-x-auto">
+          <div
+            className="flex w-max animate-[marquee_1s_linear_infinite] pl-[var(--marquee-inset)] [--marquee-inset:24px] hover:[animation-play-state:paused] focus-within:[animation-play-state:paused] motion-reduce:animate-none md:[--marquee-inset:40px] xl:[--marquee-inset:52px]"
+            style={{ animationDuration: `${products.length * SECONDS_PER_CARD}s` }}
+          >
+            <CardSet products={products} variant={variant} />
+            {/* The copy that makes the loop seamless. Hidden from screen
+                readers and the tab order so each product is only met once. */}
+            <CardSet
+              products={products}
+              variant={variant}
+              className="motion-reduce:hidden"
+              duplicate
+            />
+          </div>
         </div>
       </Reveal>
     </section>
