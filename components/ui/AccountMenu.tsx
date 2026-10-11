@@ -4,11 +4,10 @@ import Link from "next/link";
 import { useCart } from "@/components/cart/CartProvider";
 import ProfileIllustration from "@/components/ui/ProfileIllustration";
 import { useShopper } from "@/components/ui/ShopperProvider";
+import ShopperTags from "@/components/ui/ShopperTags";
 import {
   GUEST,
-  ROLES,
   SHOPPERS,
-  TIER_LABELS,
   isGuest,
   isNewCustomer,
   type Person,
@@ -32,10 +31,6 @@ import {
 // signing in, which offers all five people, and signed in, which offers the
 // other four and a way back out. Signing out is what lets a demo show the
 // moment an anonymous visitor becomes a known customer more than once.
-
-function roleLabel(person: Person) {
-  return ROLES.find((r) => r.id === person.role)?.label ?? person.role;
-}
 
 // Everyone shows the same generic figure until their row is pointed at, when
 // it cross-fades to the pose of Albert they get once picked — so hovering
@@ -145,15 +140,11 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
             className="group flex items-center gap-3 px-5 py-2.5 text-left transition-colors hover:bg-base-lime focus-visible:bg-base-lime focus-visible:outline-none"
           >
             <Avatar person={candidate} />
-            <span className="flex min-w-0 flex-col">
+            <span className="flex min-w-0 flex-col gap-1">
               <span className="font-sohne text-small font-medium text-grays-ld-black">
                 {candidate.name}
               </span>
-              {/* Darkens on hover rather than staying Gray 04, which goes
-                  muddy against the lime. */}
-              <span className="font-sohne-mono text-[10px] uppercase text-grays-04 group-hover:text-grays-ld-black/70">
-                {TIER_LABELS[candidate.tier]} &middot; {roleLabel(candidate)}
-              </span>
+              <ShopperTags person={candidate} />
             </span>
           </button>
         ))}
