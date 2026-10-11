@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -11,6 +11,7 @@ import { useCart } from "@/components/cart/CartProvider";
 import { useOrder } from "@/components/checkout/OrderProvider";
 import { cartTotals, resolveLines } from "@/lib/cart";
 import { estimateDelivery, paymentLabel, type ShipTo } from "@/lib/order";
+import { EVENTS, useTrack } from "@/lib/events";
 import {
   assessOrder,
   orderNumber,
@@ -36,6 +37,17 @@ export default function CheckoutPage() {
   const [assessing, setAssessing] = useState(false);
   const [assessment, setAssessment] = useState<FraudAssessment | null>(null);
   const [orderRef, setOrderRef] = useState("");
+  const track = useTrack();
+
+  // Once per visit, and only with something in the cart: arriving at an empty
+  // checkout is not starting one. The ref keeps it to one even when the
+  // effect runs again, which it does once the client is built and twice over
+  // in development, where React mounts every effect twice to flush out bugs.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current || lines.length === 0) return;
+    started.current = track(EVENTS.checkoutStarted, { items: lines.length });
+  }, [track, lines.length]);
 
   function placeOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -80,6 +92,10 @@ export default function CheckoutPage() {
           paymentLabel: paymentLabel(read("pay-method")),
           riskScore: verdict.score,
         });
+        // Approved orders only: one the fraud agent holds or declines has not
+        // been placed. The total is the metric value, in dollars, after any
+        // discount and with tax, so it matches what the receipt says.
+        track(EVENTS.orderPlaced, { ref }, totals.total);
         // Emptied after the navigation rather than before it, so this page
         // does not repaint with a zeroed summary on its way out.
         router.push("/order-confirmation").then(clear);
