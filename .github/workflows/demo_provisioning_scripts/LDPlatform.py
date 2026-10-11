@@ -1279,11 +1279,18 @@ class LDPlatform:
                     print(f"Response: {response.text[:500]}...")
                     return
 
+                # Copies only the fields each unit actually has: the API leaves
+                # standardRandomizationUnit off some of them, and indexing it
+                # directly crashed the whole build.
                 for ru in data["randomizationUnits"]:
                     item = {
-                        "randomizationUnit": ru["randomizationUnit"],
-                        "standardRandomizationUnit": ru["standardRandomizationUnit"],
-                        "default": ru["default"],
+                        field: ru[field]
+                        for field in (
+                            "randomizationUnit",
+                            "standardRandomizationUnit",
+                            "default",
+                        )
+                        if field in ru
                     }
                     settings.append(item)
 
