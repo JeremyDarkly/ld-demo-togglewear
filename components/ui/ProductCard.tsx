@@ -13,14 +13,20 @@ import {
 //
 // onDark inverts the text for the "recommended for you" row, which sits on
 // full-bleed LD Black instead of inside a white panel.
+//
+// badge replaces the NEW tag with one of the section's own, such as the early
+// access drop's. It is drawn black rather than lime so it reads as a
+// different kind of label from NEW, and so it holds up on that section's lime.
 export default function ProductCard({
   product,
   memberPricing = false,
   onDark = false,
+  badge,
 }: {
   product: Product;
   memberPricing?: boolean;
   onDark?: boolean;
+  badge?: string;
 }) {
   const { slug, name, priceUsd, description, image, isNew } = product;
   const hoverShot = hoverImageFor(product);
@@ -62,7 +68,11 @@ export default function ProductCard({
             )}
           </div>
 
-          {isNew && (
+          {badge ? (
+            <span className="absolute left-4 top-4 rounded-[2px] border border-grays-ld-black bg-grays-ld-black px-2.5 py-1.5 font-geist text-[10px] font-semibold uppercase tracking-[1px] text-base-lime">
+              {badge}
+            </span>
+          ) : isNew && (
             <span className="absolute left-4 top-4 rounded-[2px] border border-grays-ld-black bg-base-lime px-2.5 py-1.5 font-geist text-[10px] font-semibold uppercase tracking-[1px] text-grays-ld-black">
               New
             </span>
