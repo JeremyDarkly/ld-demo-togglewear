@@ -73,7 +73,8 @@ export default function ProductPage({ product }: { product: Product }) {
       )}
 
       {/* Eased out by a progressive rollout, so most shoppers do not have it
-          yet. Switch Access to Beta to see it regardless of the schedule. */}
+          yet. Beta testers and Gold and Platinum members see it regardless of
+          the schedule — Megan, Alex or Diane. */}
       {swagRecommendations && (
         <RecommendedForYou products={recommended} variant={variant} />
       )}

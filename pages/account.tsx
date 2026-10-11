@@ -41,10 +41,10 @@ export default function AccountPage() {
             <div className="flex flex-col gap-6 xl:w-[380px] xl:shrink-0">
               <ProfileCard tier={shopper.loyaltyTier} />
               {/* Was gated on the gold tier; LaunchDarkly owns it now. The
-                  flag is the rollout — developers and beta testers by
-                  segment, then half of everyone else — rather than the
-                  entitlement, so the card appears for whoever the rollout
-                  reaches. */}
+                  flag is the rollout — developers, beta testers and both
+                  loyalty tiers by segment, then half of everyone else —
+                  rather than the entitlement, so the card appears for
+                  whoever the rollout reaches. */}
               {swagTierProgram && <TierStatusCard />}
             </div>
 

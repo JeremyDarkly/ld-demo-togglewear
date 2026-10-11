@@ -164,8 +164,10 @@ FLAGS = [
 
     # ---- Capability 1: targeting, segmentation and flag prerequisites ----
     #
-    # Gates the Swag Tier Status card on /account.  Exposure runs staff, then
-    # testers, then a half-and-half rollout of everyone else.  Note that this
+    # Gates the Swag Tier Status card on /account.  Exposure runs staff,
+    # testers and both loyalty tiers, then a half-and-half rollout of everyone
+    # else.  The tiers are in so every member sees the card that describes
+    # their own membership, rather than half of them by chance.  Note that this
     # decides *whether* a shopper sees the card at all, while loyaltyTier
     # decides what the card then says — lib/shopper.ts keeps those two axes
     # separate on purpose, and this flag only touches the first one.
@@ -175,8 +177,8 @@ FLAGS = [
     {'flag': {'flag_key': 'swagTierProgram',
               'flag_name': '02 - Swag Tier Program - Targeting & Segmentation',
               'description': 'Shows the Swag Tier Status card on the account page. Released '
-                             'to developers and beta testers first, then to half of all '
-                             'other shoppers.',
+                             'to developers, beta testers and Gold and Platinum members, '
+                             'then to half of all other shoppers.',
               'variations': [{'value': True, 'name': 'Show Swag Tier Program'},
                              {'value': False, 'name': 'Hide Swag Tier Program'}],
               'tags': ['targeting', 'segments', 'loyalty', 'togglewear'],
@@ -186,6 +188,12 @@ FLAGS = [
                {}],
               ['add_segment_to_flag',
                ['swagTierProgram', 'beta-testers', 'production'],
+               {}],
+              ['add_segment_to_flag',
+               ['swagTierProgram', 'gold-members', 'production'],
+               {}],
+              ['add_segment_to_flag',
+               ['swagTierProgram', 'platinum-members', 'production'],
                {}],
               ['set_default_percentage_rollout',
                ['swagTierProgram', 'production'],
@@ -229,21 +237,28 @@ FLAGS = [
     # patch with invalid_patch — including the turnFlagOn in the same request,
     # so the flag silently stays off. Five days gives 25 days in total.
     #
-    # The rollout starts at 1%, which is the point of the Beta Testers rule:
-    # rules are evaluated before the default rule, so testers see the row
-    # immediately while everyone else waits for the schedule. Without that rule
-    # the feature would be invisible to everyone during a demo.
+    # The rollout starts at 1%, which is the point of the segment rules: rules
+    # are evaluated before the default rule, so beta testers and Gold and
+    # Platinum members see the row immediately while everyone else waits for
+    # the schedule. Without them the feature would be invisible to everyone
+    # during a demo.
     {'flag': {'flag_key': 'swagRecommendations',
               'flag_name': '04 - Swag Recommendations - Progressive Rollout',
               'description': 'Shows the "Recommended for you" row on the product page. Beta '
-                             'testers get it straight away; everyone else arrives through a '
-                             'five-stage progressive rollout.',
+                             'testers and Gold and Platinum members get it straight away; '
+                             'everyone else arrives through a five-stage progressive rollout.',
               'variations': [{'value': True, 'name': 'Show Swag Recommendations'},
                              {'value': False, 'name': 'Hide Swag Recommendations'}],
               'tags': ['progressive-rollout', 'recommendations', 'togglewear'],
               'on_variation': 0},
      'post': [['add_segment_to_flag',
                ['swagRecommendations', 'beta-testers', 'production'],
+               {}],
+              ['add_segment_to_flag',
+               ['swagRecommendations', 'gold-members', 'production'],
+               {}],
+              ['add_segment_to_flag',
+               ['swagRecommendations', 'platinum-members', 'production'],
                {}],
               ['add_progressive_rollout',
                ['swagRecommendations', 'production'],
@@ -337,6 +352,19 @@ SEGMENTS = [
      'description': 'Shoppers who opted in to trying storefront features early',
      'environments': ['test', 'production', 'template-env'],
      'rules': [['user', 'role', 'in', ['beta']]]},
+    # The two loyalty rungs, matched on the tier attribute rather than role:
+    # being a member and being early to features are separate axes, so a gold
+    # member is in Gold Members whatever their role says.
+    {'key': 'gold-members',
+     'name': 'Gold Members',
+     'description': 'Shoppers on the Gold rung of the swag tier ladder',
+     'environments': ['test', 'production', 'template-env'],
+     'rules': [['user', 'tier', 'in', ['gold']]]},
+    {'key': 'platinum-members',
+     'name': 'Platinum Members',
+     'description': 'Shoppers on the Platinum rung, the top of the swag tier ladder',
+     'environments': ['test', 'production', 'template-env'],
+     'rules': [['user', 'tier', 'in', ['platinum']]]},
 ]
 
 # Context kinds — [key, for_experiment]
