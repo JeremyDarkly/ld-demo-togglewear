@@ -24,9 +24,11 @@ originals are in git history and in ld-core-demo if any of them are wanted
 back.
 
 Flags are numbered rather than lettered: core-demo's A/B/D/P prefixes separate
-its verticals, and ToggleWear has none to separate.  The number is the build
-order and the name carries the capability, so the flag list reads as the demo
-script.  Numbers are not reused if a flag is dropped.
+its verticals, and ToggleWear has none to separate.  The number is the order a
+demo walks through them, simplest first, and the name carries the capability,
+so the flag list reads as the demo script.  A new flag goes where it belongs in
+that script and the ones after it are renumbered, rather than being added at
+the end.  The flag keys carry no number, so renumbering never touches the app.
 
 PIPELINE_FLAGS is gone outright: LaunchDarkly has deprecated release
 pipelines, so there is nothing for that table to build.
@@ -50,7 +52,7 @@ pipelines, so there is nothing for that table to build.
 # learned this the hard way — as conversion metrics the same chart came out flat
 # and stepped, and the detector never fired convincingly.
 METRICS = [
-    # ---- 04 Live Inventory Service: healthy guarded release ----
+    # ---- 05 Live Inventory Service: healthy guarded release ----
     {'metric_key': 'inventory-lookup-success',
      'metric_name': 'Inventory Lookup Success',
      'event_key': 'inventory-lookup-success',
@@ -86,7 +88,7 @@ METRICS = [
      'success_criteria': 'HigherThanBaseline',
      'tags': ['guarded-release', 'inventory', 'togglewear', 'business']},
 
-    # ---- 05 Order Pipeline v2: failed guarded release ----
+    # ---- 06 Order Pipeline v2: failed guarded release ----
     {'metric_key': 'order-pipeline-success-rate',
      'metric_name': 'Order Pipeline Success Rate',
      'event_key': 'order-pipeline-success-rate',
@@ -141,7 +143,7 @@ FLAGS = [
     # Unlike core-demo, the segment rules live here in the table rather than in
     # a hand-written add_targeting_rules method, so the whole flag is one spec.
     {'flag': {'flag_key': 'swagTierProgram',
-              'flag_name': '01 - Swag Tier Program - Targeting & Segmentation',
+              'flag_name': '02 - Swag Tier Program - Targeting & Segmentation',
               'description': 'Shows the Swag Tier Status card on the account page. Released '
                              'to developers and beta testers first, then to half of all '
                              'other shoppers.',
@@ -164,12 +166,12 @@ FLAGS = [
 
     # The gift strip inside that card.  Prerequisite-gated rather than given
     # its own copy of the targeting above, which is the point of the pair: it
-    # cannot appear for a shopper who has no card to put it in, and turning 01
+    # cannot appear for a shopper who has no card to put it in, and turning 02
     # off makes it vanish while it still reads On in the flag list.
     {'flag': {'flag_key': 'giftUnlockTeaser',
-              'flag_name': '02 - Gift Unlock Teaser - Flag Prerequisite',
+              'flag_name': '03 - Gift Unlock Teaser - Flag Prerequisite',
               'description': 'The "points away from your next exclusive gift" strip inside '
-                             'the Swag Tier Status card. Requires 01 to be serving Show, so '
+                             'the Swag Tier Status card. Requires 02 to be serving Show, so '
                              'it inherits that rollout instead of repeating it.',
               'variations': [{'value': True, 'name': 'Show Gift Unlock Teaser'},
                              {'value': False, 'name': 'Hide Gift Unlock Teaser'}],
@@ -202,7 +204,7 @@ FLAGS = [
     # immediately while everyone else waits for the schedule. Without that rule
     # the feature would be invisible to everyone during a demo.
     {'flag': {'flag_key': 'swagRecommendations',
-              'flag_name': '03 - Swag Recommendations - Progressive Rollout',
+              'flag_name': '04 - Swag Recommendations - Progressive Rollout',
               'description': 'Shows the "Recommended for you" row on the product page. Beta '
                              'testers get it straight away; everyone else arrives through a '
                              'five-stage progressive rollout.',
@@ -229,7 +231,7 @@ FLAGS = [
     # trips. The generator simply makes the new service look better than the
     # old one.
     {'flag': {'flag_key': 'inventoryServiceV2',
-              'flag_name': '04 - Live Inventory Service - Guarded Release (Healthy)',
+              'flag_name': '05 - Live Inventory Service - Guarded Release (Healthy)',
               'description': 'Replaces nightly stock snapshots with live inventory lookups. The '
                              'rollout is monitored on lookup success, latency and errors, all of '
                              'which improve, so it advances to 100% on its own.',
@@ -259,7 +261,7 @@ FLAGS = [
     # headroom against a regression that turns catastrophic around minute six
     # leaves the rollback plenty of room to fire.
     {'flag': {'flag_key': 'orderPipelineV2',
-              'flag_name': '05 - Order Pipeline v2 - Guarded Release (Failed)',
+              'flag_name': '06 - Order Pipeline v2 - Guarded Release (Failed)',
               'description': 'Routes checkout through the rebuilt order pipeline. Error rate and '
                              'latency climb once traffic arrives and success rate falls away, so '
                              'LaunchDarkly detects the regression and rolls the flag back without '

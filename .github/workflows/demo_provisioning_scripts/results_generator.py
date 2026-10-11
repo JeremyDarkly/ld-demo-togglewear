@@ -17,7 +17,7 @@ Two scenarios, one per flag:
 Both loops poll the flag and exit once its measured rollout is over, whether
 that happened by completing or by being rolled back.
 
-Flag 05 additionally reports real telemetry through the observability plugin,
+Flag 06 additionally reports real telemetry through the observability plugin,
 so its Monitoring tab fills with the errors, logs and traces underneath the
 regression instead of only the metric charts.  That plugin needs Python 3.10
 or newer; on anything older the metrics and the rollback still happen, just
@@ -45,7 +45,7 @@ from ldclient.config import Config
 from ldclient.context import Context
 
 # The observability plugin is what fills in the Errors, Logs and Traces panels
-# on flag 05's Monitoring tab.  It needs Python 3.10 or newer, so an older
+# on flag 06's Monitoring tab.  It needs Python 3.10 or newer, so an older
 # interpreter still produces every metric and both rollouts — it just does so
 # without the telemetry that sits alongside them.
 try:
@@ -68,14 +68,14 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-# 04 — Live Inventory Service, the healthy scenario
+# 05 — Live Inventory Service, the healthy scenario
 INVENTORY_FLAG_KEY = "inventoryServiceV2"
 INVENTORY_SUCCESS_KEY = "inventory-lookup-success"
 INVENTORY_LATENCY_KEY = "inventory-lookup-latency"
 INVENTORY_ERRORS_KEY = "inventory-lookup-errors"
 INVENTORY_SERVED_KEY = "inventory-lookups-served"
 
-# 05 — Order Pipeline v2, the failing scenario
+# 06 — Order Pipeline v2, the failing scenario
 ORDER_FLAG_KEY = "orderPipelineV2"
 ORDER_SUCCESS_KEY = "order-pipeline-success-rate"
 ORDER_LATENCY_KEY = "order-pipeline-latency"
@@ -254,7 +254,7 @@ def report_order_failure(order_id, ctx, latency, version):
     own.  A child named for the failing step read better in the trace, but the
     flag evaluation lives on the parent span, and errors appear to be
     attributed to a flag per span rather than per trace — which left these
-    showing under Observability while flag 05's own Errors tab stayed empty.
+    showing under Observability while flag 06's own Errors tab stayed empty.
     The step still travels as an attribute.
     """
     step, raise_failure = random.choice(ORDER_FAILURES)
@@ -410,7 +410,7 @@ def _wait_for_rollout(flag_key, label, max_retries=6):
     return False
 
 
-# ------------------------------------------------- 04 healthy scenario
+# ------------------------------------------------- 05 healthy scenario
 
 def inventory_service_healthy_generator(client, stop_event):
     """Live inventory beats nightly snapshots on every monitored metric.
@@ -468,7 +468,7 @@ def inventory_service_healthy_generator(client, stop_event):
     logging.info("Live Inventory Service generator finished.")
 
 
-# -------------------------------------------------- 05 failed scenario
+# -------------------------------------------------- 06 failed scenario
 
 def order_pipeline_failed_generator(client, stop_event):
     """Order Pipeline v2 degrades until LaunchDarkly rolls it back.
@@ -579,7 +579,7 @@ def order_pipeline_failed_generator(client, stop_event):
 
             # The evaluation happens inside the span deliberately.  The plugin
             # attaches it to whichever span is current, and that is the link
-            # that files this order's telemetry under flag 05.
+            # that files this order's telemetry under flag 06.
             with observe_span("order-pipeline.submit", {
                 "order.id": order_id,
                 "shopper.key": ctx.key,
@@ -727,7 +727,7 @@ def generate_results(project_key, api_key):
         ))]
     else:
         logging.warning(
-            "Observability plugin unavailable, so flag 05's Monitoring tab will "
+            "Observability plugin unavailable, so flag 06's Monitoring tab will "
             "have no errors, logs or traces. It needs Python 3.10 or newer.")
 
     try:
@@ -751,8 +751,8 @@ def generate_results(project_key, api_key):
     order_thread.start()
 
     logging.info("Guarded release generators running.")
-    logging.info("  04 Live Inventory Service should reach 100% in about 10 minutes.")
-    logging.info("  05 Order Pipeline v2 should be rolled back around minute 5 to 7.")
+    logging.info("  05 Live Inventory Service should reach 100% in about 10 minutes.")
+    logging.info("  06 Order Pipeline v2 should be rolled back around minute 5 to 7.")
 
     # Safety cap. The healthy scenario is the slower of the two at about ten
     # minutes, so this has to comfortably exceed that or provisioning would

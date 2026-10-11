@@ -74,8 +74,8 @@ class DemoBuilder:
     #
     # Has to run after create_flags: both generators poll for their flag's
     # rollout and give up if it never turns up.  Blocks while they work, which
-    # is around ten minutes — flag 05 is rolled back after six to eight, and
-    # flag 04 takes the full ten to walk its rollout up to 100%.
+    # is around ten minutes — flag 06 is rolled back after six to eight, and
+    # flag 05 takes the full ten to walk its rollout up to 100%.
     def generate_results(self):
         print("Generating demo results — allow around 10 minutes", end="...\n")
         env = os.environ.copy()
