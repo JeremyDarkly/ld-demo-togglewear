@@ -11,6 +11,7 @@ import {
   type Product,
 } from "@/lib/products";
 import { sizeChartFor } from "@/lib/sizeGuide";
+import { EVENTS, useTrack } from "@/lib/events";
 
 // Figma "product details" (70:1837 default, 70:1540 loyalty), which Jen
 // annotated "personalized product details" in the file.
@@ -43,6 +44,7 @@ export default function ProductDetails({
   const [colorIndex, setColorIndex] = useState(0);
   const [guideOpen, setGuideOpen] = useState(false);
   const { add } = useCart();
+  const track = useTrack();
   const { has, toggle: toggleSaved } = useSavedItems();
   const saved = has(product.slug);
 
@@ -199,7 +201,10 @@ export default function ProductDetails({
         <div className="flex flex-col gap-3">
           <button
             type="button"
-            onClick={() => add(product.slug, size)}
+            onClick={() => {
+              add(product.slug, size);
+              track(EVENTS.addToCart, { slug: product.slug, size });
+            }}
             className="w-full rounded-[2px] bg-grays-ld-black py-[18px] font-sohne text-large-medium font-medium text-grays-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black focus-visible:ring-offset-2"
           >
             Add to Cart

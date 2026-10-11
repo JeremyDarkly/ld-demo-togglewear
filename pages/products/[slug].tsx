@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { type GetStaticPaths, type GetStaticProps } from "next";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -7,6 +8,7 @@ import DropPromo from "@/components/sections/DropPromo";
 import SwagAssistant from "@/components/ui/SwagAssistant";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import { useFlags } from "launchdarkly-react-client-sdk";
+import { EVENTS, useTrack } from "@/lib/events";
 import {
   ALL_PRODUCTS,
   BEST_SELLERS,
@@ -20,10 +22,23 @@ import {
 export default function ProductPage({ product }: { product: Product }) {
   const { persona, variant } = useShopper();
   const { swagRecommendations } = useFlags();
+  const track = useTrack();
 
   // Members-only products are absent from the default catalogue, so a
   // non-member landing here by URL should not see one.
   const hidden = product.membersOnly && variant !== "loyaltyGold";
+
+  // Once per product per visit to the page. The ref, rather than an empty
+  // dependency list, is what lets it wait for a client that is not built yet
+  // and still count a move from one product straight to another, which reuses
+  // this page without remounting it. A members-only notice is not a view.
+  const viewed = useRef<string | null>(null);
+  useEffect(() => {
+    if (hidden || viewed.current === product.slug) return;
+    if (track(EVENTS.productViewed, { slug: product.slug })) {
+      viewed.current = product.slug;
+    }
+  }, [track, product.slug, hidden]);
 
   // Recommendations are everything except what you are already looking at.
   const pool = variant === "loyaltyGold" ? ALL_PRODUCTS : BEST_SELLERS;
