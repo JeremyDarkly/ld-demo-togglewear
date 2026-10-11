@@ -5,9 +5,11 @@ import { useCart } from "@/components/cart/CartProvider";
 import ProfileIllustration from "@/components/ui/ProfileIllustration";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import {
+  GUEST,
   ROLES,
   SHOPPERS,
   TIER_LABELS,
+  isGuest,
   isNewCustomer,
   type Person,
 } from "@/lib/shopper";
@@ -25,6 +27,11 @@ import {
 // mid-sentence in front of a prospect should not dim the page you are talking
 // about, and it lists the attributes LaunchDarkly is about to receive rather
 // than just a face.
+//
+// Every visit starts signed out, as a guest, so the menu has two states:
+// signing in, which offers all five people, and signed in, which offers the
+// other four and a way back out. Signing out is what lets a demo show the
+// moment an anonymous visitor becomes a known customer more than once.
 
 function roleLabel(person: Person) {
   return ROLES.find((r) => r.id === person.role)?.label ?? person.role;
@@ -92,6 +99,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
     };
   }, [onClose]);
 
+  const guest = isGuest(person);
   const others = SHOPPERS.filter((candidate) => candidate.id !== person.id);
 
   return (
@@ -110,14 +118,14 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
             {person.name}
           </p>
           <p className="truncate font-sohne text-xsmall text-grays-03">
-            {person.email}
+            {guest ? "Not signed in" : person.email}
           </p>
         </div>
       </div>
 
       <div className="flex flex-col py-2">
         <p className="px-5 py-2 font-sohne-mono text-xsmall-mono uppercase text-grays-04">
-          Shop as
+          {guest ? "Sign in as" : "Shop as"}
         </p>
 
         {others.map((candidate) => (
@@ -159,18 +167,33 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
           Sent to LaunchDarkly
         </p>
-        <p className="font-sohne-mono text-xsmall-mono text-grays-ld-black">
-          tier {person.tier} &middot; role {role}
-          {role !== person.role && (
-            <span className="text-base-orange"> (overridden)</span>
-          )}
-        </p>
-        <p className="font-sohne-mono text-xsmall-mono text-grays-ld-black">
-          orderCount {person.orderCount}
-          {isNewCustomer(person) && (
-            <span className="text-base-blue"> &middot; new customer</span>
-          )}
-        </p>
+        {guest ? (
+          // All a guest's context carries. The key is the SDK's, made up in
+          // this browser, which is why it is described rather than shown.
+          <>
+            <p className="font-sohne-mono text-xsmall-mono text-grays-ld-black">
+              anonymous true
+            </p>
+            <p className="font-sohne-mono text-xsmall-mono text-grays-04">
+              key generated in this browser
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="font-sohne-mono text-xsmall-mono text-grays-ld-black">
+              tier {person.tier} &middot; role {role}
+              {role !== person.role && (
+                <span className="text-base-orange"> (overridden)</span>
+              )}
+            </p>
+            <p className="font-sohne-mono text-xsmall-mono text-grays-ld-black">
+              orderCount {person.orderCount}
+              {isNewCustomer(person) && (
+                <span className="text-base-blue"> &middot; new customer</span>
+              )}
+            </p>
+          </>
+        )}
         {/* The two controls sit against the number they move, because the old
             single "Reset cart" button looked broken: it restores the two
             seeded items, so pressing it with those two items already in the
@@ -202,15 +225,29 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 border-t border-grays-hairline px-5 py-3">
-        <Link
-          href="/account"
-          onClick={onClose}
-          className="font-sohne text-small font-medium text-base-blue hover:underline"
-        >
-          View account
-        </Link>
-      </div>
+      {/* A guest has no account to view and nothing to sign out of, so the
+          foot only appears once someone is signed in. */}
+      {!guest && (
+        <div className="flex items-center justify-between gap-3 border-t border-grays-hairline px-5 py-3">
+          <Link
+            href="/account"
+            onClick={onClose}
+            className="font-sohne text-small font-medium text-base-blue hover:underline"
+          >
+            View account
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setShopperId(GUEST.id);
+              onClose();
+            }}
+            className="font-sohne text-small font-medium text-grays-04 hover:text-grays-ld-black"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }
