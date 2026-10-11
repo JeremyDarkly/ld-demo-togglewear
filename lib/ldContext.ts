@@ -1,4 +1,4 @@
-import type { Person, ShopperRole } from "./shopper";
+import { isGuest, type Person, type ShopperRole } from "./shopper";
 
 // The LaunchDarkly context a shopper is evaluated against.
 //
@@ -22,7 +22,19 @@ import type { Person, ShopperRole } from "./shopper";
 // before clicking her. A scripted demo needs the second property more than
 // the first, and a split is still showable by switching between people,
 // because five fixed keys spread across the buckets.
+//
+// A guest is the exception, and sends nothing but the fact that it is
+// anonymous. With no key given, the SDK makes up a random one and keeps it in
+// this browser's storage, so a visitor stays on one side of a rollout across
+// reloads while each new browser lands somewhere fresh. That randomness is
+// what an experiment needs and what five fixed shoppers cannot supply. No
+// orderCount either: the New Customers segment matches 0, and an unknown
+// visitor has not been shown to have no orders.
 export function contextFor(person: Person, role: ShopperRole) {
+  if (isGuest(person)) {
+    return { kind: "user" as const, anonymous: true };
+  }
+
   return {
     kind: "user" as const,
     key: person.id,

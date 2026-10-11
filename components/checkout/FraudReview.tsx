@@ -82,7 +82,11 @@ export default function FraudReview({
       {assessment.decision === "approve" && (
         <p className="border-t border-grays-hairline pt-4 font-sohne text-xsmall text-grays-04">
           Order <span className="font-medium text-grays-ld-black">{orderRef}</span>.
-          A receipt is on its way to {person.email}.
+          {/* A guest has no address on file, so the receipt is not promised
+              to one. */}
+          {person.email
+            ? `A receipt is on its way to ${person.email}.`
+            : "A receipt is on its way."}
         </p>
       )}
     </section>

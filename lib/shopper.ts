@@ -153,18 +153,49 @@ export const SHOPPERS: Person[] = [
   },
 ];
 
-export const DEFAULT_SHOPPER_ID = "alex-rivera";
+// Who you are before signing in, and where every visit starts. Kept out of
+// SHOPPERS so the account menu never offers it as someone to become: it is
+// the absence of a choice rather than a sixth person.
+//
+// It still fills in every field a person has, so the twenty-odd places that
+// read the current shopper keep working and simply see someone with no tier,
+// no history and the default role. The few places that should look different
+// for a guest ask isGuest.
+export const GUEST: Person = {
+  id: "guest",
+  name: "Guest",
+  email: "",
+  tier: "none",
+  role: "shopper",
+  orderCount: 0,
+  joined: "",
+  region: "",
+  demonstrates: "Not signed in, so LaunchDarkly sees an anonymous visitor.",
+  portrait: "/images/illustrations/user.png",
+};
 
+export const DEFAULT_SHOPPER_ID = GUEST.id;
+
+export function isGuest(person: Person): boolean {
+  return person.id === GUEST.id;
+}
+
+// An id that matches nobody, such as one saved before a shopper was renamed,
+// signs you out rather than signing you in as someone you did not pick.
 export function shopperById(id: string): Person {
-  return SHOPPERS.find((p) => p.id === id) ?? SHOPPERS[0];
+  return SHOPPERS.find((p) => p.id === id) ?? GUEST;
 }
 
 // Read off a person rather than stored on one. "New customer" is not a kind of
 // shopper you can be assigned, it is a fact about an order history that stops
 // being true the moment someone checks out — which is exactly why it belongs in
 // a function and not in the table above.
+//
+// A guest's orderCount of 0 is a placeholder, not a history: nobody knows who
+// they are, so they are not treated as new. Otherwise every anonymous visitor
+// would be shown the first-order offer meant for Tyler.
 export function isNewCustomer(person: Person): boolean {
-  return person.orderCount === 0;
+  return !isGuest(person) && person.orderCount === 0;
 }
 
 export function isMember(person: Person): boolean {
