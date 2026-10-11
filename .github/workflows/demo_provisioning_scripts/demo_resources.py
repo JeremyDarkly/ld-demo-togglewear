@@ -132,6 +132,36 @@ METRIC_GROUPS = []
 
 # Flags — create_flag(**spec["flag"]), plus any "post" follow-up calls
 FLAGS = [
+    # ---- Capability 0: a release toggle ----
+    #
+    # The Early Access section on the homepage, and the first thing a demo
+    # shows: a whole feature that is on for some shoppers, absent for the rest,
+    # and gone for everyone the moment the flag is switched off.  ToggleWear's
+    # version of core-demo's A1 Wealth Management flag.
+    #
+    # on_variation is Hide, so with the flag on the default rule hides the
+    # section and only the two segment rules show it — add_segment_to_flag
+    # serves the first variation, which is Show.  Off serves Hide too, which
+    # is what makes the toggle a kill switch.
+    {'flag': {'flag_key': 'earlyAccessDrop',
+              'flag_name': '01 - Early Access Drop - Release Toggle',
+              'description': 'Shows the Early Access section on the homepage, previewing the '
+                             'next drop. Released to beta testers and developers only; turn '
+                             'it off to hide it from everyone.',
+              'variations': [{'value': True, 'name': 'Show Early Access Drop'},
+                             {'value': False, 'name': 'Hide Early Access Drop'}],
+              'tags': ['release', 'segments', 'togglewear'],
+              'on_variation': 1},
+     'post': [['add_segment_to_flag',
+               ['earlyAccessDrop', 'beta-testers', 'production'],
+               {}],
+              ['add_segment_to_flag',
+               ['earlyAccessDrop', 'developers', 'production'],
+               {}],
+              ['toggle_flag',
+               ['earlyAccessDrop', 'on', 'production'],
+               {}]]},
+
     # ---- Capability 1: targeting, segmentation and flag prerequisites ----
     #
     # Gates the Swag Tier Status card on /account.  Exposure runs staff, then
