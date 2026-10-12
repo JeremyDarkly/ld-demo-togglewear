@@ -125,10 +125,83 @@ METRICS = [
      'unit': 'orders',
      'success_criteria': 'HigherThanBaseline',
      'tags': ['guarded-release', 'orders', 'togglewear', 'business']},
+
+    # ---- 07 to 09: the experiments ----
+    #
+    # Unlike everything above, these events are real: the storefront sends
+    # them (lib/events.ts) as well as the generator, so a demo can click
+    # through the store and watch its own visit arrive. The event keys have to
+    # match EVENTS there exactly.
+    {'metric_key': 'product-viewed',
+     'metric_name': 'Product Viewed',
+     'event_key': 'product-viewed',
+     'metric_description': 'Opened a product page. The first step of the purchase funnel.',
+     'numeric': False,
+     'unit': '',
+     'success_criteria': 'HigherThanBaseline',
+     'tags': ['experiment', 'funnel', 'togglewear']},
+    {'metric_key': 'add-to-cart',
+     'metric_name': 'Added to Cart',
+     'event_key': 'add-to-cart',
+     'metric_description': 'Added anything to the cart, from any page.',
+     'numeric': False,
+     'unit': '',
+     'success_criteria': 'HigherThanBaseline',
+     'tags': ['experiment', 'funnel', 'togglewear']},
+    {'metric_key': 'upsell-added',
+     'metric_name': 'Complete Your Look Add',
+     'event_key': 'upsell-added',
+     'metric_description': 'Added one of the three "Complete your look" picks on the cart page. '
+                           'Its own event so flag 08 can tell these apart from any other add.',
+     'numeric': False,
+     'unit': '',
+     'success_criteria': 'HigherThanBaseline',
+     'tags': ['experiment', 'upsell', 'togglewear']},
+    {'metric_key': 'checkout-started',
+     'metric_name': 'Checkout Started',
+     'event_key': 'checkout-started',
+     'metric_description': 'Reached checkout with something in the cart.',
+     'numeric': False,
+     'unit': '',
+     'success_criteria': 'HigherThanBaseline',
+     'tags': ['experiment', 'funnel', 'togglewear']},
+    {'metric_key': 'order-placed',
+     'metric_name': 'Order Placed',
+     'event_key': 'order-placed',
+     'metric_description': 'Placed an order the fraud agent approved. The last step of the '
+                           'purchase funnel.',
+     'numeric': False,
+     'unit': '',
+     'success_criteria': 'HigherThanBaseline',
+     'tags': ['experiment', 'funnel', 'togglewear']},
+    # The same event as Order Placed, read for the value it carries rather
+    # than for whether it happened: the order total in dollars, after
+    # discounts and with tax. This is the "average order value" in the story.
+    {'metric_key': 'order-revenue',
+     'metric_name': 'Order Revenue',
+     'event_key': 'order-placed',
+     'metric_description': 'Order total in US dollars, after discounts and with tax.',
+     'numeric': True,
+     'unit': '$',
+     'success_criteria': 'HigherThanBaseline',
+     'tags': ['experiment', 'revenue', 'togglewear']},
 ]
 
 # Metric groups — funnels, passed to LDPlatform.create_metric_group(**spec)
-METRIC_GROUPS = []
+#
+# The four steps of a purchase, in order. Flag 09's experiment reads it as its
+# primary metric, so the result says where the express checkout changes the
+# drop-off rather than only whether more orders came out of the end.
+METRIC_GROUPS = [
+    {'group_key': 'purchase-funnel',
+     'group_name': 'Purchase Funnel',
+     'metrics': [{'key': 'product-viewed', 'nameInGroup': '1'},
+                 {'key': 'add-to-cart', 'nameInGroup': '2'},
+                 {'key': 'checkout-started', 'nameInGroup': '3'},
+                 {'key': 'order-placed', 'nameInGroup': '4'}],
+     'kind': 'funnel',
+     'description': 'Product view to add to cart to checkout to placed order.'},
+]
 
 # Flags — create_flag(**spec["flag"]), plus any "post" follow-up calls
 FLAGS = [
@@ -335,6 +408,89 @@ FLAGS = [
                 # sketch, for the rollback to be convincing.
                 'stages': [{'allocation': 25000, 'durationMillis': 1200000},
                            {'allocation': 50000, 'durationMillis': 1200000}]}]]},
+
+    # ---- Capability 4: experimentation ----
+    #
+    # Three experiments, one of each kind a retail team runs most: an offer,
+    # a merchandising choice and a checkout change. Each flag is created off
+    # with no rollout; EXPERIMENTS below turns it on and the experiment takes
+    # over its default rule. The first variation is the control in each.
+
+    # The announcement bar. Targeting decides the bar for anyone LaunchDarkly
+    # knows something about, and only the default rule — guests, in practice
+    # — is the experiment:
+    #
+    #   1. Gold or Platinum member          -> their member message
+    #   2. signed in, items in the cart     -> the cart reminder
+    #   3. signed in, empty cart            -> free shipping
+    #   4. everyone else                    -> the experiment, three offers
+    #
+    # Rules 2 and 3 work because only signed-in contexts carry cartItemCount
+    # (lib/ldContext.ts), so a guest matches neither and falls through. That is
+    # also what keeps a guest in the experiment after adding to the cart.
+    # The cart reminder rule is the live-targeting beat of the demo: empty the
+    # cart from the account menu and the bar changes without a reload.
+    {'flag': {'flag_key': 'announcementOffer',
+              'flag_name': '07 - Announcement Banner Offer - Feature Experiment',
+              'description': 'The offer in the bar across the top of every page. Members get '
+                             'their own message and signed-in shoppers with a full cart get a '
+                             'reminder; guests are split between free shipping, 15% off a first '
+                             'order and a free sticker pack.',
+              'variations': [{'value': 'free-shipping', 'name': 'Free Shipping'},
+                             {'value': 'first-order-discount', 'name': '15% Off First Order'},
+                             {'value': 'free-sticker-pack', 'name': 'Free Sticker Pack'},
+                             {'value': 'cart-reminder', 'name': 'Cart Reminder'},
+                             {'value': 'member-message', 'name': 'Member Message'}],
+              'tags': ['experiment', 'targeting', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 0},
+     'post': [['add_rule_to_flag',
+               ['announcementOffer', 'production',
+                [['', 'segmentMatch', 'segmentMatch', ['gold-members', 'platinum-members']]],
+                'member-message'],
+               {'description': 'Gold and Platinum members'}],
+              ['add_rule_to_flag',
+               ['announcementOffer', 'production',
+                [['user', 'cartItemCount', 'greaterThan', [0]]],
+                'cart-reminder'],
+               {'description': 'Signed in, items left in the cart'}],
+              ['add_rule_to_flag',
+               ['announcementOffer', 'production',
+                [['user', 'cartItemCount', 'in', [0]]],
+                'free-shipping'],
+               {'description': 'Signed in, empty cart'}]]},
+
+    # "Complete your look" on the cart page. No rules: everyone with a cart
+    # is fair game, signed in or not, so the whole default rule is the
+    # experiment. The product sets are UPSELL_SETS in lib/cart.ts.
+    {'flag': {'flag_key': 'upsellPicks',
+              'flag_name': '08 - Complete Your Look Picks - Feature Experiment',
+              'description': 'Which three products the cart suggests under "Complete your '
+                             'look": cheap add-ons, pricier picks or best sellers. Measured on '
+                             'order revenue, so the winner is the set that raises the order '
+                             'total, not the one that gets clicked most.',
+              'variations': [{'value': 'add-ons', 'name': 'Cheap Add-ons'},
+                             {'value': 'premium-picks', 'name': 'Premium Picks'},
+                             {'value': 'best-sellers', 'name': 'Best Sellers'}],
+              'tags': ['experiment', 'upsell', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 0},
+     'post': []},
+
+    # Checkout. Two variations rather than three: every checkout version is
+    # costly to build and risky to get wrong, which is why real teams test
+    # them one change at a time, and it keeps the funnel chart readable.
+    {'flag': {'flag_key': 'expressCheckout',
+              'flag_name': '09 - Express Checkout - Funnel Experiment',
+              'description': 'Adds one-tap PayPal and Apple Pay buttons above the checkout '
+                             'form. Measured on the whole purchase funnel, from product view '
+                             'to placed order.',
+              'variations': [{'value': False, 'name': 'Current Checkout'},
+                             {'value': True, 'name': 'Express Checkout'}],
+              'tags': ['experiment', 'checkout', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 0},
+     'post': []},
 ]
 
 # Segments — created in every environment listed, with shared rules
@@ -378,4 +534,52 @@ CONTEXT_KINDS = [
 ]
 
 # Experiments — toggled flag, metrics, and create_experiment kwargs
-EXPERIMENTS = []
+#
+# flagConfigVersion is left out on purpose: create_experiment reads the
+# flag's current version itself, because every rule and toggle above moves it.
+#
+# All three are started, so results_generator.py's traffic lands in a running
+# iteration and the results pages are full when the demo opens.
+EXPERIMENTS = [
+    {'requires': 'metric_groups_created',
+     'toggle_flag': ['announcementOffer', 'on', 'production', 'Turn on flag for experiment'],
+     'metrics': [['order-placed', False], ['purchase-funnel', True], ['order-revenue', False]],
+     'experiment': {'exp_key': 'announcement-offer',
+                    'exp_name': '(Bayesian) Feature Experiment: Announcement Banner Offer',
+                    'exp_env': 'production',
+                    'flag_key': 'announcementOffer',
+                    'hypothesis': 'A concrete saving on the first order will convert more new '
+                                  'visitors than free shipping or a free gift.',
+                    'primary_key': 'order-placed',
+                    'attributes': ['device', 'location'],
+                    'treatment_values': ['free-shipping', 'first-order-discount',
+                                         'free-sticker-pack']},
+     'start_iteration': True},
+    {'requires': 'metrics_created',
+     'toggle_flag': ['upsellPicks', 'on', 'production', 'Turn on flag for experiment'],
+     'metrics': [['order-revenue', False], ['upsell-added', False]],
+     'experiment': {'exp_key': 'upsell-picks',
+                    'exp_name': '(Bayesian) Feature Experiment: Complete Your Look Picks',
+                    'exp_env': 'production',
+                    'flag_key': 'upsellPicks',
+                    'hypothesis': 'Suggesting pricier pieces will be added less often but raise '
+                                  'the average order value more than cheap add-ons.',
+                    'primary_key': 'order-revenue',
+                    'attributes': ['device', 'location']},
+     'start_iteration': True},
+    {'requires': 'metric_groups_created',
+     'toggle_flag': ['expressCheckout', 'on', 'production', 'Turn on flag for experiment'],
+     'metrics': [['purchase-funnel', True], ['order-revenue', False]],
+     'experiment': {'exp_key': 'express-checkout',
+                    'exp_name': '(Frequentist) Funnel Experiment: Express Checkout',
+                    'exp_env': 'production',
+                    'flag_key': 'expressCheckout',
+                    'hypothesis': 'One-tap wallet buttons will cut the drop-off between starting '
+                                  'checkout and placing the order.',
+                    'primary_key': 'purchase-funnel',
+                    'methodology': 'frequentist',
+                    'analysisConfig': {'significanceThreshold': '5',
+                                       'testDirection': 'two-sided'},
+                    'attributes': ['device', 'location']},
+     'start_iteration': True},
+]

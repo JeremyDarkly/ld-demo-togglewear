@@ -67,10 +67,13 @@ class DemoBuilder:
         self.create_metrics()
         self.create_metric_groups()
         self.create_flags()
+        # After the flags, which each experiment takes over, and before the
+        # results, so the generated traffic lands in a running iteration.
+        self.create_and_run_experiments()
         self.generate_results()
 
-    # Synthetic traffic for the guarded releases, in a subprocess so the SDK
-    # client it opens is torn down with it.
+    # Synthetic traffic for the guarded releases and the experiments, in a
+    # subprocess so the SDK client it opens is torn down with it.
     #
     # Has to run after create_flags: both generators poll for their flag's
     # rollout and give up if it never turns up.  Blocks while they work, which
