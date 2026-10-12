@@ -4,7 +4,7 @@ import ShopperTags from "@/components/ui/ShopperTags";
 import { SHOPPERS } from "@/lib/shopper";
 
 // What /account shows a guest. Everything else on that page is about a known
-// shopper — their orders, saved items, tier — so a guest gets the same five
+// shopper — their orders, saved items, tier — so a guest gets the same four
 // people the account menu offers, and picking one fills the page in place.
 //
 // The same card as the rest of the account page rather than a page of its own,

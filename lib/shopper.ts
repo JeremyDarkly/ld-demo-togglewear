@@ -48,7 +48,7 @@ export const TIER_LABELS: Record<LoyaltyTier, string> = {
 // Only the durable facts live here — the things that are true about a person
 // before they touch the site. What is in their cart is deliberately absent:
 // that is a state, it belongs to CartProvider, and it can be true of any of
-// these five. Keeping it out is what stops the Cart Abandoner mistake from
+// these four. Keeping it out is what stops the Cart Abandoner mistake from
 // being made again, where a thing that happens to people was modelled as a
 // kind of person.
 //
@@ -77,10 +77,13 @@ export type Person = {
   portrait: string;
 };
 
-// Five people, not six. There is no "shopper with an abandoned cart" here on
-// purpose — an abandoned cart is something that happens to Alex or Diane or
-// Tyler, so it is reached by leaving items in the cart rather than by picking
-// a different name.
+// Four people, each there for one thing a flag targets: Gold, Platinum, beta
+// and developer. There is no "shopper with an abandoned cart" here on
+// purpose — an abandoned cart is something that happens to any of them, so
+// it is reached by leaving items in the cart rather than by picking a
+// different name. There is no new customer either: first-order offers are
+// one of the banner experiment's arms, which only guests are entered into,
+// and the guest already covers the plain visitor with no perks.
 //
 // Addresses are on an invented consumer mail domain because these are the
 // store's customers. Chris is the exception: he works on ToggleWear rather
@@ -111,19 +114,6 @@ export const SHOPPERS: Person[] = [
     demonstrates:
       "The top of the ladder: her own hero, the deepest discount and free shipping.",
     portrait: "/images/illustrations/albert-proud.png",
-  },
-  {
-    id: "tyler-brooks",
-    name: "Tyler Brooks",
-    email: "tyler.brooks@launchmail.io",
-    tier: "none",
-    role: "shopper",
-    orderCount: 0,
-    joined: "This week",
-    region: "North America",
-    demonstrates:
-      "Has never ordered, so first-order offers apply and no member pricing does.",
-    portrait: "/images/illustrations/albert-thinking.png",
   },
   {
     id: "megan-caldwell",
@@ -193,7 +183,7 @@ export function shopperById(id: string): Person {
 //
 // A guest's orderCount of 0 is a placeholder, not a history: nobody knows who
 // they are, so they are not treated as new. Otherwise every anonymous visitor
-// would be shown the first-order offer meant for Tyler.
+// would be shown the first-order offer meant for a new account.
 export function isNewCustomer(person: Person): boolean {
   return !isGuest(person) && person.orderCount === 0;
 }

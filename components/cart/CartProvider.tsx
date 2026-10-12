@@ -8,10 +8,12 @@ import {
 } from "react";
 import { lineId, type CartLine } from "@/lib/cart";
 
-// Jen's cart is drawn with two items in it, and an empty cart is a poor first
-// impression in a demo, so the cart starts seeded. Once persona comes from
-// LaunchDarkly rather than page state this is what Cart Abandoner should key
-// off — a pre-filled cart is that persona's whole premise.
+// Jen's cart is drawn with two items in it. The cart starts empty all the
+// same, because what is in it is now something LaunchDarkly targets: a
+// signed-in shopper with items in the cart gets the cart reminder banner, and
+// a cart that arrived full would show it to everyone the moment they signed
+// in. The two items are what Refill in the account menu puts back, for when a
+// demo wants a full cart without shopping for one.
 const SEED: CartLine[] = [
   { slug: "togglewear-hoodie", size: "M", quantity: 1 },
   { slug: "enamel-mug-set", size: "One size", quantity: 1 },
@@ -31,9 +33,8 @@ type CartApi = {
   // Emptied when an order is placed, since a cart that still holds the things
   // you just bought is the kind of detail a prospect notices.
   clear: () => void;
-  // Which then leaves the cart empty for good, because the seed below only
-  // applies before anything has been written to storage. reset puts it back,
-  // so the whole flow can be demoed twice in a row.
+  // Puts the two sample items back, so the whole flow can be demoed twice in
+  // a row without shopping for them again.
   reset: () => void;
 
   // The applied promo code, or null. It belongs to the cart rather than to
@@ -50,7 +51,7 @@ type CartApi = {
 const CartContext = createContext<CartApi | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [lines, setLines] = useState<CartLine[]>(SEED);
+  const [lines, setLines] = useState<CartLine[]>([]);
   const [promo, setPromo] = useState<string | null>(null);
 
   // Every page is prerendered, so localStorage can only be read after mount —
@@ -60,7 +61,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) setLines(JSON.parse(saved) as CartLine[]);
     } catch {
-      // A corrupt or unavailable store just leaves the seed in place.
+      // A corrupt or unavailable store just leaves the cart empty.
     }
   }, []);
 

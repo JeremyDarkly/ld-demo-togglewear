@@ -19,7 +19,6 @@ import type { CartLine } from "./cart";
 const ACCOUNTS: Record<string, { points: number; referralCode: string }> = {
   "alex-rivera": { points: 750, referralCode: "alex-rivera-ld-92" },
   "diane-whitaker": { points: 2840, referralCode: "diane-whitaker-ld-07" },
-  "tyler-brooks": { points: 0, referralCode: "tyler-brooks-ld-55" },
   "megan-caldwell": { points: 320, referralCode: "megan-caldwell-ld-44" },
   "chris-donovan": { points: 240, referralCode: "chris-donovan-ld-18" },
 };
@@ -126,8 +125,7 @@ export type PastOrder = {
 
 // Each shopper's most recent orders, keyed by the person they belong to. Not
 // the whole history: Diane has eleven lifetime orders and the card is headed
-// Recent Orders so that showing two of them is not a lie. Tyler joined this
-// week and has none, which is the point of him.
+// Recent Orders so that showing two of them is not a lie.
 //
 // Members-only products (the crewneck) only appear in members' orders.
 const ORDERS: Record<string, PastOrder[]> = {
@@ -210,7 +208,6 @@ const ORDERS: Record<string, PastOrder[]> = {
       ],
     },
   ],
-  "tyler-brooks": [],
   "megan-caldwell": [
     {
       ref: "LD-915830",
@@ -267,7 +264,6 @@ export function ordersFor(person: Person): PastOrder[] {
 const SAVED: Record<string, string[]> = {
   "alex-rivera": ["bucket-hat", "sticker-pack"],
   "diane-whitaker": ["pool-float", "togglewear-tee"],
-  "tyler-brooks": ["togglewear-hoodie", "togglewear-cap"],
   "megan-caldwell": ["canvas-tote"],
   "chris-donovan": ["water-bottle", "sticker-pack"],
 };
