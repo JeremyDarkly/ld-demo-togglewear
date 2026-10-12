@@ -1339,9 +1339,24 @@ class LDPlatform:
         custom_treatment_names=None,
         methodology="bayesian",
         analysisConfig={"bayesianThreshold": "95"},
-        flagConfigVersion=1,
+        flagConfigVersion=None,
+        treatment_values=None,
     ):
-        treatments = self.get_treatments(flag_key, custom_treatment_names)
+        """treatment_values limits the experiment to the variations with those
+        values, in that order, the first being the control. A flag whose rules
+        serve variations of their own — a member message, say — keeps those out
+        of the experiment this way.
+
+        flagConfigVersion has to equal the flag's current version in exp_env,
+        which every rule and toggle before this has moved on. Left as None it
+        is read from the flag rather than counted by hand, which is how
+        core-demo's hard-coded 2s went stale the moment a rule was added.
+        """
+        if flagConfigVersion is None:
+            flagConfigVersion = self.get_flag_env_version(flag_key, exp_env) or 1
+        treatments = self.get_treatments(
+            flag_key, custom_treatment_names, treatment_values
+        )
 
         payload = {
             "name": exp_name,
@@ -1901,6 +1916,35 @@ class LDPlatform:
         return data
 
     #########################################################
+    # Get a flag's current version in one environment
+    #########################################################
+    def get_flag_env_version(self, flag_key, env_key):
+        """Fetched fresh rather than from _flag_cache: the cache holds the flag
+        as created, and the version is exactly the part that has moved since."""
+        res = self.getrequest(
+            "GET",
+            "https://app.launchdarkly.com/api/v2/flags/"
+            + self.project_key
+            + "/"
+            + flag_key
+            + "?env="
+            + env_key,
+            headers={
+                "Authorization": self.api_key,
+                "Content-Type": "application/json",
+            },
+        )
+        if res.status_code != 200:
+            print(f"Error getting version of {flag_key}: HTTP {res.status_code}")
+            return None
+        try:
+            env = json.loads(res.text)["environments"][env_key]
+        except (json.JSONDecodeError, KeyError):
+            print(f"Error reading version of {flag_key} in {env_key}")
+            return None
+        return env.get("version", env.get("_version"))
+
+    #########################################################
     # Get the flag variation IDs with values, returns a list
     #########################################################
     def get_flag_variation_values(self, flag_key):
@@ -1992,9 +2036,18 @@ class LDPlatform:
     ##################################################
     # Create a list of treatments, returns a list
     ##################################################
-    def get_treatments(self, flag_key, name_list=None):
+    def get_treatments(self, flag_key, name_list=None, values=None):
         # Get both variation IDs and names in one API call for efficiency
         variation_details = self.get_flag_variation_details(flag_key)
+        # A subset, in the order given, so the first value is the control
+        # whatever order the flag declares its variations in.
+        if values is not None:
+            by_value = {repr(v["value"]): v for v in variation_details}
+            missing = [v for v in values if repr(v) not in by_value]
+            if missing:
+                print(f"Error: {flag_key} has no variations with values {missing}")
+                return
+            variation_details = [by_value[repr(v)] for v in values]
         treatments = [var["id"] for var in variation_details]
         ret_treatments = []
         names = []
@@ -2415,6 +2468,73 @@ class LDPlatform:
         }
 
         res = self.getrequest("PATCH", url, headers=headers, json=payload)
+        return res
+
+    ##################################################
+    # Add a targeting rule serving a chosen variation
+    ##################################################
+
+    def add_rule_to_flag(self, flag_key, env_key, clauses, variation_value, description=""):
+        """Append a rule to the flag's targeting, after any already there.
+
+        add_segment_to_flag always serves the first variation, which suits an
+        on/off release and nothing with more than two outcomes. This serves
+        the variation whose value is variation_value, and takes its clauses as
+        [context_kind, attribute, op, values] lists, the same shape SEGMENTS
+        uses. A segment clause is ['', 'segmentMatch', 'segmentMatch', [keys]].
+        All clauses must match; the values within one clause are any-of.
+        """
+        variations = self.get_flag_variation_values(flag_key)[0]
+        var_id = next(
+            (
+                v["id"]
+                for v in variations
+                if type(v["value"]) is type(variation_value)
+                and v["value"] == variation_value
+            ),
+            None,
+        )
+        if var_id is None:
+            print(f"Error: {flag_key} has no variation with value {variation_value!r}")
+            return None
+
+        url = (
+            "https://app.launchdarkly.com/api/v2/flags/"
+            + self.project_key
+            + "/"
+            + flag_key
+        )
+        headers = {
+            "Authorization": self.api_key,
+            "Content-Type": "application/json; domain-model=launchdarkly.semanticpatch",
+        }
+        payload = {
+            "environmentKey": env_key,
+            "instructions": [
+                {
+                    "kind": "addRule",
+                    "variationId": var_id,
+                    "description": description,
+                    "clauses": [
+                        {
+                            "contextKind": context_kind,
+                            "attribute": attribute,
+                            "op": op,
+                            "negate": False,
+                            "values": values,
+                        }
+                        for context_kind, attribute, op, values in clauses
+                    ],
+                }
+            ],
+        }
+
+        res = self.getrequest("PATCH", url, headers=headers, json=payload)
+        if res.status_code >= 400:
+            print(
+                f"  [add_rule_to_flag] {flag_key}: HTTP "
+                f"{res.status_code} {res.text[:300]}"
+            )
         return res
 
     ##################################################
