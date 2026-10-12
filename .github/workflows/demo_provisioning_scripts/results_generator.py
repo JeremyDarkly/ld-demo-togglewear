@@ -1,4 +1,4 @@
-"""Synthetic demo traffic for ToggleWear's guarded releases.
+"""Synthetic demo traffic for ToggleWear's guarded releases and experiments.
 
 ToggleWear has no backend, and a guarded release is a story about a service
 degrading, so the metric data is generated here rather than produced by the
@@ -6,16 +6,21 @@ storefront.  This is how core-demo does it too: a server-side SDK client
 invents shopper contexts, evaluates the flag for each one, and tracks the
 metric events the release guardian watches.
 
-Two scenarios, one per flag:
+Two guarded release scenarios, one per flag:
 
-    04 Live Inventory Service  -> the new service is simply better, so the
+    05 Live Inventory Service  -> the new service is simply better, so the
                                   rollout advances to 100% untouched.
-    05 Order Pipeline v2       -> the new pipeline degrades, slowly at first
+    06 Order Pipeline v2       -> the new pipeline degrades, slowly at first
                                   and then sharply, until LaunchDarkly detects
                                   the regression and rolls the flag back.
 
 Both loops poll the flag and exit once its measured rollout is over, whether
 that happened by completing or by being rolled back.
+
+And the three experiments, 07 to 09, which need visitors rather than a
+service: a fixed number each, walked through the purchase funnel with odds
+set by the variation they were given.  Their events are the storefront's own,
+so the results pages fill in before anyone has clicked through the store.
 
 Flag 06 additionally reports real telemetry through the observability plugin,
 so its Monitoring tab fills with the errors, logs and traces underneath the
@@ -25,8 +30,8 @@ without the telemetry beside them.
 
 The ToggleBank, Investment, Galaxy Marketplace and public-sector generators
 that used to live here were removed with the rest of those resources; they
-are in git history and in ld-core-demo.  Experiment and AI Config generators
-come back with the capabilities that need them.
+are in git history and in ld-core-demo.  AI Config generators come back with
+the capability that needs them.
 """
 
 import contextlib
@@ -341,15 +346,17 @@ def is_measured_rollout(flag_details):
 def generate_shopper_context():
     """A plausible ToggleWear shopper.
 
-    role carries the same lowercase values as ShopperRole in lib/shopper.ts so
-    these contexts match the Developers and Beta Testers segments, weighted so
-    the overwhelming majority are ordinary shoppers.
+    role and tier carry the same lowercase values, under the same names, as
+    contextFor in lib/ldContext.ts sends, so these contexts match the
+    Developers, Beta Testers, Gold Members and Platinum Members segments.
+    Weighted so the overwhelming majority are ordinary shoppers.
     """
     key = f"shopper-{uuid.uuid4()}"
     builder = Context.builder(key)
     builder.set("role", random.choices(
         ["shopper", "beta", "developer"], weights=[94, 5, 1])[0])
-    builder.set("loyaltyTier", random.choices(["none", "gold"], weights=[80, 20])[0])
+    builder.set("tier", random.choices(
+        ["none", "gold", "platinum"], weights=[80, 15, 5])[0])
     builder.set("device", random.choices(
         ["Mobile", "Desktop", "Tablet"], weights=[58, 36, 6])[0])
     builder.set("location", random.choice([
@@ -358,6 +365,26 @@ def generate_shopper_context():
     ]))
     builder.set("referrer", random.choice(
         ["google", "direct", "social", "email", "partner"]))
+    return builder.build()
+
+
+def generate_guest_context():
+    """An anonymous visitor, the way the storefront sends one.
+
+    Flag 07's experiment only runs on guests, so its traffic has to look like
+    a guest: anonymous, and without cartItemCount, which is what keeps a
+    context clear of the cart reminder and free shipping rules above the
+    experiment. device and location are kept because the experiment slices
+    results by them.
+    """
+    builder = Context.builder(f"guest-{uuid.uuid4()}")
+    builder.anonymous(True)
+    builder.set("device", random.choices(
+        ["Mobile", "Desktop", "Tablet"], weights=[58, 36, 6])[0])
+    builder.set("location", random.choice([
+        "America/New_York", "America/Chicago", "America/Los_Angeles",
+        "Europe/London", "Europe/Berlin",
+    ]))
     return builder.build()
 
 
@@ -698,6 +725,142 @@ def order_pipeline_failed_generator(client, stop_event):
     logging.info("Order Pipeline v2 generator finished.")
 
 
+# ------------------------------------------------------- 07 to 09 experiments
+#
+# Each visitor is evaluated once and then walks the purchase funnel, with the
+# odds at each step set by the variation they got. The numbers are invented
+# but chosen to tell a believable story, which is what a results page in a
+# demo is for:
+#
+#   07  15% off wins on orders, but each order is smaller, so it is a closer
+#       call on revenue. Free shipping and the sticker pack trail.
+#   08  Premium picks are added least often and still raise revenue most.
+#   09  Express checkout leaves the top of the funnel alone and wins at the
+#       last step, which is where a wallet button can make a difference.
+#
+# The event keys are the storefront's (lib/events.ts), so generated visits
+# and real clicks land in the same metrics.
+
+PRODUCT_VIEWED_KEY = "product-viewed"
+ADD_TO_CART_KEY = "add-to-cart"
+UPSELL_ADDED_KEY = "upsell-added"
+CHECKOUT_STARTED_KEY = "checkout-started"
+ORDER_PLACED_KEY = "order-placed"
+
+EXPERIMENT_VISITORS = 3000
+
+
+def _order_total(low=50, high=110):
+    """A plausible order total in dollars, before anything the arm changes."""
+    return round(random.uniform(low, high), 2)
+
+
+def _run_visitors(client, label, visit):
+    for i in range(EXPERIMENT_VISITORS):
+        try:
+            visit()
+        except Exception as e:
+            logging.error(f"Error generating {label} traffic: {e}")
+            continue
+        if (i + 1) % 100 == 0:
+            client.flush()
+        # Spread over about fifteen seconds rather than one burst, so the
+        # event queue stays well inside its capacity alongside the guarded
+        # release threads sharing the client.
+        time.sleep(0.005)
+    logging.info(f"{label}: {EXPERIMENT_VISITORS} visitors generated.")
+
+
+def announcement_offer_experiment_generator(client):
+    # (product viewed, added to cart, started checkout, placed order) odds,
+    # each step given the one before, and what happens to the order total.
+    arms = {
+        "free-shipping":        ((0.70, 0.40, 0.55, 0.60), 1.00),
+        "first-order-discount": ((0.72, 0.46, 0.62, 0.70), 0.85),
+        # Two items to qualify, so its orders run a little larger.
+        "free-sticker-pack":    ((0.70, 0.43, 0.56, 0.58), 1.12),
+    }
+
+    def visit():
+        ctx = generate_guest_context()
+        offer = client.variation("announcementOffer", ctx, "free-shipping")
+        steps, total_factor = arms.get(offer, arms["free-shipping"])
+        view, add, checkout, order = steps
+        if random.random() >= view:
+            return
+        client.track(PRODUCT_VIEWED_KEY, ctx)
+        if random.random() >= add:
+            return
+        client.track(ADD_TO_CART_KEY, ctx)
+        if random.random() >= checkout:
+            return
+        client.track(CHECKOUT_STARTED_KEY, ctx)
+        if random.random() >= order:
+            return
+        client.track(ORDER_PLACED_KEY, ctx, None,
+                     round(_order_total() * total_factor, 2))
+
+    _run_visitors(client, "07 Announcement Banner Offer", visit)
+
+
+def upsell_picks_experiment_generator(client):
+    # Everyone here has reached the cart. (odds of adding a pick, its price
+    # range) per arm; the order odds are the same, so the result is about
+    # what the picks add to the total.
+    arms = {
+        "add-ons":       (0.34, (12, 24)),
+        "premium-picks": (0.18, (34, 68)),
+        "best-sellers":  (0.24, (28, 34)),
+    }
+
+    def visit():
+        ctx = generate_shopper_context()
+        picks = client.variation("upsellPicks", ctx, "add-ons")
+        add_rate, (low, high) = arms.get(picks, arms["add-ons"])
+        total = _order_total()
+        if random.random() < add_rate:
+            client.track(ADD_TO_CART_KEY, ctx)
+            client.track(UPSELL_ADDED_KEY, ctx)
+            total += random.randint(low, high)
+        if random.random() < 0.55:
+            client.track(ORDER_PLACED_KEY, ctx, None, round(total, 2))
+
+    _run_visitors(client, "08 Complete Your Look Picks", visit)
+
+
+def express_checkout_experiment_generator(client):
+    # Only the last step differs: the wallet buttons sit on the checkout
+    # page, so they cannot change whether someone gets there.
+    order_rate = {False: 0.55, True: 0.68}
+
+    def visit():
+        ctx = generate_shopper_context()
+        express = client.variation("expressCheckout", ctx, False)
+        client.track(PRODUCT_VIEWED_KEY, ctx)
+        if random.random() >= 0.45:
+            return
+        client.track(ADD_TO_CART_KEY, ctx)
+        if random.random() >= 0.70:
+            return
+        client.track(CHECKOUT_STARTED_KEY, ctx)
+        if random.random() >= order_rate.get(express is True, 0.55):
+            return
+        client.track(ORDER_PLACED_KEY, ctx, None, _order_total())
+
+    _run_visitors(client, "09 Express Checkout", visit)
+
+
+def experiments_generator(client):
+    """The three experiments one after another, on their own thread."""
+    if not client.is_initialized():
+        logging.error("LaunchDarkly client is not initialized.")
+        return
+    announcement_offer_experiment_generator(client)
+    upsell_picks_experiment_generator(client)
+    express_checkout_experiment_generator(client)
+    client.flush()
+
+
 # ------------------------------------------------------------ entrypoint
 
 def generate_results(project_key, api_key):
@@ -746,9 +909,14 @@ def generate_results(project_key, api_key):
         target=inventory_service_healthy_generator, args=(client, inventory_stop))
     order_thread = threading.Thread(
         target=order_pipeline_failed_generator, args=(client, order_stop))
+    # Alongside the guarded releases rather than before them, which would hold
+    # their traffic back while their rollout stages ran on regardless.
+    experiments_thread = threading.Thread(
+        target=experiments_generator, args=(client,))
 
     inventory_thread.start()
     order_thread.start()
+    experiments_thread.start()
 
     logging.info("Guarded release generators running.")
     logging.info("  05 Live Inventory Service should reach 100% in about 10 minutes.")
@@ -761,13 +929,15 @@ def generate_results(project_key, api_key):
 
     inventory_thread.join(timeout=MAX_GENERATOR_WAIT)
     order_thread.join(timeout=MAX_GENERATOR_WAIT)
+    experiments_thread.join(timeout=MAX_GENERATOR_WAIT)
 
-    still_running = [t for t in (inventory_thread, order_thread) if t.is_alive()]
+    threads = (inventory_thread, order_thread, experiments_thread)
+    still_running = [t for t in threads if t.is_alive()]
     if still_running:
         logging.warning(
             f"{len(still_running)} generator(s) still running after the cap — proceeding anyway.")
     else:
-        logging.info("All guarded release generators completed.")
+        logging.info("All guarded release and experiment generators completed.")
 
     client.flush()
     client.close()
