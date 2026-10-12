@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useFlags } from "launchdarkly-react-client-sdk";
 
 import { useCart } from "./CartProvider";
 import SummaryLines from "./SummaryLines";
@@ -32,7 +33,13 @@ export default function OrderSummary({
   variant?: PricingVariant;
 }) {
   const { lines, promo, applyPromo, removePromo } = useCart();
-  const totals = cartTotals(resolveLines(lines), variant, promo);
+  const { announcementOffer } = useFlags();
+  const totals = cartTotals(
+    resolveLines(lines),
+    variant,
+    promo,
+    announcementOffer,
+  );
 
   const [draft, setDraft] = useState("");
   const [rejection, setRejection] = useState<PromoRejection | null>(null);

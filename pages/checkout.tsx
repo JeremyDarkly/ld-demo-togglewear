@@ -40,7 +40,7 @@ export default function CheckoutPage() {
   const [assessment, setAssessment] = useState<FraudAssessment | null>(null);
   const [orderRef, setOrderRef] = useState("");
   const track = useTrack();
-  const { expressCheckout } = useFlags();
+  const { expressCheckout, announcementOffer } = useFlags();
 
   // Once per visit, and only with something in the cart: arriving at an empty
   // checkout is not starting one. The ref keeps it to one even when the
@@ -72,7 +72,7 @@ export default function CheckoutPage() {
 
     const resolved = resolveLines(lines);
     // Priced with the code so the receipt keeps the discount the cart showed.
-    const totals = cartTotals(resolved, variant, promo);
+    const totals = cartTotals(resolved, variant, promo, announcementOffer);
     const verdict = assessOrder({
       zip: shipTo.zip,
       total: totals.total,

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { useFlags } from "launchdarkly-react-client-sdk";
 
 import { useCart } from "@/components/cart/CartProvider";
 import SummaryLines from "@/components/cart/SummaryLines";
@@ -21,8 +22,9 @@ export default function CheckoutSummary({
   orderRef: string;
 }) {
   const { lines, promo } = useCart();
+  const { announcementOffer } = useFlags();
   const resolved = resolveLines(lines);
-  const totals = cartTotals(resolved, variant, promo);
+  const totals = cartTotals(resolved, variant, promo, announcementOffer);
 
   return (
     <section className="flex flex-col gap-6 rounded-[2px] border border-grays-hairline bg-grays-white p-8">

@@ -43,6 +43,11 @@ export type CartTotals = {
   // placed order snapshots these, and a receipt has to keep saying what it
   // said at checkout.
   discountKind: "none" | "loyalty" | "welcome";
+  // The sticker pack flag 07's third offer promises. Part of the totals for
+  // the same reason as discountKind: the receipt has to keep showing a gift
+  // the checkout showed. Optional because orders placed before it existed
+  // are snapshotted without it.
+  freeGift?: boolean;
   shipping: number;
   tax: number;
   total: number;
@@ -63,15 +68,28 @@ export function validatePromo(
   return null;
 }
 
+// Flag 07's free gift offer: the banner variation that makes it, and how
+// many items earn it. Kept beside the totals so the banner's promise and
+// the cart's delivery on it cannot drift apart.
+export const GIFT_OFFER = "free-sticker-pack";
+export const GIFT_MIN_ITEMS = 2;
+
 export function cartTotals(
   lines: ResolvedLine[],
   variant: PricingVariant,
-  promo?: string | null
+  promo?: string | null,
+  // Flag 07's value, so the cart knows which offer this shopper was shown.
+  offer?: unknown
 ): CartTotals {
   const subtotal = lines.reduce(
     (sum, line) => sum + line.product.priceUsd * line.quantity,
     0
   );
+  const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+
+  // Free, so it adds a line and no money. "Any 2 items" counts quantity,
+  // so two of the same tee qualifies.
+  const freeGift = offer === GIFT_OFFER && itemCount >= GIFT_MIN_ITEMS;
 
   // Member pricing wins outright and the code is ignored, which is the same
   // rule validatePromo enforces at the field — it is repeated here so a
@@ -105,6 +123,7 @@ export function cartTotals(
     subtotal,
     discount,
     discountKind,
+    freeGift,
     shipping,
     tax,
     total: subtotal - discount + shipping + tax,

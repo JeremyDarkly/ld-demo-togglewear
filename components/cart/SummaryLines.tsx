@@ -44,6 +44,13 @@ export default function SummaryLines({
           </div>
         )}
 
+        {totals.freeGift && (
+          <div className="flex items-start justify-between gap-4 text-accent-purple">
+            <p>Free Sticker Pack</p>
+            <p className="font-medium">FREE</p>
+          </div>
+        )}
+
         <div className="flex items-start justify-between gap-4">
           <p className="text-grays-04">Shipping</p>
           <p className="font-medium text-accent-purple">FREE</p>
