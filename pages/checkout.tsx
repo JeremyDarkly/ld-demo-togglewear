@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
+import { useFlags } from "launchdarkly-react-client-sdk";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ShippingForm from "@/components/checkout/ShippingForm";
 import PaymentMethod from "@/components/checkout/PaymentMethod";
 import CheckoutSummary from "@/components/checkout/CheckoutSummary";
+import ExpressCheckout from "@/components/checkout/ExpressCheckout";
 import SwagAssistant from "@/components/ui/SwagAssistant";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import { useCart } from "@/components/cart/CartProvider";
@@ -38,6 +40,7 @@ export default function CheckoutPage() {
   const [assessment, setAssessment] = useState<FraudAssessment | null>(null);
   const [orderRef, setOrderRef] = useState("");
   const track = useTrack();
+  const { expressCheckout } = useFlags();
 
   // Once per visit, and only with something in the cart: arriving at an empty
   // checkout is not starting one. The ref keeps it to one even when the
@@ -53,7 +56,10 @@ export default function CheckoutPage() {
     event.preventDefault();
     if (assessing || assessment) return;
 
-    const form = new FormData(event.currentTarget);
+    // Passing the submitter is what carries an express wallet button's own
+    // name and value into the form data; Place Order has neither.
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    const form = new FormData(event.currentTarget, submitter);
     const read = (field: string) => String(form.get(field) ?? "").trim();
     const shipTo: ShipTo = {
       name: `${read("ship-first")} ${read("ship-last")}`.trim(),
@@ -89,7 +95,9 @@ export default function CheckoutPage() {
           totals,
           deliveryBy: estimateDelivery().toISOString(),
           shipTo,
-          paymentLabel: paymentLabel(read("pay-method")),
+          paymentLabel: paymentLabel(
+            read("express-method") || read("pay-method"),
+          ),
           riskScore: verdict.score,
         });
         // Approved orders only: one the fraud agent holds or declines has not
@@ -119,6 +127,11 @@ export default function CheckoutPage() {
           className="mx-auto flex max-w-[1440px] flex-col gap-10 px-6 py-10 md:px-10 xl:flex-row xl:gap-12 xl:px-16"
         >
           <div className="flex min-w-0 flex-1 flex-col gap-8">
+            {/* Flag 09's experiment: the current checkout against the same
+                page with one-tap wallets on top. */}
+            {expressCheckout === true && (
+              <ExpressCheckout disabled={assessing || Boolean(assessment)} />
+            )}
             <ShippingForm />
             <PaymentMethod />
           </div>
