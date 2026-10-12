@@ -12,6 +12,11 @@ import { useLDClient } from "launchdarkly-react-client-sdk";
 export const EVENTS = {
   productViewed: "product-viewed",
   addToCart: "add-to-cart",
+  // The exception to one event per action, because flag 08's experiment has
+  // to tell an add from its own three slots apart from any other add, and a
+  // metric counts an event key, not what the event's data says. An add from
+  // the slots sends both this and add-to-cart, so the funnel still sees it.
+  upsellAdded: "upsell-added",
   checkoutStarted: "checkout-started",
   // Carries the order total as its metric value, so a metric can measure
   // revenue per visitor rather than only whether an order happened.

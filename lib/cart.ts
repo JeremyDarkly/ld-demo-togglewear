@@ -117,16 +117,31 @@ export function formatMoney(usd: number) {
   return `$${usd.toFixed(2)} USD`;
 }
 
-// The three slots in Jen's "Complete your look". This is the next flag
-// surface after the free gift: an experiment can rotate which products fill
-// the slots and measure what actually gets added. Holding it as one ordered
-// list rather than three separate values means the slots cannot collide with
-// each other or come back empty.
+// The three slots in Jen's "Complete your look". Holding each set as one
+// ordered list rather than three separate values means the slots cannot
+// collide with each other or come back empty.
 export const UPSELL_SLUGS = [
   "sticker-pack",
   "checkerboard-socks",
   "canvas-tote",
 ];
+
+// Flag 08's three arms, keyed by its variation values. The question each one
+// answers is the one store teams actually argue about: suggest the cheap
+// thing, the expensive thing, or the popular thing?
+//
+//   add-ons        Jen's three, $12 to $24: easy yeses that barely move the
+//                  order total. The control.
+//   premium-picks  $34 to $68: fewer adds, but each one is worth more.
+//   best-sellers   the catalogue's top three, $28 to $34, as social proof.
+//
+// The sets do not overlap, so whichever arm wins, the result is about the
+// strategy rather than about one product that happened to be in two arms.
+export const UPSELL_SETS: Record<string, string[]> = {
+  "add-ons": UPSELL_SLUGS,
+  "premium-picks": ["togglewear-hoodie", "pool-float", "bucket-hat"],
+  "best-sellers": ["togglewear-cap", "enamel-mug-set", "togglewear-tee"],
+};
 
 export function upsellsFor(
   inCart: string[],

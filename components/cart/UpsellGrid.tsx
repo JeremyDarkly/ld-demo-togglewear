@@ -1,17 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
+import { useFlags } from "launchdarkly-react-client-sdk";
 import { useCart } from "./CartProvider";
 import { formatPrice, type Product } from "@/lib/products";
-import { upsellsFor } from "@/lib/cart";
+import { UPSELL_SETS, upsellsFor } from "@/lib/cart";
+import { EVENTS, useTrack } from "@/lib/events";
 
 // Figma "upsell-section" (70:1414). Unlike the panels above it, the heading
 // sits outside any card and the three cards are their own bordered boxes.
 //
-// Which three products appear comes from upsellsFor, which is the seam the
-// experiment plugs into later.
+// Which three products appear is flag 08's experiment: cheap add-ons, pricier
+// picks or best sellers, each measured on what gets added from here and what
+// the order comes to.
 
-function UpsellCard({ product }: { product: Product }) {
+function UpsellCard({ product, set }: { product: Product; set: string }) {
   const { add } = useCart();
+  const track = useTrack();
 
   return (
     <article className="flex flex-col gap-4 rounded-[2px] border border-grays-hairline bg-grays-white p-4">
@@ -46,7 +50,12 @@ function UpsellCard({ product }: { product: Product }) {
 
       <button
         type="button"
-        onClick={() => add(product.slug, product.defaultSize)}
+        onClick={() => {
+          add(product.slug, product.defaultSize);
+          const data = { slug: product.slug, set, source: "upsell" };
+          track(EVENTS.addToCart, data);
+          track(EVENTS.upsellAdded, data, product.priceUsd);
+        }}
         className="w-full rounded-[2px] bg-grays-ld-black py-2.5 font-sohne text-small font-medium text-grays-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black focus-visible:ring-offset-2"
       >
         Add to cart
@@ -57,7 +66,16 @@ function UpsellCard({ product }: { product: Product }) {
 
 export default function UpsellGrid() {
   const { lines } = useCart();
-  const products = upsellsFor(lines.map((line) => line.slug));
+  const { upsellPicks } = useFlags();
+  // Jen's add-ons until flags load, and for any value the app does not know.
+  const set =
+    typeof upsellPicks === "string" && UPSELL_SETS[upsellPicks]
+      ? upsellPicks
+      : "add-ons";
+  const products = upsellsFor(
+    lines.map((line) => line.slug),
+    UPSELL_SETS[set],
+  );
 
   return (
     <section className="flex flex-col gap-[38px]">
@@ -67,7 +85,7 @@ export default function UpsellGrid() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {products.map((product) => (
-          <UpsellCard key={product.slug} product={product} />
+          <UpsellCard key={product.slug} product={product} set={set} />
         ))}
       </div>
     </section>
