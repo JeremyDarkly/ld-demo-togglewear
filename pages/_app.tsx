@@ -39,10 +39,11 @@ export default function App({ Component, pageProps }: AppProps) {
           all have to outlive a page change, so they are owned above the page
           rather than by any one of them. */}
       <ShopperProvider>
-        {/* Inside ShopperProvider, because the LaunchDarkly context is built
-            from the shopper's role — that is what the segments target. */}
-        <LaunchDarklyProvider>
-          <CartProvider>
+        {/* Both above LaunchDarklyProvider, because the context it sends is
+            built from the shopper's role and tier and from the cart's item
+            count — that is what the segments and flag 07's rules target. */}
+        <CartProvider>
+          <LaunchDarklyProvider>
             <SavedItemsProvider>
               <OrderProvider>
                 {/* The assistant's conversation outlives a page change too,
@@ -55,8 +56,8 @@ export default function App({ Component, pageProps }: AppProps) {
                 </SwagAssistantProvider>
               </OrderProvider>
             </SavedItemsProvider>
-          </CartProvider>
-        </LaunchDarklyProvider>
+          </LaunchDarklyProvider>
+        </CartProvider>
       </ShopperProvider>
     </div>
   );

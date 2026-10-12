@@ -9,6 +9,7 @@ import {
   useLDClient,
 } from "launchdarkly-react-client-sdk";
 
+import { useCart } from "@/components/cart/CartProvider";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import { contextFor } from "@/lib/ldContext";
 import { DEFAULT_SHOPPER_ID, shopperById } from "@/lib/shopper";
@@ -77,15 +78,19 @@ export default function LaunchDarklyProvider({
 // Pushes the switcher's choice into LaunchDarkly, which is the half that makes
 // the segment rules mean anything: picking Chris re-identifies the context with
 // role "developer", and that is what the Developers segment matches on. Picking
-// Diane sends tier "platinum", and Tyler sends an orderCount of 0.
+// Diane sends tier "platinum".
+//
+// The cart count goes too, so emptying the cart takes the cart reminder
+// banner away without a reload.
 function ShopperIdentity({ children }: { children: ReactNode }) {
   const client = useLDClient();
   const { person, role } = useShopper();
+  const { count } = useCart();
 
   useEffect(() => {
     if (!client) return;
-    client.identify(contextFor(person, role));
-  }, [client, person, role]);
+    client.identify(contextFor(person, role, count));
+  }, [client, person, role, count]);
 
   return <>{children}</>;
 }

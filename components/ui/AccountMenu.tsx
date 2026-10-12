@@ -16,7 +16,7 @@ import {
 // The account menu behind the header's person icon, and the stand-in for a
 // real sign-in until there is an account system.
 //
-// It replaced a switcher that floated at the bottom of every page. Five people
+// It replaced a switcher that floated at the bottom of every page. Four people
 // with two lines of detail each is more than a row of pills can hold without
 // wrapping, and "who am I signed in as" belongs in the account menu rather
 // than in a bar laid over the storefront.
@@ -28,8 +28,8 @@ import {
 // than just a face.
 //
 // Every visit starts signed out, as a guest, so the menu has two states:
-// signing in, which offers all five people, and signed in, which offers the
-// other four and a way back out. Signing out is what lets a demo show the
+// signing in, which offers all four people, and signed in, which offers the
+// other three and a way back out. Signing out is what lets a demo show the
 // moment an anonymous visitor becomes a known customer more than once.
 
 // Everyone shows the same generic figure until their row is pointed at, when
@@ -152,8 +152,8 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
 
       {/* The other half of the model. Everything above is chosen; everything
           here is read back off the person and the cart, and is spelled the way
-          a segment rule spells it so the New Customers and Cart Abandoners
-          rules are recognisable on screen. */}
+          a targeting rule spells it so flag 07's cart reminder rule is
+          recognisable on screen. */}
       <div className="flex flex-col gap-1 bg-grays-01 px-5 py-4">
         <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
           Sent to LaunchDarkly
@@ -192,8 +192,14 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
             are the two things you actually want, and the count above proves
             either one happened. */}
         <div className="flex items-center justify-between gap-3">
-          <p className="font-sohne-mono text-xsmall-mono text-grays-ld-black">
+          {/* Greyed for a guest because it is not sent: see contextFor. */}
+          <p
+            className={`font-sohne-mono text-xsmall-mono ${
+              guest ? "text-grays-04" : "text-grays-ld-black"
+            }`}
+          >
             cartItemCount {count}
+            {guest && " · not sent"}
           </p>
 
           <div className="flex items-center gap-1.5">
