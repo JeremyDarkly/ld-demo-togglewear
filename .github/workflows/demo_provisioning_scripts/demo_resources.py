@@ -478,7 +478,7 @@ FLAGS = [
                              'look": cheap add-ons, pricier picks or best sellers. Measured on '
                              'order revenue, so the winner is the set that raises the order '
                              'total, not the one that gets clicked most.',
-              'variations': [{'value': 'add-ons', 'name': 'Cheap Add-ons'},
+              'variations': [{'value': 'add-ons', 'name': 'Add-ons'},
                              {'value': 'premium-picks', 'name': 'Premium Picks'},
                              {'value': 'best-sellers', 'name': 'Best Sellers'}],
               'tags': ['experiment', 'upsell', 'togglewear'],
@@ -550,9 +550,12 @@ CONTEXT_KINDS = [
 # All three are started, so results_generator.py's traffic lands in a running
 # iteration and the results pages are full when the demo opens.
 EXPERIMENTS = [
-    {'requires': 'metric_groups_created',
+    {'requires': 'metrics_created',
      'toggle_flag': ['announcementOffer', 'on', 'production', 'Turn on flag for experiment'],
-     'metrics': [['order-placed', False], ['purchase-funnel', True], ['order-revenue', False]],
+     # A funnel group can only be an experiment's primary metric, so the
+     # steps that show where an offer helps are listed singly.
+     'metrics': [['order-placed', False], ['order-revenue', False],
+                 ['add-to-cart', False], ['checkout-started', False]],
      'experiment': {'exp_key': 'announcement-offer',
                     'exp_name': '(Bayesian) Feature Experiment: Announcement Banner Offer',
                     'exp_env': 'production',
@@ -566,7 +569,10 @@ EXPERIMENTS = [
      'start_iteration': True},
     {'requires': 'metrics_created',
      'toggle_flag': ['upsellPicks', 'on', 'production', 'Turn on flag for experiment'],
-     'metrics': [['order-revenue', False], ['upsell-added', False]],
+     # order-placed is the guardrail: pricier picks must not put people off
+     # buying at all.
+     'metrics': [['order-revenue', False], ['upsell-added', False],
+                 ['order-placed', False]],
      'experiment': {'exp_key': 'upsell-picks',
                     'exp_name': '(Bayesian) Feature Experiment: Complete Your Look Picks',
                     'exp_env': 'production',
