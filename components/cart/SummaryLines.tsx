@@ -1,4 +1,6 @@
 import {
+  COMEBACK_CODE,
+  COMEBACK_DISCOUNT,
   LOYALTY_DISCOUNT,
   WELCOME_CODE,
   WELCOME_DISCOUNT,
@@ -12,6 +14,7 @@ import { formatMoney, type CartTotals } from "@/lib/cart";
 const DISCOUNT_ROW = {
   loyalty: `Loyalty Discount (${Math.round(LOYALTY_DISCOUNT * 100)}%)`,
   welcome: `${WELCOME_CODE} (${Math.round(WELCOME_DISCOUNT * 100)}%)`,
+  comeback: `${COMEBACK_CODE} (${Math.round(COMEBACK_DISCOUNT * 100)}%)`,
 } as const;
 
 // The four money rows and the total, drawn identically in the cart summary

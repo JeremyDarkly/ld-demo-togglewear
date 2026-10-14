@@ -69,7 +69,9 @@ export default function OrderSummary({
           Promo Code
         </label>
 
-        {promo && totals.discountKind === "welcome" ? (
+        {promo &&
+        (totals.discountKind === "welcome" ||
+          totals.discountKind === "comeback") ? (
           // The applied state replaces the field rather than sitting under
           // it, since there is nothing left to type. Remove is a word, not a
           // cross, for the same reason the search field's clear is.

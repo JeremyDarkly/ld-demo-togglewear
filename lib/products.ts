@@ -400,6 +400,14 @@ export const LOYALTY_DISCOUNT = 0.15;
 export const WELCOME_CODE = "WELCOME";
 export const WELCOME_DISCOUNT = 0.1;
 
+// The incentive in the cart reminder banner, for a shopper who came back to
+// a cart they left on an earlier visit. A code rather than a discount applied
+// automatically, because typing it is how a demo shows the banner was what
+// brought them back. Same rate as WELCOME, and refused to members for the
+// same reason: their 15% already beats it.
+export const COMEBACK_CODE = "COMEBACK";
+export const COMEBACK_DISCOUNT = 0.1;
+
 export function memberPriceUsd(priceUsd: number) {
   return Math.round(priceUsd * (1 - LOYALTY_DISCOUNT));
 }

@@ -1,5 +1,7 @@
 import {
   BEST_SELLERS,
+  COMEBACK_CODE,
+  COMEBACK_DISCOUNT,
   LOYALTY_DISCOUNT,
   productBySlug,
   WELCOME_CODE,
@@ -42,7 +44,7 @@ export type CartTotals = {
   // answer. It is part of the totals rather than derived at render because a
   // placed order snapshots these, and a receipt has to keep saying what it
   // said at checkout.
-  discountKind: "none" | "loyalty" | "welcome";
+  discountKind: "none" | "loyalty" | "welcome" | "comeback";
   // The sticker pack flag 07's third offer promises. Part of the totals for
   // the same reason as discountKind: the receipt has to keep showing a gift
   // the checkout showed. Optional because orders placed before it existed
@@ -63,7 +65,10 @@ export function validatePromo(
   code: string,
   variant: PricingVariant
 ): PromoRejection | null {
-  if (code.trim().toUpperCase() !== WELCOME_CODE) return "unknown";
+  const normalised = code.trim().toUpperCase();
+  if (normalised !== WELCOME_CODE && normalised !== COMEBACK_CODE) {
+    return "unknown";
+  }
   if (variant === "loyaltyGold") return "alreadyMember";
   return null;
 }
@@ -98,7 +103,9 @@ export function cartTotals(
     variant === "loyaltyGold"
       ? "loyalty"
       : promo && !validatePromo(promo, variant)
-        ? "welcome"
+        ? promo === COMEBACK_CODE
+          ? "comeback"
+          : "welcome"
         : "none";
 
   // The loyalty rate is the same 15% the product pages apply, so a member
@@ -109,7 +116,9 @@ export function cartTotals(
       ? subtotal * LOYALTY_DISCOUNT
       : discountKind === "welcome"
         ? subtotal * WELCOME_DISCOUNT
-        : 0;
+        : discountKind === "comeback"
+          ? subtotal * COMEBACK_DISCOUNT
+          : 0;
 
   // Jen shows FREE for both personas and leaves the "for Gold Members" caveat
   // to the estimator copy. Kept as a value rather than a literal zero because
