@@ -58,11 +58,9 @@ module.exports = {
         // Söhne it is openly licensed and served by next/font, so it needs
         // nothing from the design team.
         geist: ["var(--font-geist)", "Inter", "sans-serif"],
-        // Söhne is a licensed Klim Type Foundry face and is not yet in the
-        // repo; until the woff2 files arrive these fall back to the closest
-        // available neo-grotesque.
+        // Söhne and Söhne Mono are local files loaded in pages/_app.tsx.
         sohne: [
-          "Söhne",
+          "var(--font-sohne)",
           "Inter",
           "-apple-system",
           "BlinkMacSystemFont",
@@ -71,7 +69,7 @@ module.exports = {
           "sans-serif",
         ],
         "sohne-mono": [
-          "Söhne Mono",
+          "var(--font-sohne-mono)",
           "ui-monospace",
           "SFMono-Regular",
           "Menlo",

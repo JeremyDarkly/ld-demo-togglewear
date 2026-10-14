@@ -1,6 +1,7 @@
 import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
 import { Sora, Geist } from "next/font/google";
+import localFont from "next/font/local";
 import { CartProvider } from "@/components/cart/CartProvider";
 import { SavedItemsProvider } from "@/components/account/SavedItemsProvider";
 import { OrderProvider } from "@/components/checkout/OrderProvider";
@@ -26,6 +27,25 @@ const geist = Geist({
   display: "swap",
 });
 
+// Söhne is licensed from Klim Type Foundry through the design team; only the
+// weights the Tailwind classes use are here. Klim names them in German: Buch
+// is 400, Kräftig 500, Halbfett 600 and Dreiviertelfett 700.
+const sohne = localFont({
+  src: [
+    { path: "../styles/fonts/Sohne-Buch.woff2", weight: "400" },
+    { path: "../styles/fonts/Sohne-Kraftig.woff2", weight: "500" },
+    { path: "../styles/fonts/Sohne-Halbfett.woff2", weight: "600" },
+    { path: "../styles/fonts/Sohne-Dreiviertelfett.woff2", weight: "700" },
+  ],
+  display: "swap",
+});
+
+const sohneMono = localFont({
+  src: "../styles/fonts/SohneMono-Buch.woff2",
+  weight: "400",
+  display: "swap",
+});
+
 export default function App({ Component, pageProps }: AppProps) {
   // Keyed on the full path so the fade replays on every navigation, including
   // one that stays on the same page and only changes the category in the
@@ -35,6 +55,15 @@ export default function App({ Component, pageProps }: AppProps) {
 
   return (
     <div className={`${sora.variable} ${geist.variable}`}>
+      {/* Söhne is the body font, set on <body> itself, and the dialogs portal
+          into <body> outside this wrapper, so its variables go on :root
+          rather than on the wrapper like Sora's and Geist's. */}
+      <style jsx global>{`
+        :root {
+          --font-sohne: ${sohne.style.fontFamily};
+          --font-sohne-mono: ${sohneMono.style.fontFamily};
+        }
+      `}</style>
       {/* Who is shopping, their cart, their wishlist and their placed order
           all have to outlive a page change, so they are owned above the page
           rather than by any one of them. */}
