@@ -1,5 +1,11 @@
+import { useEffect, useState } from "react";
 import { useFlags } from "launchdarkly-react-client-sdk";
-import { WELCOME_CODE, WELCOME_DISCOUNT } from "@/lib/products";
+import {
+  COMEBACK_CODE,
+  COMEBACK_DISCOUNT,
+  WELCOME_CODE,
+  WELCOME_DISCOUNT,
+} from "@/lib/products";
 
 // Figma component set "announcement-bar" (67:4838), one variant per persona.
 // Jen's variant is spelled "Cart abondon"; the key here is corrected.
@@ -24,9 +30,15 @@ const VARIANTS: Record<BarVariant, Variant> = {
     surface: "bg-base-lime text-grays-ld-black",
     message: "Free shipping on swag orders over $75 USD",
   },
+  // Jen's line, with an incentive after it: the reminder only reaches someone
+  // who came back to a cart from an earlier visit, and a small offer is what
+  // stores actually send at that moment. Built from the constants like the
+  // welcome offer, so the bar cannot promise a rate the cart does not give.
   cartAbandon: {
     surface: "bg-base-orange text-grays-ld-black",
-    message: "Good taste doesn't ship itself! Finish checking out.",
+    message: `Good taste doesn't ship itself! Take ${Math.round(
+      COMEBACK_DISCOUNT * 100,
+    )}% off with code ${COMEBACK_CODE}`,
   },
   newCustomer: {
     surface: "bg-base-cyan text-grays-ld-black",
@@ -62,7 +74,7 @@ const BY_FLAG_VALUE: Record<string, BarVariant> = {
 };
 
 // Which bar to show is flag 07's call. Members get theirs by segment, a
-// signed-in shopper with items in the cart gets the reminder, and guests are
+// signed-in shopper who came back to a cart gets the reminder, and guests are
 // the experiment. The persona passed in is only the fallback for the frame
 // before flags load, or a project without the flag.
 export default function AnnouncementBar({
@@ -76,12 +88,46 @@ export default function AnnouncementBar({
     persona;
   const { surface, message } = VARIANTS[shown];
 
+  // The colour eases from one bar to the next, and the message is keyed on
+  // the variant so a new one remounts and fades in over it.
   return (
     <div
-      className={`flex w-full items-center justify-center px-6 py-[10px] ${surface}`}
+      className={`flex w-full items-center justify-center px-6 py-[10px] transition-colors duration-500 ease-out motion-reduce:transition-none ${surface}`}
       data-persona={shown}
     >
-      <p className="text-center font-sohne-mono text-xsmall-mono">{message}</p>
+      <BannerMessage key={shown} shown={shown} message={message} />
     </div>
+  );
+}
+
+// The last bar shown, kept outside the component because every page mounts
+// its own header: without it, each navigation would look like a change and
+// replay the fade. Null until the first bar, so a fresh load does not fade.
+let lastShown: BarVariant | null = null;
+
+// Fades only when the bar really changed — the cart emptying, someone signing
+// in — which is the moment a demo wants the audience to notice.
+function BannerMessage({
+  shown,
+  message,
+}: {
+  shown: BarVariant;
+  message: string;
+}) {
+  const [changed] = useState(() => lastShown !== null && lastShown !== shown);
+  useEffect(() => {
+    lastShown = shown;
+  }, [shown]);
+
+  return (
+    <p
+      className={`text-center font-sohne-mono text-xsmall-mono ${
+        changed
+          ? "animate-[banner-swap_500ms_ease-out] motion-reduce:animate-none"
+          : ""
+      }`}
+    >
+      {message}
+    </p>
   );
 }

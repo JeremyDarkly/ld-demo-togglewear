@@ -28,6 +28,16 @@
   }
 }
 
+/* The announcement bar's new message settling in when flag 07 changes it. */
+@keyframes banner-swap {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @layer base {
   body {
     @apply bg-grays-white font-sohne text-main text-grays-ld-black;
