@@ -80,17 +80,17 @@ export default function LaunchDarklyProvider({
 // role "developer", and that is what the Developers segment matches on. Picking
 // Diane sends tier "platinum".
 //
-// The cart count goes too, so emptying the cart takes the cart reminder
-// banner away without a reload.
+// The cart goes too, so emptying it takes the cart reminder banner away
+// without a reload.
 function ShopperIdentity({ children }: { children: ReactNode }) {
   const client = useLDClient();
   const { person, role } = useShopper();
-  const { count } = useCart();
+  const { count, returning } = useCart();
 
   useEffect(() => {
     if (!client) return;
-    client.identify(contextFor(person, role, count));
-  }, [client, person, role, count]);
+    client.identify(contextFor(person, role, { count, returning }));
+  }, [client, person, role, count, returning]);
 
   return <>{children}</>;
 }

@@ -80,7 +80,8 @@ export type Person = {
 // Four people, each there for one thing a flag targets: Gold, Platinum, beta
 // and developer. There is no "shopper with an abandoned cart" here on
 // purpose — an abandoned cart is something that happens to any of them, so
-// it is reached by leaving items in the cart rather than by picking a
+// it is reached by coming back to items left in the cart (Refill in the
+// account menu stands in for that) rather than by picking a
 // different name. There is no new customer either: first-order offers are
 // one of the banner experiment's arms, which only guests are entered into,
 // and the guest already covers the plain visitor with no perks.

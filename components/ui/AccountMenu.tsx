@@ -59,7 +59,7 @@ function Avatar({ person }: { person: Person }) {
 
 export default function AccountMenu({ onClose }: { onClose: () => void }) {
   const { person, setShopperId, role } = useShopper();
-  const { count, clear, reset } = useCart();
+  const { count, returning, clear, reset } = useCart();
   const panel = useRef<HTMLDivElement>(null);
 
   // Escape and a click outside, but deliberately not the scroll lock and focus
@@ -152,8 +152,8 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
 
       {/* The other half of the model. Everything above is chosen; everything
           here is read back off the person and the cart, and is spelled the way
-          a targeting rule spells it so flag 07's cart reminder rule is
-          recognisable on screen. */}
+          a targeting rule spells it so flag 07's cart reminder rule
+          (returningCart is true) is recognisable on screen. */}
       <div className="flex flex-col gap-1 bg-grays-01 px-5 py-4">
         <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
           Sent to LaunchDarkly
@@ -214,12 +214,21 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={reset}
+              title="Puts two items back as if left on an earlier visit"
               className="rounded-full border border-grays-02 px-2.5 py-1 font-sohne text-[11px] font-medium text-grays-ld-black transition-colors hover:bg-base-lime"
             >
               Refill
             </button>
           </div>
         </div>
+        <p
+          className={`font-sohne-mono text-xsmall-mono ${
+            guest ? "text-grays-04" : "text-grays-ld-black"
+          }`}
+        >
+          returningCart {String(returning)}
+          {guest && " · not sent"}
+        </p>
       </div>
 
       {/* A guest has no account to view and nothing to sign out of, so the
