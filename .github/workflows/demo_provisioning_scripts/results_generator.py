@@ -732,7 +732,7 @@ def order_pipeline_failed_generator(client, stop_event):
 # but chosen to tell a believable story, which is what a results page in a
 # demo is for:
 #
-#   07  15% off wins on orders, but each order is smaller, so it is a closer
+#   07  10% off wins on orders, but each order is smaller, so it is a closer
 #       call on revenue. Free shipping and the sticker pack trail.
 #   08  Premium picks are added least often and still raise revenue most.
 #   09  Express checkout leaves the top of the funnel alone and wins at the
@@ -776,7 +776,7 @@ def announcement_offer_experiment_generator(client):
     # each step given the one before, and what happens to the order total.
     arms = {
         "free-shipping":        ((0.70, 0.40, 0.55, 0.60), 1.00),
-        "first-order-discount": ((0.72, 0.46, 0.62, 0.70), 0.85),
+        "first-order-discount": ((0.72, 0.46, 0.62, 0.70), 0.90),
         # Two items to qualify, so its orders run a little larger.
         "free-sticker-pack":    ((0.70, 0.43, 0.56, 0.58), 1.12),
     }

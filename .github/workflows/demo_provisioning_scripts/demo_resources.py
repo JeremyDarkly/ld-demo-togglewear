@@ -420,24 +420,33 @@ FLAGS = [
     # knows something about, and only the default rule — guests, in practice
     # — is the experiment:
     #
-    #   1. Gold or Platinum member          -> their member message
-    #   2. signed in, items in the cart     -> the cart reminder
-    #   3. signed in, empty cart            -> free shipping
-    #   4. everyone else                    -> the experiment, three offers
+    #   1. Gold or Platinum member             -> their member message
+    #   2. signed in, came back to a cart      -> the cart reminder, with
+    #                                             10% off as code COMEBACK
+    #   3. signed in, otherwise                -> free shipping
+    #   4. everyone else                       -> the experiment, three offers
     #
-    # Rules 2 and 3 work because only signed-in contexts carry cartItemCount
+    # "Came back to a cart" is returningCart: the visit began with items left
+    # on an earlier one. Items added during a visit never trigger it, so the
+    # reminder does not chase someone mid-shop. It is a rule rather than app
+    # logic so the definition of an abandoned cart belongs to whoever owns the
+    # flag — tightening it to carts of three or more items is a clause on
+    # cartItemCount, which is sent too.
+    #
+    # Rules 2 and 3 work because only signed-in contexts carry returningCart
     # (lib/ldContext.ts), so a guest matches neither and falls through. That is
-    # also what keeps a guest in the experiment after adding to the cart.
-    # The cart reminder rule is the live-targeting beat of the demo: empty the
-    # cart from the account menu and the bar changes without a reload.
+    # also what keeps a guest in the experiment whatever is in their cart.
+    # The cart reminder rule is the live-targeting beat of the demo: Refill
+    # from the account menu stands in for a cart left yesterday, Empty clears
+    # it, and the bar changes without a reload.
     {'flag': {'flag_key': 'announcementOffer',
               'flag_name': '07 - Announcement Banner Offer - Feature Experiment',
               'description': 'The offer in the bar across the top of every page. Members get '
-                             'their own message and signed-in shoppers with a full cart get a '
-                             'reminder; guests are split between free shipping, 15% off a first '
-                             'order and a free sticker pack.',
+                             'their own message and signed-in shoppers who came back to a cart '
+                             'get a reminder with a comeback code; guests are split between free '
+                             'shipping, 10% off a first order and a free sticker pack.',
               'variations': [{'value': 'free-shipping', 'name': 'Free Shipping'},
-                             {'value': 'first-order-discount', 'name': '15% Off First Order'},
+                             {'value': 'first-order-discount', 'name': '10% Off First Order'},
                              {'value': 'free-sticker-pack', 'name': 'Free Sticker Pack'},
                              {'value': 'cart-reminder', 'name': 'Cart Reminder'},
                              {'value': 'member-message', 'name': 'Member Message'}],
@@ -451,14 +460,14 @@ FLAGS = [
                {'description': 'Gold and Platinum members'}],
               ['add_rule_to_flag',
                ['announcementOffer', 'production',
-                [['user', 'cartItemCount', 'greaterThan', [0]]],
+                [['user', 'returningCart', 'in', [True]]],
                 'cart-reminder'],
-               {'description': 'Signed in, items left in the cart'}],
+               {'description': 'Signed in, came back to a cart from an earlier visit'}],
               ['add_rule_to_flag',
                ['announcementOffer', 'production',
-                [['user', 'cartItemCount', 'in', [0]]],
+                [['user', 'returningCart', 'in', [False]]],
                 'free-shipping'],
-               {'description': 'Signed in, empty cart'}]]},
+               {'description': 'Signed in, no abandoned cart'}]]},
 
     # "Complete your look" on the cart page. No rules: everyone with a cart
     # is fair game, signed in or not, so the whole default rule is the
