@@ -7,6 +7,9 @@
 // from Place Order. The address is the form's prefilled one, which is what a
 // wallet would supply. The button's own name and value travel with the
 // submit and tell placeOrder which wallet paid.
+//
+// formNoValidate because the only required field on the page is flag 11's
+// card verification code, and a wallet verifies the shopper on its own.
 export default function ExpressCheckout({ disabled }: { disabled: boolean }) {
   const wallet =
     "flex flex-1 items-center justify-center rounded-[4px] border border-grays-ld-black p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-purple focus-visible:ring-offset-2 disabled:opacity-60";
@@ -27,6 +30,7 @@ export default function ExpressCheckout({ disabled }: { disabled: boolean }) {
           type="submit"
           name="express-method"
           value="paypal"
+          formNoValidate
           disabled={disabled}
           className={wallet}
         >
@@ -42,6 +46,7 @@ export default function ExpressCheckout({ disabled }: { disabled: boolean }) {
           type="submit"
           name="express-method"
           value="applePay"
+          formNoValidate
           disabled={disabled}
           className={wallet}
         >

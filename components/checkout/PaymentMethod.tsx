@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFlags } from "launchdarkly-react-client-sdk";
 
 import Field from "@/components/ui/Field";
 
@@ -8,6 +9,7 @@ type Method = "card" | "paypal" | "applePay";
 // border and the purple check; the other two sit on Gray 03.
 export default function PaymentMethod() {
   const [method, setMethod] = useState<Method>("card");
+  const { newPaymentProcessor, cardTestingProtection } = useFlags();
 
   const borderFor = (value: Method) =>
     method === value ? "border-accent-purple" : "border-grays-03";
@@ -17,9 +19,16 @@ export default function PaymentMethod() {
 
   return (
     <section className="flex flex-col gap-6 rounded-[2px] border border-grays-hairline bg-grays-white p-8">
-      <h2 className="font-sohne text-h6 font-medium text-grays-ld-black">
-        Payment Method
-      </h2>
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 className="font-sohne text-h6 font-medium text-grays-ld-black">
+          Payment Method
+        </h2>
+        {/* Flag 10, on screen so the kill switch has something to visibly
+            change: this flips the moment the flag is turned off. */}
+        <p className="shrink-0 font-sohne-mono text-xsmall-mono uppercase text-grays-04">
+          {newPaymentProcessor === true ? "New processor" : "Current processor"}
+        </p>
+      </div>
 
       {/* The wallet options are buttons rather than radios, so the choice
           would not otherwise reach the form on submit. A hidden field carries
@@ -74,6 +83,35 @@ export default function PaymentMethod() {
               label="CVC"
               defaultValue="•••"
               className="sm:w-[120px] sm:shrink-0"
+            />
+          </div>
+        )}
+
+        {/* Flag 11, turned on by its kill switch when declined cards spike.
+            Card payments only: a wallet confirms the shopper itself, with a
+            fingerprint or a password, which is why the express buttons skip
+            this field. Required, so Place Order waits for it. */}
+        {method === "card" && cardTestingProtection === true && (
+          <div className="flex flex-col gap-3 border-t border-grays-hairline pt-4">
+            <div className="flex flex-col gap-1">
+              <p className="font-sohne text-main font-medium text-grays-ld-black">
+                Verify it&apos;s you
+              </p>
+              <p className="font-sohne text-small text-grays-04">
+                We&apos;re seeing unusual payment activity, so we&apos;ve texted
+                a 6-digit code to the phone number on your account.
+              </p>
+            </div>
+            <Field
+              id="verify-code"
+              label="Verification code"
+              placeholder="Any 6 digits"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="\d{6}"
+              maxLength={6}
+              required
+              className="sm:w-[200px]"
             />
           </div>
         )}

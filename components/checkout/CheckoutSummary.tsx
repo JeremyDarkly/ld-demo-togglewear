@@ -15,11 +15,13 @@ export default function CheckoutSummary({
   assessing,
   assessment,
   orderRef,
+  paymentFailed,
 }: {
   variant: PricingVariant;
   assessing: boolean;
   assessment: FraudAssessment | null;
   orderRef: string;
+  paymentFailed: boolean;
 }) {
   const { lines, promo } = useCart();
   const { announcementOffer } = useFlags();
@@ -67,6 +69,23 @@ export default function CheckoutSummary({
       <div className="h-px w-full bg-grays-hairline" />
 
       <SummaryLines totals={totals} />
+
+      {/* What a shopper sees while flag 10's new processor is down. Place
+          Order stays below it, because trying again is the right thing to
+          do: once the kill switch has fired, the retry goes through. */}
+      {paymentFailed && (
+        <div
+          role="alert"
+          className="flex flex-col gap-1 rounded-[2px] border border-base-orange p-4"
+        >
+          <p className="font-sohne text-small font-medium text-grays-ld-black">
+            We couldn&apos;t process your payment
+          </p>
+          <p className="font-sohne text-xsmall text-grays-04">
+            Your card wasn&apos;t charged. Please try again in a moment.
+          </p>
+        </div>
+      )}
 
       {/* Hidden once a decision is in, so the same order cannot be placed
           twice by clicking through the result panel. */}

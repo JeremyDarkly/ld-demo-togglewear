@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
 import { useFlags } from "launchdarkly-react-client-sdk";
+import { LDObserve } from "@launchdarkly/observability";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ShippingForm from "@/components/checkout/ShippingForm";
@@ -11,6 +12,7 @@ import SwagAssistant from "@/components/ui/SwagAssistant";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import { useCart } from "@/components/cart/CartProvider";
 import { useOrder } from "@/components/checkout/OrderProvider";
+import { useIncidents } from "@/components/ui/IncidentProvider";
 import { cartTotals, resolveLines } from "@/lib/cart";
 import { estimateDelivery, paymentLabel, type ShipTo } from "@/lib/order";
 import { EVENTS, useTrack } from "@/lib/events";
@@ -39,8 +41,11 @@ export default function CheckoutPage() {
   const [assessing, setAssessing] = useState(false);
   const [assessment, setAssessment] = useState<FraudAssessment | null>(null);
   const [orderRef, setOrderRef] = useState("");
+  const [paymentFailed, setPaymentFailed] = useState(false);
   const track = useTrack();
-  const { expressCheckout, announcementOffer } = useFlags();
+  const { expressCheckout, announcementOffer, newPaymentProcessor } =
+    useFlags();
+  const { paymentOutage } = useIncidents();
 
   // Once per visit, and only with something in the cart: arriving at an empty
   // checkout is not starting one. The ref keeps it to one even when the
@@ -55,6 +60,7 @@ export default function CheckoutPage() {
   function placeOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (assessing || assessment) return;
+    setPaymentFailed(false);
 
     // Passing the submitter is what carries an express wallet button's own
     // name and value into the form data; Place Order has neither.
@@ -87,6 +93,28 @@ export default function CheckoutPage() {
     // Stands in for the round trip to the model. Deliberately visible: the
     // pause is what makes the audience notice something evaluated the order.
     window.setTimeout(() => {
+      // The charge, which only happens to an order the agent approved. During
+      // a staged outage the new processor (flag 10) fails it, and the error
+      // is what the kill switch's alert counts. Once the flag is off the same
+      // order goes through the current processor, outage or not, which is
+      // the whole point of keeping the old path behind the flag.
+      if (
+        verdict.decision === "approve" &&
+        newPaymentProcessor === true &&
+        paymentOutage
+      ) {
+        const error = new Error("Payment processor timed out");
+        error.name = "PaymentProcessorError";
+        LDObserve.recordError(error, "Charge failed on the new payment processor", {
+          flag: "newPaymentProcessor",
+          processor: "new",
+          orderRef: ref,
+        });
+        setPaymentFailed(true);
+        setAssessing(false);
+        return;
+      }
+
       if (verdict.decision === "approve") {
         place({
           ref,
@@ -142,6 +170,7 @@ export default function CheckoutPage() {
               assessing={assessing}
               assessment={assessment}
               orderRef={orderRef}
+              paymentFailed={paymentFailed}
             />
           </div>
         </form>

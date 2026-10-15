@@ -7,6 +7,10 @@ export default function Field({
   defaultValue,
   placeholder,
   inputMode,
+  required,
+  pattern,
+  maxLength,
+  autoComplete,
   className = "",
 }: {
   id: string;
@@ -14,6 +18,10 @@ export default function Field({
   defaultValue?: string;
   placeholder?: string;
   inputMode?: "numeric" | "text";
+  required?: boolean;
+  pattern?: string;
+  maxLength?: number;
+  autoComplete?: string;
   className?: string;
 }) {
   // The inputs stay uncontrolled and are read back through FormData on
@@ -33,6 +41,10 @@ export default function Field({
         defaultValue={defaultValue}
         placeholder={placeholder}
         inputMode={inputMode}
+        required={required}
+        pattern={pattern}
+        maxLength={maxLength}
+        autoComplete={autoComplete}
         className="h-11 w-full rounded-[4px] border border-grays-hairline px-4 font-sohne text-small text-grays-ld-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black"
       />
     </div>
