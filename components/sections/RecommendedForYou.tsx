@@ -56,12 +56,16 @@ function CardSet({
   );
 }
 
+// heading changes with flag 12: a fallback list of best sellers should not
+// claim to be picked for you.
 export default function RecommendedForYou({
   products,
   variant = "default",
+  heading = "Recommended for you",
 }: {
   products: Product[];
   variant?: PricingVariant;
+  heading?: string;
 }) {
   return (
     <section className="w-full bg-grays-ld-black">
@@ -71,7 +75,7 @@ export default function RecommendedForYou({
       <Reveal className="mx-auto max-w-[1440px] py-16 xl:py-[52px]">
         <header className="mb-8 flex items-end justify-between gap-6 px-6 md:px-10 xl:px-[52px]">
           <h2 className="font-sora text-[28px] font-semibold leading-[1.05] tracking-[-1.4px] text-grays-white md:text-h3">
-            Recommended for you
+            {heading}
           </h2>
 
           <Link

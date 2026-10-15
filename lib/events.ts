@@ -21,6 +21,11 @@ export const EVENTS = {
   // Carries the order total as its metric value, so a metric can measure
   // revenue per visitor rather than only whether an order happened.
   orderPlaced: "order-placed",
+  // Not a shopper action but the recommendation service failing them. Flag
+  // 12's adaptive trigger counts it, and a trigger can watch a custom metric
+  // directly, which is why this one is an event and not an observability
+  // error like the kill switches'.
+  recommendationsFailed: "recommendations-failed",
 } as const;
 
 export type ShopperEvent = (typeof EVENTS)[keyof typeof EVENTS];

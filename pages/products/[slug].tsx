@@ -7,7 +7,9 @@ import RecommendedForYou from "@/components/sections/RecommendedForYou";
 import DropPromo from "@/components/sections/DropPromo";
 import SwagAssistant from "@/components/ui/SwagAssistant";
 import { useShopper } from "@/components/ui/ShopperProvider";
+import { useIncidents } from "@/components/ui/IncidentProvider";
 import { useFlags } from "launchdarkly-react-client-sdk";
+import { LDObserve } from "@launchdarkly/observability";
 import { EVENTS, useTrack } from "@/lib/events";
 import {
   ALL_PRODUCTS,
@@ -21,8 +23,18 @@ import {
 // recommendation row are specific to it.
 export default function ProductPage({ product }: { product: Product }) {
   const { persona, variant } = useShopper();
-  const { swagRecommendations } = useFlags();
+  const { swagRecommendations, recommendationEngine } = useFlags();
+  const { recommendationsOutage } = useIncidents();
   const track = useTrack();
+
+  // Flag 04 decides whether there is a row at all; flag 12 decides what fills
+  // it. Personalised picks come from a service that can fail, and while it is
+  // down the row simply is not there, which is what a shopper would see. Best
+  // sellers are a static list with nothing to fail, which is why flag 12's
+  // adaptive trigger falls back to them.
+  const bestSellersOnly = recommendationEngine === "best-sellers";
+  const recommendationsFailed = !bestSellersOnly && recommendationsOutage;
+  const showRecommendations = swagRecommendations && !recommendationsFailed;
 
   // Members-only products are absent from the default catalogue, so a
   // non-member landing here by URL should not see one.
@@ -40,8 +52,35 @@ export default function ProductPage({ product }: { product: Product }) {
     }
   }, [track, product.slug, hidden]);
 
+  // One failure per product per visit, counted the same way as a view: the
+  // row failed to load for this shopper on this page. It goes to two places,
+  // the custom event that flag 12's adaptive trigger counts and the Errors
+  // page an engineer would open to find out why.
+  const failed = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !swagRecommendations ||
+      !recommendationsFailed ||
+      failed.current === product.slug
+    ) {
+      return;
+    }
+    if (track(EVENTS.recommendationsFailed, { slug: product.slug }, 1)) {
+      failed.current = product.slug;
+      const error = new Error("Recommendation service unavailable");
+      error.name = "RecommendationServiceError";
+      LDObserve.recordError(error, "Personalized recommendations failed to load", {
+        flag: "recommendationEngine",
+        slug: product.slug,
+      });
+    }
+  }, [track, product.slug, swagRecommendations, recommendationsFailed]);
+
   // Recommendations are everything except what you are already looking at.
-  const pool = variant === "loyaltyGold" ? ALL_PRODUCTS : BEST_SELLERS;
+  // The personalised pool includes the members-only drop for a member; the
+  // best sellers fallback is the same public list for everyone.
+  const pool =
+    !bestSellersOnly && variant === "loyaltyGold" ? ALL_PRODUCTS : BEST_SELLERS;
   const recommended = pool.filter((p) => p.slug !== product.slug);
 
   return (
@@ -68,21 +107,25 @@ export default function ProductPage({ product }: { product: Product }) {
         <ProductDetails
           product={product}
           variant={variant}
-          flushBottom={swagRecommendations}
+          flushBottom={showRecommendations}
         />
       )}
 
       {/* Eased out by a progressive rollout, so most shoppers do not have it
           yet. Beta testers and Gold and Platinum members see it regardless of
           the schedule — Megan, Alex or Diane. */}
-      {swagRecommendations && (
-        <RecommendedForYou products={recommended} variant={variant} />
+      {showRecommendations && (
+        <RecommendedForYou
+          products={recommended}
+          variant={variant}
+          heading={bestSellersOnly ? "Popular right now" : undefined}
+        />
       )}
 
       {/* Flush against either of the black sections that can precede it — the
           members-only notice or the recommendation row — and inset when the
           product panel is what sits above. */}
-      <DropPromo flushTop={hidden || swagRecommendations} />
+      <DropPromo flushTop={hidden || showRecommendations} />
       <Footer />
 
       <SwagAssistant />
