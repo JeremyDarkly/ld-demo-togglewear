@@ -8,6 +8,7 @@ import {
   asyncWithLDProvider,
   useLDClient,
 } from "launchdarkly-react-client-sdk";
+import Observability from "@launchdarkly/observability";
 
 import { useCart } from "@/components/cart/CartProvider";
 import { useShopper } from "@/components/ui/ShopperProvider";
@@ -56,7 +57,14 @@ export default function LaunchDarklyProvider({
       clientSideID,
       context: contextFor(seed, seed.role),
       reactOptions: { useCamelCaseFlagKeys: false },
-      options: { bootstrap: "localStorage" },
+      options: {
+        bootstrap: "localStorage",
+        // Errors, logs and traces for the Monitoring tab and for observability
+        // alerts. The kill switches depend on it: an alert can only watch
+        // observability data, not custom events, so the payment errors that
+        // turn flag 10 off have to arrive this way.
+        plugins: [new Observability({ serviceName: "togglewear-storefront" })],
+      },
     }).then((provider) => {
       if (!cancelled) setProvider(() => provider as ProviderComponent);
     });
