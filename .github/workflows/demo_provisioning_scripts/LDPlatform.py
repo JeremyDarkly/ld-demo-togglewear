@@ -1133,7 +1133,13 @@ class LDPlatform:
         exclude_empty_events=False,
         randomization_units=[],
         tags=[],
+        unit_aggregation_type=None,
     ):
+        """unit_aggregation_type is how one context's events combine: "sum"
+        makes a numeric metric a running total, which is what an adaptive
+        trigger needs to count every failure rather than one per context.
+        Left as None, LaunchDarkly's default applies.
+        """
         payload = {
             "key": metric_key,
             "name": metric_name,
@@ -1151,6 +1157,9 @@ class LDPlatform:
 
         if numeric:
             payload["unit"] = unit
+
+        if unit_aggregation_type:
+            payload["unitAggregationType"] = unit_aggregation_type
 
         if randomization_units:
             payload["randomizationUnits"] = randomization_units

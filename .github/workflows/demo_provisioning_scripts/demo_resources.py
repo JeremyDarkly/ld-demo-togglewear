@@ -185,6 +185,23 @@ METRICS = [
      'unit': '$',
      'success_criteria': 'HigherThanBaseline',
      'tags': ['experiment', 'revenue', 'togglewear']},
+
+    # ---- 12 Recommendation Engine: adaptive trigger ----
+    #
+    # What flag 12's adaptive trigger watches. A running total rather than a
+    # conversion: a conversion counts each shopper once, so one person
+    # clicking through a demo could never cross a threshold of more than a
+    # few. The storefront sends 1 per failed row (lib/events.ts).
+    {'metric_key': 'recommendations-failed',
+     'metric_name': 'Recommendations Failed',
+     'event_key': 'recommendations-failed',
+     'metric_description': 'The personalized "Recommended for you" row failed to load. Flag '
+                           '12\'s adaptive trigger switches to best sellers when this climbs.',
+     'numeric': True,
+     'unit': 'failures',
+     'success_criteria': 'LowerThanBaseline',
+     'unit_aggregation_type': 'sum',
+     'tags': ['adaptive-trigger', 'recommendations', 'togglewear']},
 ]
 
 # Metric groups — funnels, passed to LDPlatform.create_metric_group(**spec)
@@ -500,6 +517,98 @@ FLAGS = [
               'on_variation': 0,
               'off_variation': 0},
      'post': []},
+
+    # ---- Capability 5: kill switches ----
+    #
+    # Flags that an observability alert flips through a flag trigger, with no
+    # one in the loop. ToggleWear's versions of core-demo's A9 and A10: one
+    # turns a risky change off when it breaks, the other turns a protection
+    # on when an attack starts.
+    #
+    # The chain is storefront error -> observability alert -> trigger URL ->
+    # flag. DemoBuilder creates the flag and its trigger; the alert is still
+    # made by hand, because LaunchDarkly has no public API for creating
+    # alerts. Its webhook notification is the trigger URL, which is a secret,
+    # shown once at creation and never printed here — reset the trigger in
+    # the flag's settings to get a fresh one.
+    #
+    # The errors come from the storefront through the observability plugin
+    # (LaunchDarklyProvider.tsx), staged from the account menu's "Simulate an
+    # incident" controls (IncidentProvider.tsx).
+
+    # On, serving the new processor. During a staged payment outage every
+    # approved order fails with a PaymentProcessorError; an alert on those
+    # (say, more than 3 in 5 minutes) calls the trigger, the flag turns off,
+    # and off serves the current processor, so the next order goes through.
+    {'flag': {'flag_key': 'newPaymentProcessor',
+              'flag_name': '10 - New Payment Processor - Kill Switch',
+              'description': 'Charges orders through the new payment processor. A trigger turns '
+                             'it off, back to the current processor, when an observability alert '
+                             'on PaymentProcessorError fires.',
+              'variations': [{'value': True, 'name': 'Use New Payment Processor'},
+                             {'value': False, 'name': 'Use Current Payment Processor'}],
+              'tags': ['kill-switch', 'trigger', 'checkout', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 1},
+     'post': [['create_flag_trigger',
+               ['newPaymentProcessor', 'production'],
+               {'action': 'turnFlagOff',
+                'comment': 'Created by DemoBuilder. Called by the observability alert on '
+                           'PaymentProcessorError to fall back to the current processor.'}],
+              ['toggle_flag',
+               ['newPaymentProcessor', 'on', 'production'],
+               {}]]},
+
+    # Off, so checkout is the usual one. A staged card-testing attack sends
+    # fifteen CardDeclinedErrors in six seconds; an alert on those (say, more
+    # than 10 in a minute) calls the trigger, the flag turns on, and card
+    # payments ask for a texted code before the order is placed. Turning it
+    # back off once the attack is over is a person's call, which is realistic.
+    {'flag': {'flag_key': 'cardTestingProtection',
+              'flag_name': '11 - Card Testing Protection - Kill Switch',
+              'description': 'Asks for a texted verification code before a card payment. A '
+                             'trigger turns it on when an observability alert on CardDeclinedError '
+                             'fires, the signature of bots testing stolen cards.',
+              'variations': [{'value': True, 'name': 'Require Card Verification'},
+                             {'value': False, 'name': 'Standard Checkout'}],
+              'tags': ['kill-switch', 'trigger', 'checkout', 'fraud', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 1},
+     'post': [['create_flag_trigger',
+               ['cardTestingProtection', 'production'],
+               {'action': 'turnFlagOn',
+                'comment': 'Created by DemoBuilder. Called by the observability alert on '
+                           'CardDeclinedError to require card verification.'}]]},
+
+    # ---- Capability 6: adaptive triggers ----
+    #
+    # A kill switch turns a flag off or on; an adaptive trigger switches a rule
+    # to a different variation, and it watches a LaunchDarkly metric itself
+    # rather than waiting for an alert to call it.
+    #
+    # On, serving personalized picks. During a staged recommendations outage
+    # the row fails to load and the storefront sends recommendations-failed;
+    # the trigger on the default rule (say, above 3 in 5 minutes) switches it
+    # to best sellers, a static list with nothing to fail.
+    #
+    # The trigger itself is added by hand on the default rule, for the same
+    # reason as the kill switches' alerts: the adaptive triggers API needs the
+    # ID of an alert, and alerts cannot be created through the public API.
+    # Adaptive triggers do not switch back on their own either, so restoring
+    # personalized picks after a demo is done by hand too.
+    {'flag': {'flag_key': 'recommendationEngine',
+              'flag_name': '12 - Recommendation Engine - Adaptive Trigger',
+              'description': 'What fills the "Recommended for you" row: personalized picks from '
+                             'the recommendation service, or best sellers. An adaptive trigger on '
+                             'Recommendations Failed falls back to best sellers.',
+              'variations': [{'value': 'personalized', 'name': 'Personalized Picks'},
+                             {'value': 'best-sellers', 'name': 'Best Sellers'}],
+              'tags': ['adaptive-trigger', 'recommendations', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 1},
+     'post': [['toggle_flag',
+               ['recommendationEngine', 'on', 'production'],
+               {}]]},
 ]
 
 # Segments — created in every environment listed, with shared rules
