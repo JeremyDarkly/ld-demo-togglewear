@@ -1,7 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 
 import { useCart } from "@/components/cart/CartProvider";
+import {
+  CARD_TESTING_ATTEMPTS,
+  useIncidents,
+} from "@/components/ui/IncidentProvider";
 import ProfileIllustration from "@/components/ui/ProfileIllustration";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import ShopperTags from "@/components/ui/ShopperTags";
@@ -57,9 +61,63 @@ function Avatar({ person }: { person: Person }) {
   );
 }
 
+// The same small pill as Empty and Refill.
+const PILL =
+  "rounded-full border border-grays-02 px-2.5 py-1 font-sohne text-[11px] font-medium text-grays-ld-black transition-colors hover:bg-base-lime disabled:cursor-not-allowed disabled:border-grays-hairline disabled:text-grays-03 disabled:hover:bg-transparent";
+
+function IncidentRow({
+  label,
+  title,
+  children,
+}: {
+  label: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3" title={title}>
+      <p className="font-sohne text-xsmall text-grays-ld-black">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+// Orange while on, the palette's warning colour, so a demo cannot forget an
+// outage is still running when the next customer reaches checkout.
+function OutageToggle({
+  on,
+  onChange,
+}: {
+  on: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={() => onChange(!on)}
+      className={
+        on
+          ? "rounded-full border border-base-orange bg-base-orange px-2.5 py-1 font-sohne text-[11px] font-medium text-grays-ld-black"
+          : PILL
+      }
+    >
+      {on ? "On" : "Off"}
+    </button>
+  );
+}
+
 export default function AccountMenu({ onClose }: { onClose: () => void }) {
   const { person, setShopperId, role } = useShopper();
   const { count, returning, clear, reset } = useCart();
+  const {
+    paymentOutage,
+    setPaymentOutage,
+    recommendationsOutage,
+    setRecommendationsOutage,
+    cardTestingSent,
+    simulateCardTesting,
+  } = useIncidents();
   const panel = useRef<HTMLDivElement>(null);
 
   // Escape and a click outside, but deliberately not the scroll lock and focus
@@ -102,7 +160,10 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
       ref={panel}
       role="dialog"
       aria-label="Account"
-      className="animate-drop-in absolute right-0 top-[calc(100%+12px)] z-50 flex w-[340px] flex-col overflow-hidden rounded-[20px] bg-grays-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+      // Scrolls rather than running off a short laptop screen now that the
+      // incident controls sit at the foot; any overflow other than visible
+      // still clips the children to the rounded corners.
+      className="animate-drop-in absolute right-0 top-[calc(100%+12px)] z-50 flex max-h-[calc(100vh-96px)] w-[340px] flex-col overflow-y-auto rounded-[20px] bg-grays-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
     >
       {/* Black like the header it drops from, so who you are reads apart
           from the list of who you could switch to. */}
@@ -229,6 +290,44 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
           returningCart {String(returning)}
           {guest && " · not sent"}
         </p>
+      </div>
+
+      {/* The trouble flags 10 to 12 react to. These only cause the problem;
+          the fix arrives from LaunchDarkly, which is the demo. */}
+      <div className="flex flex-col gap-2 border-t border-grays-hairline px-5 py-4">
+        <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
+          Simulate an incident
+        </p>
+        <IncidentRow
+          label="Payment outage"
+          title="The new payment processor fails every charge until flag 10 is turned off"
+        >
+          <OutageToggle on={paymentOutage} onChange={setPaymentOutage} />
+        </IncidentRow>
+        <IncidentRow
+          label="Card-testing attack"
+          title={`Sends ${CARD_TESTING_ATTEMPTS} declined cards, the way a bot checks stolen ones`}
+        >
+          <button
+            type="button"
+            onClick={simulateCardTesting}
+            disabled={cardTestingSent !== null}
+            className={PILL}
+          >
+            {cardTestingSent === null
+              ? "Run"
+              : `${cardTestingSent} of ${CARD_TESTING_ATTEMPTS}`}
+          </button>
+        </IncidentRow>
+        <IncidentRow
+          label="Recommendations outage"
+          title="The personalized recommendations service fails until flag 12 falls back to best sellers"
+        >
+          <OutageToggle
+            on={recommendationsOutage}
+            onChange={setRecommendationsOutage}
+          />
+        </IncidentRow>
       </div>
 
       {/* A guest has no account to view and nothing to sign out of, so the

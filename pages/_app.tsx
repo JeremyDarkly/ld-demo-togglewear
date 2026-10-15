@@ -5,6 +5,7 @@ import localFont from "next/font/local";
 import { CartProvider } from "@/components/cart/CartProvider";
 import { SavedItemsProvider } from "@/components/account/SavedItemsProvider";
 import { OrderProvider } from "@/components/checkout/OrderProvider";
+import { IncidentProvider } from "@/components/ui/IncidentProvider";
 import { ShopperProvider } from "@/components/ui/ShopperProvider";
 import { SwagAssistantProvider } from "@/components/ui/SwagAssistantProvider";
 import LaunchDarklyProvider from "@/components/ui/LaunchDarklyProvider";
@@ -75,14 +76,19 @@ export default function App({ Component, pageProps }: AppProps) {
           <LaunchDarklyProvider>
             <SavedItemsProvider>
               <OrderProvider>
-                {/* The assistant's conversation outlives a page change too,
-                    and the cart's help card opens it from outside the corner
-                    of the screen it lives in. */}
-                <SwagAssistantProvider>
-                  <div key={asPath} data-page-transition>
-                    <Component {...pageProps} />
-                  </div>
-                </SwagAssistantProvider>
+                {/* Staged from the account menu and felt on the checkout and
+                    product pages, so it outlives a page change like the
+                    cart does. */}
+                <IncidentProvider>
+                  {/* The assistant's conversation outlives a page change too,
+                      and the cart's help card opens it from outside the
+                      corner of the screen it lives in. */}
+                  <SwagAssistantProvider>
+                    <div key={asPath} data-page-transition>
+                      <Component {...pageProps} />
+                    </div>
+                  </SwagAssistantProvider>
+                </IncidentProvider>
               </OrderProvider>
             </SavedItemsProvider>
           </LaunchDarklyProvider>
