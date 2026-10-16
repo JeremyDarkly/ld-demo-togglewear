@@ -800,7 +800,7 @@ def announcement_offer_experiment_generator(client):
         client.track(ORDER_PLACED_KEY, ctx, None,
                      round(_order_total() * total_factor, 2))
 
-    _run_visitors(client, "07 Announcement Banner Offer", visit)
+    _run_visitors(client, "08 Announcement Banner Offer", visit)
 
 
 def upsell_picks_experiment_generator(client):
@@ -825,7 +825,7 @@ def upsell_picks_experiment_generator(client):
         if random.random() < 0.55:
             client.track(ORDER_PLACED_KEY, ctx, None, round(total, 2))
 
-    _run_visitors(client, "08 Complete Your Look Picks", visit)
+    _run_visitors(client, "09 Complete Your Look Picks", visit)
 
 
 def express_checkout_experiment_generator(client):
@@ -847,7 +847,7 @@ def express_checkout_experiment_generator(client):
             return
         client.track(ORDER_PLACED_KEY, ctx, None, _order_total())
 
-    _run_visitors(client, "09 Express Checkout", visit)
+    _run_visitors(client, "10 Express Checkout", visit)
 
 
 def experiments_generator(client):
@@ -919,8 +919,8 @@ def generate_results(project_key, api_key):
     experiments_thread.start()
 
     logging.info("Guarded release generators running.")
-    logging.info("  05 Live Inventory Service should reach 100% in about 10 minutes.")
-    logging.info("  06 Order Pipeline v2 should be rolled back around minute 5 to 7.")
+    logging.info("  06 Live Inventory Service should reach 100% in about 10 minutes.")
+    logging.info("  07 Order Pipeline v2 should be rolled back around minute 5 to 7.")
 
     # Safety cap. The healthy scenario is the slower of the two at about ten
     # minutes, so this has to comfortably exceed that or provisioning would
