@@ -17,7 +17,7 @@ Two guarded release scenarios, one per flag:
 Both loops poll the flag and exit once its measured rollout is over, whether
 that happened by completing or by being rolled back.
 
-And the three experiments, 08 to 10, which need visitors rather than a
+And the four experiments, 08 to 11, which need visitors rather than a
 service: a fixed number each, walked through the purchase funnel with odds
 set by the variation they were given.  Their events are the storefront's own,
 so the results pages fill in before anyone has clicked through the store.
@@ -725,18 +725,20 @@ def order_pipeline_failed_generator(client, stop_event):
     logging.info("Order Pipeline v2 generator finished.")
 
 
-# ------------------------------------------------------- 08 to 10 experiments
+# ------------------------------------------------------- 08 to 11 experiments
 #
 # Each visitor is evaluated once and then walks the purchase funnel, with the
 # odds at each step set by the variation they got. The numbers are invented
 # but chosen to tell a believable story, which is what a results page in a
 # demo is for:
 #
-#   07  10% off wins on orders, but each order is smaller, so it is a closer
+#   08  10% off wins on orders, but each order is smaller, so it is a closer
 #       call on revenue. Free shipping and the sticker pack trail.
-#   08  Premium picks are added least often and still raise revenue most.
-#   09  Express checkout leaves the top of the funnel alone and wins at the
+#   09  Premium picks are added least often and still raise revenue most.
+#   10  Express checkout leaves the top of the funnel alone and wins at the
 #       last step, which is where a wallet button can make a difference.
+#   11  A free tee gets more shoppers copying their referral link than $20
+#       credit does.
 #
 # The event keys are the storefront's (lib/events.ts), so generated visits
 # and real clicks land in the same metrics.
@@ -746,6 +748,7 @@ ADD_TO_CART_KEY = "add-to-cart"
 UPSELL_ADDED_KEY = "upsell-added"
 CHECKOUT_STARTED_KEY = "checkout-started"
 ORDER_PLACED_KEY = "order-placed"
+REFERRAL_LINK_COPIED_KEY = "referral-link-copied"
 
 EXPERIMENT_VISITORS = 3000
 
@@ -850,14 +853,29 @@ def express_checkout_experiment_generator(client):
     _run_visitors(client, "10 Express Checkout", visit)
 
 
+def referral_offer_experiment_generator(client):
+    # Signed-in shoppers on the account page, since that is the only place
+    # the referral card is. Odds of copying the link, per offer.
+    copy_rate = {"store-credit": 0.11, "free-tee": 0.16}
+
+    def visit():
+        ctx = generate_shopper_context()
+        offer = client.variation("referralOffer", ctx, "store-credit")
+        if random.random() < copy_rate.get(offer, 0.11):
+            client.track(REFERRAL_LINK_COPIED_KEY, ctx, {"offer": offer})
+
+    _run_visitors(client, "11 Referral Offer", visit)
+
+
 def experiments_generator(client):
-    """The three experiments one after another, on their own thread."""
+    """The four experiments one after another, on their own thread."""
     if not client.is_initialized():
         logging.error("LaunchDarkly client is not initialized.")
         return
     announcement_offer_experiment_generator(client)
     upsell_picks_experiment_generator(client)
     express_checkout_experiment_generator(client)
+    referral_offer_experiment_generator(client)
     client.flush()
 
 
