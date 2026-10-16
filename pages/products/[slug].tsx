@@ -3,6 +3,7 @@ import { type GetStaticPaths, type GetStaticProps } from "next";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ProductDetails from "@/components/sections/ProductDetails";
+import ProductDetailsBoundary from "@/components/sections/ProductDetailsBoundary";
 import RecommendedForYou from "@/components/sections/RecommendedForYou";
 import DropPromo from "@/components/sections/DropPromo";
 import SwagAssistant from "@/components/ui/SwagAssistant";
@@ -11,6 +12,7 @@ import { useIncidents } from "@/components/ui/IncidentProvider";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { LDObserve } from "@launchdarkly/observability";
 import { EVENTS, useTrack } from "@/lib/events";
+import { useLiveProduct } from "@/lib/catalog";
 import {
   ALL_PRODUCTS,
   BEST_SELLERS,
@@ -27,10 +29,16 @@ export default function ProductPage({ product }: { product: Product }) {
   const { recommendationsOutage } = useIncidents();
   const track = useTrack();
 
-  // Flag 04 decides whether there is a row at all; flag 12 decides what fills
+  // The sizes on sale come from the catalog API once it answers, over the
+  // ones the page was built with. Which catalog answers is flag 05's call,
+  // made on the server.
+  const live = useLiveProduct(product.slug);
+  const shown = live ? { ...product, sizes: live.sizes } : product;
+
+  // Flag 04 decides whether there is a row at all; flag 13 decides what fills
   // it. Personalised picks come from a service that can fail, and while it is
   // down the row simply is not there, which is what a shopper would see. Best
-  // sellers are a static list with nothing to fail, which is why flag 12's
+  // sellers are a static list with nothing to fail, which is why flag 13's
   // adaptive trigger falls back to them.
   const bestSellersOnly = recommendationEngine === "best-sellers";
   const recommendationsFailed = !bestSellersOnly && recommendationsOutage;
@@ -54,7 +62,7 @@ export default function ProductPage({ product }: { product: Product }) {
 
   // One failure per product per visit, counted the same way as a view: the
   // row failed to load for this shopper on this page. It goes to two places,
-  // the custom event that flag 12's adaptive trigger counts and the Errors
+  // the custom event that flag 13's adaptive trigger counts and the Errors
   // page an engineer would open to find out why.
   const failed = useRef<string | null>(null);
   useEffect(() => {
@@ -104,11 +112,17 @@ export default function ProductPage({ product }: { product: Product }) {
         // brings its own padding. Otherwise the panel keeps its own 10px
         // frame, and so does the drop promo below, which is what separates
         // the two cards.
-        <ProductDetails
+        <ProductDetailsBoundary
+          key={product.slug}
           product={product}
-          variant={variant}
           flushBottom={showRecommendations}
-        />
+        >
+          <ProductDetails
+            product={shown}
+            variant={variant}
+            flushBottom={showRecommendations}
+          />
+        </ProductDetailsBoundary>
       )}
 
       {/* Eased out by a progressive rollout, so most shoppers do not have it
