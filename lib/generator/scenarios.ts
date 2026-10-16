@@ -362,7 +362,7 @@ const orderPipeline: Scenario = async (run) => {
   return `The rollout ${outcome} after ${sent.toLocaleString()} orders.`;
 };
 
-// --------------------------------------------------- 08 to 10 experiments
+// --------------------------------------------------- 08 to 11 experiments
 //
 // Each visitor is evaluated once and walks the purchase funnel with odds set
 // by the variation they got. The event keys are the storefront's
@@ -374,6 +374,7 @@ const ADD_TO_CART_KEY = "add-to-cart";
 const UPSELL_ADDED_KEY = "upsell-added";
 const CHECKOUT_STARTED_KEY = "checkout-started";
 const ORDER_PLACED_KEY = "order-placed";
+const REFERRAL_LINK_COPIED_KEY = "referral-link-copied";
 
 const EXPERIMENT_VISITORS = 3000;
 
@@ -468,7 +469,22 @@ const expressCheckout = experiment(async (client) => {
   client.track(ORDER_PLACED_KEY, ctx, undefined, orderTotal());
 });
 
-// ------------------------------------- 12 Card Testing Protection, trigger
+// Signed-in shoppers on the account page, since that is the only place the
+// referral card is. Odds of copying the link, per offer.
+const REFERRAL_COPY_RATES: Record<string, number> = {
+  "store-credit": 0.11,
+  "free-tee": 0.16,
+};
+
+const referralOffer = experiment(async (client) => {
+  const ctx = shopperContext();
+  const offer = String(await client.variation("referralOffer", ctx, "store-credit"));
+  if (Math.random() < (REFERRAL_COPY_RATES[offer] ?? REFERRAL_COPY_RATES["store-credit"])) {
+    client.track(REFERRAL_LINK_COPIED_KEY, ctx, { offer });
+  }
+});
+
+// ------------------------------------- 13 Card Testing Protection, trigger
 
 const CARD_TESTING_FLAG_KEY = "cardTestingProtection";
 const PAYMENTS_SERVICE_NAME = "togglewear-payments";
@@ -499,18 +515,18 @@ const DECLINES: (() => never)[] = [
 const BLOCKED_TO_FINISH = 10;
 
 // Two $1 authorizations a second, each from a fresh anonymous bot. An alert
-// threshold of ten in a minute is crossed within seconds. Once flag 12 is on,
+// threshold of ten in a minute is crossed within seconds. Once flag 13 is on,
 // the payments service asks for verification before the charge reaches the
 // issuer, so the declines stop and blocked attempts take their place.
 const cardTesting: Scenario = async (run) => {
   const { client, signal } = run;
   if ((await client.variation(CARD_TESTING_FLAG_KEY, botContext(), false)) === true) {
-    return "Flag 12 is already on. Turn it off in LaunchDarkly, then start this again.";
+    return "Flag 13 is already on. Turn it off in LaunchDarkly, then start this again.";
   }
 
   run.update({
     state: "running",
-    detail: "A bot is testing stolen cards. Waiting for flag 12 to turn on.",
+    detail: "A bot is testing stolen cards. Waiting for flag 13 to turn on.",
   });
   const deadline = Date.now() + WAIT_LIMIT_MS;
   let attempts = 0;
@@ -519,7 +535,7 @@ const cardTesting: Scenario = async (run) => {
 
   while (blocked < BLOCKED_TO_FINISH) {
     if (Date.now() > deadline) {
-      return `Flag 12 never turned on after ${declined} declined cards. Check its alert is set up and calls the trigger.`;
+      return `Flag 13 never turned on after ${declined} declined cards. Check its alert is set up and calls the trigger.`;
     }
 
     const ctx = botContext();
@@ -565,16 +581,16 @@ const cardTesting: Scenario = async (run) => {
       sent: attempts,
       detail:
         blocked > 0
-          ? `Flag 12 is on. ${blocked} attempts blocked so far.`
-          : `${declined} cards declined. Waiting for flag 12 to turn on.`,
+          ? `Flag 13 is on. ${blocked} attempts blocked so far.`
+          : `${declined} cards declined. Waiting for flag 13 to turn on.`,
     });
     await sleep(500, signal);
   }
 
-  return `Flag 12 turned on after ${declined} declined cards, and the attack is blocked.`;
+  return `Flag 13 turned on after ${declined} declined cards, and the attack is blocked.`;
 };
 
-// --------------------------------- 13 Recommendation Engine, adaptive trigger
+// --------------------------------- 14 Recommendation Engine, adaptive trigger
 
 const RECOMMENDATION_FLAG_KEY = "recommendationEngine";
 const RECOMMENDATIONS_FAILED_KEY = "recommendations-failed";
@@ -598,7 +614,7 @@ const FALLBACKS_TO_FINISH = 10;
 // A product page asking for its "Recommended for you" row, one after another.
 // Each personalized request waits out the service's timeout, so the trace
 // shows the time lost, then fails: an error for the Errors page and a
-// Recommendations Failed event, which is what flag 13's adaptive trigger
+// Recommendations Failed event, which is what flag 14's adaptive trigger
 // counts. Best sellers is a list the store already has, with nothing to fail.
 const recommendationsOutage: Scenario = async (run) => {
   const { client, signal } = run;
@@ -608,12 +624,12 @@ const recommendationsOutage: Scenario = async (run) => {
     "personalized",
   );
   if (engine === "best-sellers") {
-    return "Flag 13 is already serving Best Sellers. Switch it back to Personalized Picks, then start this again.";
+    return "Flag 14 is already serving Best Sellers. Switch it back to Personalized Picks, then start this again.";
   }
 
   run.update({
     state: "running",
-    detail: "The recommendation service is down. Waiting for flag 13 to switch to Best Sellers.",
+    detail: "The recommendation service is down. Waiting for flag 14 to switch to Best Sellers.",
   });
   const deadline = Date.now() + WAIT_LIMIT_MS;
   let requests = 0;
@@ -622,7 +638,7 @@ const recommendationsOutage: Scenario = async (run) => {
 
   while (fallbacks < FALLBACKS_TO_FINISH) {
     if (Date.now() > deadline) {
-      return `Flag 13 never switched after ${failed} failed requests. Check its adaptive trigger is set up.`;
+      return `Flag 14 never switched after ${failed} failed requests. Check its adaptive trigger is set up.`;
     }
 
     const ctx: LDContext = shopperContext();
@@ -672,13 +688,13 @@ const recommendationsOutage: Scenario = async (run) => {
       sent: requests,
       detail:
         fallbacks > 0
-          ? `Flag 13 switched to Best Sellers. ${fallbacks} pages served.`
-          : `${failed} requests failed. Waiting for flag 13 to switch to Best Sellers.`,
+          ? `Flag 14 switched to Best Sellers. ${fallbacks} pages served.`
+          : `${failed} requests failed. Waiting for flag 14 to switch to Best Sellers.`,
     });
     await sleep(500, signal);
   }
 
-  return `Flag 13 switched to Best Sellers after ${failed} failed requests, and the failures stopped.`;
+  return `Flag 14 switched to Best Sellers after ${failed} failed requests, and the failures stopped.`;
 };
 
 export const SCENARIOS = {
@@ -687,6 +703,7 @@ export const SCENARIOS = {
   announcementOffer,
   upsellPicks,
   expressCheckout,
+  referralOffer,
   cardTesting,
   recommendationsOutage,
 } satisfies Record<string, Scenario>;

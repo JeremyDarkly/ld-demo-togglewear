@@ -13,6 +13,7 @@ export type GeneratorId =
   | "announcementOffer"
   | "upsellPicks"
   | "expressCheckout"
+  | "referralOffer"
   | "cardTesting"
   | "recommendationsOutage";
 
@@ -93,28 +94,40 @@ export const GENERATORS: GeneratorInfo[] = [
     stops: "After 3,000 visitors, in about 30 seconds.",
   },
   {
+    id: "referralOffer",
+    group: "Experiments",
+    flag: "11",
+    flagKey: "referralOffer",
+    name: "Referral Offer",
+    kind: "Experiment",
+    does: "3,000 signed-in shoppers open their account page, each shown one referral offer, and some copy their link.",
+    purpose: "Fills the results so the free tee beats $20 credit on links copied.",
+    before: "The experiment is running. DemoBuilder starts it.",
+    stops: "After 3,000 visitors, in about 30 seconds.",
+  },
+  {
     id: "cardTesting",
     group: "Triggers",
-    flag: "12",
+    flag: "13",
     flagKey: "cardTestingProtection",
     name: "Card Testing Protection",
     kind: "Auto-enable trigger",
     does: "A bot tries stolen cards with $1 charges, two a second, and the payments service declines each one as a CardDeclinedError.",
-    purpose: "Your alert on CardDeclinedError calls flag 12's trigger, the flag turns on and the attack is blocked.",
-    before: "Flag 12 is off and its alert is set up.",
-    stops: "Shortly after flag 12 turns on, or after 15 minutes.",
+    purpose: "Your alert on CardDeclinedError calls flag 13's trigger, the flag turns on and the attack is blocked.",
+    before: "Flag 13 is off and its alert is set up.",
+    stops: "Shortly after flag 13 turns on, or after 15 minutes.",
   },
   {
     id: "recommendationsOutage",
     group: "Triggers",
-    flag: "13",
+    flag: "14",
     flagKey: "recommendationEngine",
     name: "Recommendation Engine",
     kind: "Adaptive trigger",
     does: "Product pages ask the recommendation service for picks and every call times out, sending Recommendations Failed and an error.",
-    purpose: "Flag 13's adaptive trigger switches to Best Sellers, and the failures stop.",
-    before: "Flag 13 serves Personalized Picks and its adaptive trigger is set up.",
-    stops: "Shortly after flag 13 switches to Best Sellers, or after 15 minutes.",
+    purpose: "Flag 14's adaptive trigger switches to Best Sellers, and the failures stop.",
+    before: "Flag 14 serves Personalized Picks and its adaptive trigger is set up.",
+    stops: "Shortly after flag 14 switches to Best Sellers, or after 15 minutes.",
   },
 ];
 
