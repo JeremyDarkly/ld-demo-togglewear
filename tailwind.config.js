@@ -31,6 +31,7 @@ module.exports = {
           "02": "#D1D6D9",
           "03": "#A7A9AC",
           "04": "#6D6E71",
+          "05": "#414042",
           "black-01": "#101010",
           "ld-black": "#191919",
           // Gray 06 — the only published grey darker than LD Black's
