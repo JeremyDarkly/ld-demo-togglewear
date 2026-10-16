@@ -1,8 +1,15 @@
-import { init, type LDClient } from "@launchdarkly/node-server-sdk";
+import type { IncomingHttpHeaders } from "http";
+import {
+  init,
+  type LDClient,
+  type LDContext,
+} from "@launchdarkly/node-server-sdk";
 import { Observability } from "@launchdarkly/observability-node";
+import { FlagStore } from "@/lib/flagStore";
 
 // The storefront's server-side LaunchDarkly client, for the API routes that
-// evaluate flags themselves rather than leaving it to the browser.
+// evaluate flags themselves rather than leaving it to the browser, and for
+// the demo generator (lib/generator).
 //
 // Built once per server process and shared: the SDK holds a streaming
 // connection open, and starting one per request would be slow and would
@@ -21,6 +28,9 @@ const RETRY_AFTER_MS = 60_000;
 let clientPromise: Promise<LDClient | null> | null = null;
 let failedAt = 0;
 
+// The store behind the current client, for the demo generator (lib/flagStore.ts).
+let store: FlagStore | null = null;
+
 export function getServerClient(): Promise<LDClient | null> {
   if (!clientPromise) {
     if (Date.now() - failedAt < RETRY_AFTER_MS) return Promise.resolve(null);
@@ -30,7 +40,9 @@ export function getServerClient(): Promise<LDClient | null> {
       console.warn("LD_SDK_KEY is not set — server-side flags will read off");
       return Promise.resolve(null);
     }
+    store = new FlagStore();
     const client = init(sdkKey, {
+      featureStore: store,
       plugins: [
         new Observability({
           serviceName: "togglewear-api",
@@ -50,4 +62,32 @@ export function getServerClient(): Promise<LDClient | null> {
       });
   }
   return clientPromise;
+}
+
+// Whether a guarded rollout is still running on the flag, as far as the
+// streamed flag data says. False with no client, so a generator waiting on
+// one simply keeps waiting.
+export function rolloutRunning(flagKey: string) {
+  return store?.rolloutRunning(flagKey) ?? false;
+}
+
+// The browser sends the context it was evaluated with, so the server lands
+// the shopper on the same side of any rollout the storefront did. A real
+// storefront would look the shopper up from a session cookie; there is no
+// account system behind this one to look them up in.
+const ANONYMOUS: LDContext = {
+  kind: "user",
+  key: "server-anonymous",
+  anonymous: true,
+};
+
+export function contextFromRequest(headers: IncomingHttpHeaders): LDContext {
+  const header = headers["x-ld-context"];
+  if (typeof header !== "string") return ANONYMOUS;
+  try {
+    const context = JSON.parse(header);
+    return context && typeof context.key === "string" ? context : ANONYMOUS;
+  } catch {
+    return ANONYMOUS;
+  }
 }

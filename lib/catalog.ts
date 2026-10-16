@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLDClient } from "launchdarkly-react-client-sdk";
+import { apiHeaders } from "@/lib/api";
 
 // What the product page expects back from /api/catalog/[slug]. It was written
 // against v1, where every product has at least one size, and nothing in the
@@ -24,7 +25,7 @@ export function useLiveProduct(slug: string): LiveProduct | null {
 
     let cancelled = false;
     fetch(`/api/catalog/${encodeURIComponent(slug)}`, {
-      headers: { "x-ld-context": JSON.stringify(client.getContext()) },
+      headers: apiHeaders(client),
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((body: LiveProduct | null) => {

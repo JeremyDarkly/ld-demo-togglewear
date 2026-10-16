@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import type { LDContext } from "@launchdarkly/node-server-sdk";
 import { LDObserve } from "@launchdarkly/observability-node";
-import { getServerClient } from "@/lib/ldServer";
+import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { productBySlug, type Product } from "@/lib/products";
 import { sizeChartFor } from "@/lib/sizeGuide";
 
@@ -24,25 +23,6 @@ export type CatalogResponse = {
   catalogVersion: "v1" | "v2";
   sizes: string[] | null;
 };
-
-// The browser sends the context it was evaluated with, so the server lands
-// the shopper on the same side of any rollout the storefront did. A real
-// storefront would look the shopper up from a session cookie; there is no
-// account system behind this one to look them up in.
-function contextFrom(header: string | string[] | undefined): LDContext {
-  const fallback: LDContext = {
-    kind: "user",
-    key: "catalog-anonymous",
-    anonymous: true,
-  };
-  if (typeof header !== "string") return fallback;
-  try {
-    const context = JSON.parse(header);
-    return context && typeof context.key === "string" ? context : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function catalogV1(product: Product): CatalogResponse {
   return { slug: product.slug, catalogVersion: "v1", sizes: product.sizes };
@@ -78,7 +58,7 @@ export default async function handler(
   // evaluation inside it is recorded on the span by the plugin.
   await LDObserve.runWithHeaders("catalog.getProduct", req.headers, async (span) => {
     const { secureSessionId, requestId } = LDObserve.parseHeaders(req.headers);
-    const context = contextFrom(req.headers["x-ld-context"]);
+    const context = contextFromRequest(req.headers);
     const useV2 = await client.variation(FLAG_KEY, context, false);
     const body = useV2 ? catalogV2(product) : catalogV1(product);
 
