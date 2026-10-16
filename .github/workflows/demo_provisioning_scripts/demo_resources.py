@@ -191,7 +191,8 @@ METRICS = [
     # What flag 13's adaptive trigger watches. A running total rather than a
     # conversion: a conversion counts each shopper once, so one person
     # clicking through a demo could never cross a threshold of more than a
-    # few. The storefront sends 1 per failed row (lib/events.ts).
+    # few. The demo generator (Cmd+K in the storefront) sends 1 per failed
+    # request.
     {'metric_key': 'recommendations-failed',
      'metric_name': 'Recommendations Failed',
      'event_key': 'recommendations-failed',
@@ -314,9 +315,10 @@ FLAGS = [
 
     # ---- Capability 2: progressive rollout ----
     #
-    # The "Recommended for you" row on a product page — a new recommendation
-    # engine being eased out rather than switched on, which is the realistic
-    # shape for something that costs a call per page view.
+    # Live order tracking on the account page: the parcel on a map, moving as
+    # the carrier reports it. Eased out rather than switched on, which is the
+    # realistic shape for it — every open panel polls the carrier, and a
+    # carrier's tracking API is paid per call and rate-limited.
     #
     # add_progressive_rollout steps 1% -> 5% -> 10% -> 25% -> 50% and turns the
     # flag on itself, so no toggle_flag is needed here.
@@ -328,30 +330,27 @@ FLAGS = [
     # so the flag silently stays off. Five days gives 25 days in total.
     #
     # The rollout starts at 1%, which is the point of the segment rules: rules
-    # are evaluated before the default rule, so beta testers and Gold and
-    # Platinum members see the row immediately while everyone else waits for
-    # the schedule. Without them the feature would be invisible to everyone
-    # during a demo.
-    {'flag': {'flag_key': 'swagRecommendations',
-              'flag_name': '04 - Swag Recommendations - Progressive Rollout',
-              'description': 'Shows the "Recommended for you" row on the product page. Beta '
-                             'testers and Gold and Platinum members get it straight away; '
-                             'everyone else arrives through a five-stage progressive rollout.',
-              'variations': [{'value': True, 'name': 'Show Swag Recommendations'},
-                             {'value': False, 'name': 'Hide Swag Recommendations'}],
-              'tags': ['progressive-rollout', 'recommendations', 'togglewear'],
+    # are evaluated before the default rule, so beta testers and developers
+    # see it immediately while everyone else waits for the schedule. Megan
+    # and Chris each have a parcel on its way for it to show. Without the
+    # rules the feature would be invisible to everyone during a demo.
+    {'flag': {'flag_key': 'liveOrderTracking',
+              'flag_name': '04 - Live Order Tracking - Progressive Rollout',
+              'description': 'Shows live tracking for a parcel on its way, on the account page. '
+                             'Beta testers and developers get it straight away; everyone else '
+                             'arrives through a five-stage progressive rollout.',
+              'variations': [{'value': True, 'name': 'Show Live Order Tracking'},
+                             {'value': False, 'name': 'Hide Live Order Tracking'}],
+              'tags': ['progressive-rollout', 'orders', 'togglewear'],
               'on_variation': 0},
      'post': [['add_segment_to_flag',
-               ['swagRecommendations', 'beta-testers', 'production'],
+               ['liveOrderTracking', 'beta-testers', 'production'],
                {}],
               ['add_segment_to_flag',
-               ['swagRecommendations', 'gold-members', 'production'],
-               {}],
-              ['add_segment_to_flag',
-               ['swagRecommendations', 'platinum-members', 'production'],
+               ['liveOrderTracking', 'developers', 'production'],
                {}],
               ['add_progressive_rollout',
-               ['swagRecommendations', 'production'],
+               ['liveOrderTracking', 'production'],
                {'timeout': 432000000}]]},
 
     # ---- Capability 3: debugging a release with observability ----
@@ -568,9 +567,11 @@ FLAGS = [
     # shown once at creation and never printed here — reset the trigger in
     # the flag's settings to get a fresh one.
     #
-    # The errors come from the storefront through the observability plugin
-    # (LaunchDarklyProvider.tsx), staged from the account menu's "Simulate an
-    # incident" controls (IncidentProvider.tsx).
+    # Flag 11 is staged from the account menu's "Simulate an incident" controls
+    # (IncidentProvider.tsx), and its errors come from the storefront through
+    # the browser observability plugin. Flag 12 is a backend scenario with no
+    # screen in the store: the demo generator (Cmd+K, lib/generator) plays the
+    # payments service, and its errors come from there.
 
     # On, serving the new processor. During a staged payment outage every
     # approved order fails with a PaymentProcessorError; an alert on those
@@ -596,17 +597,19 @@ FLAGS = [
                ['newPaymentProcessor', 'on', 'production'],
                {}]]},
 
-    # Off, so checkout is the usual one. A staged card-testing attack sends
-    # fifteen CardDeclinedErrors in six seconds; an alert on those (say, more
-    # than 10 in a minute) calls the trigger, the flag turns on, and card
-    # payments ask for a texted code before the order is placed. Turning it
-    # back off once the attack is over is a person's call, which is realistic.
+    # Off. The demo generator's card-testing attack sends two $1 charges a
+    # second, which the issuer declines as CardDeclinedErrors; an alert on
+    # those (say, more than 10 in a minute) calls the trigger, the flag turns
+    # on, and the payments service refuses unverified cards, so the declines
+    # stop and the generator stops itself. Turning it back off once the attack
+    # is over is a person's call, which is realistic.
     {'flag': {'flag_key': 'cardTestingProtection',
               'flag_name': '12 - Card Testing Protection - Auto-Enable Trigger',
-              'description': 'Asks for a texted verification code before a card payment. A '
+              'description': 'Makes the payments service verify a card before charging it. A '
                              'trigger turns it on when an observability alert on CardDeclinedError '
-                             'fires, the signature of bots testing stolen cards. Resting state: '
-                             'off — turn it back off after a demo.',
+                             'fires, the signature of bots testing stolen cards. Demo it with the '
+                             'Card Testing generator (Cmd+K in the store). Resting state: off — '
+                             'turn it back off after a demo.',
               'variations': [{'value': True, 'name': 'Require Card Verification'},
                              {'value': False, 'name': 'Standard Checkout'}],
               'tags': ['kill-switch', 'trigger', 'checkout', 'fraud', 'togglewear'],
@@ -624,10 +627,12 @@ FLAGS = [
     # to a different variation, and it watches a LaunchDarkly metric itself
     # rather than waiting for an alert to call it.
     #
-    # On, serving personalized picks. During a staged recommendations outage
-    # the row fails to load and the storefront sends recommendations-failed;
-    # the trigger on the default rule (say, above 3 in 5 minutes) switches it
-    # to best sellers, a static list with nothing to fail.
+    # On, serving personalized picks. A backend scenario with no screen in the
+    # store: the demo generator (Cmd+K) plays the recommendation service,
+    # which times out on every personalized request, recording the error and
+    # sending recommendations-failed. The trigger on the default rule (say,
+    # above 3 in 5 minutes) switches it to best sellers, a list the store
+    # already has, with nothing to fail, and the generator stops itself.
     #
     # The trigger itself is added by hand on the default rule, for the same
     # reason as the kill switches' alerts: the adaptive triggers API needs the
@@ -636,11 +641,12 @@ FLAGS = [
     # personalized picks after a demo is done by hand too.
     {'flag': {'flag_key': 'recommendationEngine',
               'flag_name': '13 - Recommendation Engine - Adaptive Trigger',
-              'description': 'What fills the "Recommended for you" row: personalized picks from '
-                             'the recommendation service, or best sellers. An adaptive trigger on '
-                             'Recommendations Failed falls back to best sellers. Resting state: '
-                             'Personalized Picks — switch it back after a demo, since an adaptive '
-                             'trigger does not restore the variation itself.',
+              'description': 'Which engine the recommendation service runs: personalized picks, '
+                             'or best sellers. An adaptive trigger on Recommendations Failed falls '
+                             'back to best sellers. Demo it with the Recommendation Engine '
+                             'generator (Cmd+K in the store). Resting state: Personalized Picks — '
+                             'switch it back after a demo, since an adaptive trigger does not '
+                             'restore the variation itself.',
               'variations': [{'value': 'personalized', 'name': 'Personalized Picks'},
                              {'value': 'best-sellers', 'name': 'Best Sellers'}],
               'tags': ['adaptive-trigger', 'recommendations', 'togglewear'],
