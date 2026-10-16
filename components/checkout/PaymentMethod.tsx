@@ -9,7 +9,7 @@ type Method = "card" | "paypal" | "applePay";
 // border and the purple check; the other two sit on Gray 03.
 export default function PaymentMethod() {
   const [method, setMethod] = useState<Method>("card");
-  const { newPaymentProcessor, cardTestingProtection } = useFlags();
+  const { newPaymentProcessor } = useFlags();
 
   const borderFor = (value: Method) =>
     method === value ? "border-accent-purple" : "border-grays-03";
@@ -83,35 +83,6 @@ export default function PaymentMethod() {
               label="CVC"
               defaultValue="•••"
               className="sm:w-[120px] sm:shrink-0"
-            />
-          </div>
-        )}
-
-        {/* Flag 12, turned on by its kill switch when declined cards spike.
-            Card payments only: a wallet confirms the shopper itself, with a
-            fingerprint or a password, which is why the express buttons skip
-            this field. Required, so Place Order waits for it. */}
-        {method === "card" && cardTestingProtection === true && (
-          <div className="flex flex-col gap-3 border-t border-grays-hairline pt-4">
-            <div className="flex flex-col gap-1">
-              <p className="font-sohne text-main font-medium text-grays-ld-black">
-                Verify it&apos;s you
-              </p>
-              <p className="font-sohne text-small text-grays-04">
-                We&apos;re seeing unusual payment activity, so we&apos;ve texted
-                a 6-digit code to the phone number on your account.
-              </p>
-            </div>
-            <Field
-              id="verify-code"
-              label="Verification code"
-              placeholder="Any 6 digits"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="\d{6}"
-              maxLength={6}
-              required
-              className="sm:w-[200px]"
             />
           </div>
         )}

@@ -8,8 +8,8 @@
 // wallet would supply. The button's own name and value travel with the
 // submit and tell placeOrder which wallet paid.
 //
-// formNoValidate because the only required field on the page is flag 12's
-// card verification code, and a wallet verifies the shopper on its own.
+// formNoValidate because a wallet verifies the shopper on its own, so
+// nothing in the card form should hold it up.
 export default function ExpressCheckout({ disabled }: { disabled: boolean }) {
   const wallet =
     "flex flex-1 items-center justify-center rounded-[4px] border border-grays-ld-black p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-purple focus-visible:ring-offset-2 disabled:opacity-60";
