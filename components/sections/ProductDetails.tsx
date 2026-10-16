@@ -28,9 +28,8 @@ import { EVENTS, useTrack } from "@/lib/events";
 // depends on what follows. A full-bleed black section below brings its own
 // generous padding and the 10px inset would only double up; another panel
 // below needs the inset to separate the two cards. On the product page the
-// section in between is the recommendation row, which is behind a
-// progressive rollout — so most of the time it is absent and the panels meet
-// with no gap at all unless this is decided per page.
+// section in between is the recommendation row, and the panels would meet
+// with no gap at all on any page without one unless this is decided per page.
 export default function ProductDetails({
   product,
   variant = "default",
