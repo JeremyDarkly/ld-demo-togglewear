@@ -2,10 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 
 import { useCart } from "@/components/cart/CartProvider";
-import {
-  CARD_TESTING_ATTEMPTS,
-  useIncidents,
-} from "@/components/ui/IncidentProvider";
+import { useIncidents } from "@/components/ui/IncidentProvider";
 import ProfileIllustration from "@/components/ui/ProfileIllustration";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import ShopperTags from "@/components/ui/ShopperTags";
@@ -110,14 +107,7 @@ function OutageToggle({
 export default function AccountMenu({ onClose }: { onClose: () => void }) {
   const { person, setShopperId, role } = useShopper();
   const { count, returning, clear, reset } = useCart();
-  const {
-    paymentOutage,
-    setPaymentOutage,
-    recommendationsOutage,
-    setRecommendationsOutage,
-    cardTestingSent,
-    simulateCardTesting,
-  } = useIncidents();
+  const { paymentOutage, setPaymentOutage } = useIncidents();
   const panel = useRef<HTMLDivElement>(null);
 
   // Escape and a click outside, but deliberately not the scroll lock and focus
@@ -292,8 +282,9 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         </p>
       </div>
 
-      {/* The trouble flags 11 to 13 react to. These only cause the problem;
-          the fix arrives from LaunchDarkly, which is the demo. */}
+      {/* The trouble flag 11 reacts to. This only causes the problem; the
+          fix arrives from LaunchDarkly, which is the demo. Flags 12 and 13
+          are backend scenarios, started from the demo generator (Cmd+K). */}
       <div className="flex flex-col gap-2 border-t border-grays-hairline px-5 py-4">
         <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
           Simulate an incident
@@ -303,30 +294,6 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
           title="The new payment processor fails every charge until flag 11 is turned off"
         >
           <OutageToggle on={paymentOutage} onChange={setPaymentOutage} />
-        </IncidentRow>
-        <IncidentRow
-          label="Card-testing attack"
-          title={`Sends ${CARD_TESTING_ATTEMPTS} declined cards, the way a bot checks stolen ones`}
-        >
-          <button
-            type="button"
-            onClick={simulateCardTesting}
-            disabled={cardTestingSent !== null}
-            className={PILL}
-          >
-            {cardTestingSent === null
-              ? "Run"
-              : `${cardTestingSent} of ${CARD_TESTING_ATTEMPTS}`}
-          </button>
-        </IncidentRow>
-        <IncidentRow
-          label="Recommendations outage"
-          title="The personalized recommendations service fails until flag 13 falls back to best sellers. Sign in as Megan, Alex or Diane: flag 04's rollout means the row is not there for most shoppers"
-        >
-          <OutageToggle
-            on={recommendationsOutage}
-            onChange={setRecommendationsOutage}
-          />
         </IncidentRow>
       </div>
 
