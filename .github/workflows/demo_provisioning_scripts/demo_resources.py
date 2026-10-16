@@ -126,7 +126,7 @@ METRICS = [
      'success_criteria': 'HigherThanBaseline',
      'tags': ['guarded-release', 'orders', 'togglewear', 'business']},
 
-    # ---- 08 to 10: the experiments ----
+    # ---- 08 to 11: the experiments ----
     #
     # Unlike everything above, these events are real: the storefront sends
     # them (lib/events.ts) as well as the generator, so a demo can click
@@ -185,10 +185,19 @@ METRICS = [
      'unit': '$',
      'success_criteria': 'HigherThanBaseline',
      'tags': ['experiment', 'revenue', 'togglewear']},
+    {'metric_key': 'referral-link-copied',
+     'metric_name': 'Referral Link Copied',
+     'event_key': 'referral-link-copied',
+     'metric_description': 'Copied their referral link on the account page. Flag 11\'s '
+                           'experiment counts each shopper once, however often they copy it.',
+     'numeric': False,
+     'unit': '',
+     'success_criteria': 'HigherThanBaseline',
+     'tags': ['experiment', 'referral', 'togglewear']},
 
-    # ---- 13 Recommendation Engine: adaptive trigger ----
+    # ---- 14 Recommendation Engine: adaptive trigger ----
     #
-    # What flag 13's adaptive trigger watches. A running total rather than a
+    # What flag 14's adaptive trigger watches. A running total rather than a
     # conversion: a conversion counts each shopper once, so one person
     # clicking through a demo could never cross a threshold of more than a
     # few. The demo generator (Cmd+K in the storefront) sends 1 per failed
@@ -197,7 +206,7 @@ METRICS = [
      'metric_name': 'Recommendations Failed',
      'event_key': 'recommendations-failed',
      'metric_description': 'The personalized "Recommended for you" row failed to load. Flag '
-                           '13\'s adaptive trigger switches to best sellers when this climbs.',
+                           '14\'s adaptive trigger switches to best sellers when this climbs.',
      'numeric': True,
      'unit': 'failures',
      'success_criteria': 'LowerThanBaseline',
@@ -463,10 +472,11 @@ FLAGS = [
 
     # ---- Capability 5: experimentation ----
     #
-    # Three experiments, one of each kind a retail team runs most: an offer,
-    # a merchandising choice and a checkout change. Each flag is created off
-    # with no rollout; EXPERIMENTS below turns it on and the experiment takes
-    # over its default rule. The first variation is the control in each.
+    # Four experiments, one of each kind a retail team runs most: an offer,
+    # a merchandising choice, a checkout change and a referral reward. Each
+    # flag is created off with no rollout; EXPERIMENTS below turns it on and
+    # the experiment takes over its default rule. The first variation is the
+    # control in each.
 
     # The announcement bar. Targeting decides the bar for anyone LaunchDarkly
     # knows something about, and only the default rule — guests, in practice
@@ -553,6 +563,22 @@ FLAGS = [
               'off_variation': 0},
      'post': []},
 
+    # The referral card on the account page, each offer in its own Jen design
+    # (ReferralCard.tsx). The account page is behind sign-in, so everyone in
+    # it is a signed-in shopper, and the whole default rule is the
+    # experiment.
+    {'flag': {'flag_key': 'referralOffer',
+              'flag_name': '11 - Referral Offer - Feature Experiment',
+              'description': 'What the account page\'s referral card offers: $20 off for the '
+                             'friend and $20 credit for the shopper, or a free ToggleWear Tee for '
+                             'both. Measured on how many shoppers copy their referral link.',
+              'variations': [{'value': 'store-credit', 'name': 'Give $20, Get $20'},
+                             {'value': 'free-tee', 'name': 'Give a Tee, Get a Tee'}],
+              'tags': ['experiment', 'referral', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 0},
+     'post': []},
+
     # ---- Capability 6: kill switches ----
     #
     # Flags that an observability alert flips through a flag trigger, with no
@@ -567,9 +593,9 @@ FLAGS = [
     # shown once at creation and never printed here — reset the trigger in
     # the flag's settings to get a fresh one.
     #
-    # Flag 11 is staged from the account menu's "Simulate an incident" controls
+    # Flag 12 is staged from the account menu's "Simulate an incident" controls
     # (IncidentProvider.tsx), and its errors come from the storefront through
-    # the browser observability plugin. Flag 12 is a backend scenario with no
+    # the browser observability plugin. Flag 13 is a backend scenario with no
     # screen in the store: the demo generator (Cmd+K, lib/generator) plays the
     # payments service, and its errors come from there.
 
@@ -578,7 +604,7 @@ FLAGS = [
     # (say, more than 3 in 5 minutes) calls the trigger, the flag turns off,
     # and off serves the current processor, so the next order goes through.
     {'flag': {'flag_key': 'newPaymentProcessor',
-              'flag_name': '11 - New Payment Processor - Kill Switch',
+              'flag_name': '12 - New Payment Processor - Kill Switch',
               'description': 'Charges orders through the new payment processor. A trigger turns '
                              'it off, back to the current processor, when an observability alert '
                              'on PaymentProcessorError fires. Resting state: on — turn it back on '
@@ -604,7 +630,7 @@ FLAGS = [
     # stop and the generator stops itself. Turning it back off once the attack
     # is over is a person's call, which is realistic.
     {'flag': {'flag_key': 'cardTestingProtection',
-              'flag_name': '12 - Card Testing Protection - Auto-Enable Trigger',
+              'flag_name': '13 - Card Testing Protection - Auto-Enable Trigger',
               'description': 'Makes the payments service verify a card before charging it. A '
                              'trigger turns it on when an observability alert on CardDeclinedError '
                              'fires, the signature of bots testing stolen cards. Demo it with the '
@@ -640,7 +666,7 @@ FLAGS = [
     # Adaptive triggers do not switch back on their own either, so restoring
     # personalized picks after a demo is done by hand too.
     {'flag': {'flag_key': 'recommendationEngine',
-              'flag_name': '13 - Recommendation Engine - Adaptive Trigger',
+              'flag_name': '14 - Recommendation Engine - Adaptive Trigger',
               'description': 'Which engine the recommendation service runs: personalized picks, '
                              'or best sellers. An adaptive trigger on Recommendations Failed falls '
                              'back to best sellers. Demo it with the Recommendation Engine '
@@ -702,7 +728,7 @@ CONTEXT_KINDS = [
 # flagConfigVersion is left out on purpose: create_experiment reads the
 # flag's current version itself, because every rule and toggle above moves it.
 #
-# All three are started, so results_generator.py's traffic lands in a running
+# All four are started, so results_generator.py's traffic lands in a running
 # iteration and the results pages are full when the demo opens.
 EXPERIMENTS = [
     {'requires': 'metrics_created',
@@ -750,6 +776,18 @@ EXPERIMENTS = [
                     'methodology': 'frequentist',
                     'analysisConfig': {'significanceThreshold': '5',
                                        'testDirection': 'two-sided'},
+                    'attributes': ['device', 'location']},
+     'start_iteration': True},
+    {'requires': 'metrics_created',
+     'toggle_flag': ['referralOffer', 'on', 'production', 'Turn on flag for experiment'],
+     'metrics': [['referral-link-copied', False]],
+     'experiment': {'exp_key': 'referral-offer',
+                    'exp_name': '(Bayesian) Feature Experiment: Referral Offer',
+                    'exp_env': 'production',
+                    'flag_key': 'referralOffer',
+                    'hypothesis': 'A free tee for both people is a more tangible reward than store '
+                                  'credit, so more shoppers will share their referral link.',
+                    'primary_key': 'referral-link-copied',
                     'attributes': ['device', 'location']},
      'start_iteration': True},
 ]
