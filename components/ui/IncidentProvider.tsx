@@ -13,11 +13,11 @@ import { LDObserve } from "@launchdarkly/observability";
 // reacts to trouble on its own:
 //
 //   payment outage           -> the new processor fails every charge, so
-//                               flag 10's kill switch can turn it off
-//   card-testing attack      -> a burst of declined cards, so flag 11's kill
+//                               flag 11's kill switch can turn it off
+//   card-testing attack      -> a burst of declined cards, so flag 12's kill
 //                               switch can turn verification on
 //   recommendations outage   -> the personalisation service fails, so flag
-//                               12's adaptive trigger can fall back to best
+//                               13's adaptive trigger can fall back to best
 //                               sellers
 //
 // They are the cause and never the cure. Nothing here changes a flag; the

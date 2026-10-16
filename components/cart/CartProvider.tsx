@@ -34,7 +34,7 @@ type CartApi = {
   // A cart left on an earlier visit and come back to, which is what an
   // abandoned cart actually is. Items added during this visit never make it
   // true, so the cart reminder banner does not chase someone mid-shop.
-  // Sent to LaunchDarkly as returningCart, where flag 07's rule decides what
+  // Sent to LaunchDarkly as returningCart, where flag 08's rule decides what
   // counts — which is the demo point: marketing owns the definition.
   returning: boolean;
   add: (slug: string, size: string, quantity?: number) => void;

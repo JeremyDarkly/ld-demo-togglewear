@@ -8,21 +8,21 @@ metric events the release guardian watches.
 
 Two guarded release scenarios, one per flag:
 
-    05 Live Inventory Service  -> the new service is simply better, so the
+    06 Live Inventory Service  -> the new service is simply better, so the
                                   rollout advances to 100% untouched.
-    06 Order Pipeline v2       -> the new pipeline degrades, slowly at first
+    07 Order Pipeline v2       -> the new pipeline degrades, slowly at first
                                   and then sharply, until LaunchDarkly detects
                                   the regression and rolls the flag back.
 
 Both loops poll the flag and exit once its measured rollout is over, whether
 that happened by completing or by being rolled back.
 
-And the three experiments, 07 to 09, which need visitors rather than a
+And the three experiments, 08 to 10, which need visitors rather than a
 service: a fixed number each, walked through the purchase funnel with odds
 set by the variation they were given.  Their events are the storefront's own,
 so the results pages fill in before anyone has clicked through the store.
 
-Flag 06 additionally reports real telemetry through the observability plugin,
+Flag 07 additionally reports real telemetry through the observability plugin,
 so its Monitoring tab fills with the errors, logs and traces underneath the
 regression instead of only the metric charts.  That plugin needs Python 3.10
 or newer; on anything older the metrics and the rollback still happen, just
@@ -50,7 +50,7 @@ from ldclient.config import Config
 from ldclient.context import Context
 
 # The observability plugin is what fills in the Errors, Logs and Traces panels
-# on flag 06's Monitoring tab.  It needs Python 3.10 or newer, so an older
+# on flag 07's Monitoring tab.  It needs Python 3.10 or newer, so an older
 # interpreter still produces every metric and both rollouts — it just does so
 # without the telemetry that sits alongside them.
 try:
@@ -73,14 +73,14 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-# 05 — Live Inventory Service, the healthy scenario
+# 06 — Live Inventory Service, the healthy scenario
 INVENTORY_FLAG_KEY = "inventoryServiceV2"
 INVENTORY_SUCCESS_KEY = "inventory-lookup-success"
 INVENTORY_LATENCY_KEY = "inventory-lookup-latency"
 INVENTORY_ERRORS_KEY = "inventory-lookup-errors"
 INVENTORY_SERVED_KEY = "inventory-lookups-served"
 
-# 06 — Order Pipeline v2, the failing scenario
+# 07 — Order Pipeline v2, the failing scenario
 ORDER_FLAG_KEY = "orderPipelineV2"
 ORDER_SUCCESS_KEY = "order-pipeline-success-rate"
 ORDER_LATENCY_KEY = "order-pipeline-latency"
@@ -259,7 +259,7 @@ def report_order_failure(order_id, ctx, latency, version):
     own.  A child named for the failing step read better in the trace, but the
     flag evaluation lives on the parent span, and errors appear to be
     attributed to a flag per span rather than per trace — which left these
-    showing under Observability while flag 06's own Errors tab stayed empty.
+    showing under Observability while flag 07's own Errors tab stayed empty.
     The step still travels as an attribute.
     """
     step, raise_failure = random.choice(ORDER_FAILURES)
@@ -371,7 +371,7 @@ def generate_shopper_context():
 def generate_guest_context():
     """An anonymous visitor, the way the storefront sends one.
 
-    Flag 07's experiment only runs on guests, so its traffic has to look like
+    Flag 08's experiment only runs on guests, so its traffic has to look like
     a guest: anonymous, and without cartItemCount, which is what keeps a
     context clear of the cart reminder and free shipping rules above the
     experiment. device and location are kept because the experiment slices
@@ -606,7 +606,7 @@ def order_pipeline_failed_generator(client, stop_event):
 
             # The evaluation happens inside the span deliberately.  The plugin
             # attaches it to whichever span is current, and that is the link
-            # that files this order's telemetry under flag 06.
+            # that files this order's telemetry under flag 07.
             with observe_span("order-pipeline.submit", {
                 "order.id": order_id,
                 "shopper.key": ctx.key,
@@ -725,7 +725,7 @@ def order_pipeline_failed_generator(client, stop_event):
     logging.info("Order Pipeline v2 generator finished.")
 
 
-# ------------------------------------------------------- 07 to 09 experiments
+# ------------------------------------------------------- 08 to 10 experiments
 #
 # Each visitor is evaluated once and then walks the purchase funnel, with the
 # odds at each step set by the variation they got. The numbers are invented
@@ -890,7 +890,7 @@ def generate_results(project_key, api_key):
         ))]
     else:
         logging.warning(
-            "Observability plugin unavailable, so flag 06's Monitoring tab will "
+            "Observability plugin unavailable, so flag 07's Monitoring tab will "
             "have no errors, logs or traces. It needs Python 3.10 or newer.")
 
     try:

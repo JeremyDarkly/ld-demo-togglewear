@@ -213,7 +213,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
 
       {/* The other half of the model. Everything above is chosen; everything
           here is read back off the person and the cart, and is spelled the way
-          a targeting rule spells it so flag 07's cart reminder rule
+          a targeting rule spells it so flag 08's cart reminder rule
           (returningCart is true) is recognisable on screen. */}
       <div className="flex flex-col gap-1 bg-grays-01 px-5 py-4">
         <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
@@ -292,7 +292,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         </p>
       </div>
 
-      {/* The trouble flags 10 to 12 react to. These only cause the problem;
+      {/* The trouble flags 11 to 13 react to. These only cause the problem;
           the fix arrives from LaunchDarkly, which is the demo. */}
       <div className="flex flex-col gap-2 border-t border-grays-hairline px-5 py-4">
         <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
@@ -300,7 +300,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         </p>
         <IncidentRow
           label="Payment outage"
-          title="The new payment processor fails every charge until flag 10 is turned off"
+          title="The new payment processor fails every charge until flag 11 is turned off"
         >
           <OutageToggle on={paymentOutage} onChange={setPaymentOutage} />
         </IncidentRow>
@@ -321,7 +321,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         </IncidentRow>
         <IncidentRow
           label="Recommendations outage"
-          title="The personalized recommendations service fails until flag 12 falls back to best sellers"
+          title="The personalized recommendations service fails until flag 13 falls back to best sellers. Sign in as Megan, Alex or Diane: flag 04's rollout means the row is not there for most shoppers"
         >
           <OutageToggle
             on={recommendationsOutage}

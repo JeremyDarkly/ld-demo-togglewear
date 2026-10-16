@@ -28,7 +28,7 @@
   }
 }
 
-/* The announcement bar's new message settling in when flag 07 changes it. */
+/* The announcement bar's new message settling in when flag 08 changes it. */
 @keyframes banner-swap {
   from {
     opacity: 0;

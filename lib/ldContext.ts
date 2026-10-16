@@ -11,7 +11,7 @@ import { isGuest, type Person, type ShopperRole } from "./shopper";
 // history rather than a kind of shopper, so the New Customers segment is a
 // rule on this number (is 0) rather than a name in a list.
 //
-// returningCart is what flag 07's cart reminder rule matches on: true when
+// returningCart is what flag 08's cart reminder rule matches on: true when
 // this visit began with items left from an earlier one (CartProvider decides).
 // It is a yes or no rather than the count because an abandoned cart is one
 // somebody came back to, not one they are filling right now. cartItemCount
@@ -37,7 +37,7 @@ import { isGuest, type Person, type ShopperRole } from "./shopper";
 // visitor has not been shown to have no orders.
 //
 // No cart attributes for a guest either, and that matters most. Guests are
-// who flag 07's experiment runs on, and the cart rules sit above it: if a
+// who flag 08's experiment runs on, and the cart rules sit above it: if a
 // guest's cart were sent, a guest coming back to one would move out of the
 // experiment and onto the reminder, taking their add-to-cart and order
 // events with them, which is exactly the traffic the experiment measures.

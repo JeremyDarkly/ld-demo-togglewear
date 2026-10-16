@@ -56,7 +56,7 @@ function CardSet({
   );
 }
 
-// heading changes with flag 12: a fallback list of best sellers should not
+// heading changes with flag 13: a fallback list of best sellers should not
 // claim to be picked for you.
 export default function RecommendedForYou({
   products,

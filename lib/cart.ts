@@ -45,7 +45,7 @@ export type CartTotals = {
   // placed order snapshots these, and a receipt has to keep saying what it
   // said at checkout.
   discountKind: "none" | "loyalty" | "welcome" | "comeback";
-  // The sticker pack flag 07's third offer promises. Part of the totals for
+  // The sticker pack flag 08's third offer promises. Part of the totals for
   // the same reason as discountKind: the receipt has to keep showing a gift
   // the checkout showed. Optional because orders placed before it existed
   // are snapshotted without it.
@@ -73,7 +73,7 @@ export function validatePromo(
   return null;
 }
 
-// Flag 07's free gift offer: the banner variation that makes it, and how
+// Flag 08's free gift offer: the banner variation that makes it, and how
 // many items earn it. Kept beside the totals so the banner's promise and
 // the cart's delivery on it cannot drift apart.
 export const GIFT_OFFER = "free-sticker-pack";
@@ -83,7 +83,7 @@ export function cartTotals(
   lines: ResolvedLine[],
   variant: PricingVariant,
   promo?: string | null,
-  // Flag 07's value, so the cart knows which offer this shopper was shown.
+  // Flag 08's value, so the cart knows which offer this shopper was shown.
   offer?: unknown
 ): CartTotals {
   const subtotal = lines.reduce(
@@ -154,7 +154,7 @@ export const UPSELL_SLUGS = [
   "canvas-tote",
 ];
 
-// Flag 08's three arms, keyed by its variation values. The question each one
+// Flag 09's three arms, keyed by its variation values. The question each one
 // answers is the one store teams actually argue about: suggest the cheap
 // thing, the expensive thing, or the popular thing?
 //

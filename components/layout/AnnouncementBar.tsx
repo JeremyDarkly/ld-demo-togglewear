@@ -15,7 +15,7 @@ export type AnnouncementPersona =
   | "newCustomer"
   | "loyaltyGold";
 
-// The bar's own variants: every persona's, plus offers that only flag 07
+// The bar's own variants: every persona's, plus offers that only flag 08
 // serves. Kept apart from AnnouncementPersona so a bar-only offer does not
 // become a persona everything else keyed on one has to handle.
 type BarVariant = AnnouncementPersona | "freeStickers";
@@ -52,7 +52,7 @@ const VARIANTS: Record<BarVariant, Variant> = {
     surface: "bg-base-blue text-grays-white",
     message: "Loyalty status: activated. Enjoy early access and member-only pricing.",
   },
-  // Not one of Jen's: the third arm of flag 07's experiment, a free gift
+  // Not one of Jen's: the third arm of flag 08's experiment, a free gift
   // against her shipping and discount offers. Purple because it is the one
   // accent the bar has not used, and the cart's own accent besides.
   freeStickers: {
@@ -61,7 +61,7 @@ const VARIANTS: Record<BarVariant, Variant> = {
   },
 };
 
-// Flag 07's variation values, which are what LaunchDarkly shows, mapped onto
+// Flag 08's variation values, which are what LaunchDarkly shows, mapped onto
 // the bar's variants. Spelled for the flag list rather than reusing the keys
 // above, so whoever is reading the experiment sees the offer, not the persona
 // it was first drawn for.
@@ -73,7 +73,7 @@ const BY_FLAG_VALUE: Record<string, BarVariant> = {
   "member-message": "loyaltyGold",
 };
 
-// Which bar to show is flag 07's call. Members get theirs by segment, a
+// Which bar to show is flag 08's call. Members get theirs by segment, a
 // signed-in shopper who came back to a cart gets the reminder, and guests are
 // the experiment. The persona passed in is only the fallback for the frame
 // before flags load, or a project without the flag.

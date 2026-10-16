@@ -12,7 +12,7 @@ import { useLDClient } from "launchdarkly-react-client-sdk";
 export const EVENTS = {
   productViewed: "product-viewed",
   addToCart: "add-to-cart",
-  // The exception to one event per action, because flag 08's experiment has
+  // The exception to one event per action, because flag 09's experiment has
   // to tell an add from its own three slots apart from any other add, and a
   // metric counts an event key, not what the event's data says. An add from
   // the slots sends both this and add-to-cart, so the funnel still sees it.
@@ -22,7 +22,7 @@ export const EVENTS = {
   // revenue per visitor rather than only whether an order happened.
   orderPlaced: "order-placed",
   // Not a shopper action but the recommendation service failing them. Flag
-  // 12's adaptive trigger counts it, and a trigger can watch a custom metric
+  // 13's adaptive trigger counts it, and a trigger can watch a custom metric
   // directly, which is why this one is an event and not an observability
   // error like the kill switches'.
   recommendationsFailed: "recommendations-failed",

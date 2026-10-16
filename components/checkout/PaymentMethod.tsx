@@ -23,7 +23,7 @@ export default function PaymentMethod() {
         <h2 className="font-sohne text-h6 font-medium text-grays-ld-black">
           Payment Method
         </h2>
-        {/* Flag 10, on screen so the kill switch has something to visibly
+        {/* Flag 11, on screen so the kill switch has something to visibly
             change: this flips the moment the flag is turned off. */}
         <p className="shrink-0 font-sohne-mono text-xsmall-mono uppercase text-grays-04">
           {newPaymentProcessor === true ? "New processor" : "Current processor"}
@@ -87,7 +87,7 @@ export default function PaymentMethod() {
           </div>
         )}
 
-        {/* Flag 11, turned on by its kill switch when declined cards spike.
+        {/* Flag 12, turned on by its kill switch when declined cards spike.
             Card payments only: a wallet confirms the shopper itself, with a
             fingerprint or a password, which is why the express buttons skip
             this field. Required, so Place Order waits for it. */}

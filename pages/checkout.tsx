@@ -94,7 +94,7 @@ export default function CheckoutPage() {
     // pause is what makes the audience notice something evaluated the order.
     window.setTimeout(() => {
       // The charge, which only happens to an order the agent approved. During
-      // a staged outage the new processor (flag 10) fails it, and the error
+      // a staged outage the new processor (flag 11) fails it, and the error
       // is what the kill switch's alert counts. Once the flag is off the same
       // order goes through the current processor, outage or not, which is
       // the whole point of keeping the old path behind the flag.
@@ -155,7 +155,7 @@ export default function CheckoutPage() {
           className="mx-auto flex max-w-[1440px] flex-col gap-10 px-6 py-10 md:px-10 xl:flex-row xl:gap-12 xl:px-16"
         >
           <div className="flex min-w-0 flex-1 flex-col gap-8">
-            {/* Flag 09's experiment: the current checkout against the same
+            {/* Flag 10's experiment: the current checkout against the same
                 page with one-tap wallets on top. */}
             {expressCheckout === true && (
               <ExpressCheckout disabled={assessing || Boolean(assessment)} />

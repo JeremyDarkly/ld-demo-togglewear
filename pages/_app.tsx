@@ -71,7 +71,7 @@ export default function App({ Component, pageProps }: AppProps) {
       <ShopperProvider>
         {/* Both above LaunchDarklyProvider, because the context it sends is
             built from the shopper's role and tier and from the cart's item
-            count — that is what the segments and flag 07's rules target. */}
+            count — that is what the segments and flag 08's rules target. */}
         <CartProvider>
           <LaunchDarklyProvider>
             <SavedItemsProvider>

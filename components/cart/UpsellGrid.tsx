@@ -9,7 +9,7 @@ import { EVENTS, useTrack } from "@/lib/events";
 // Figma "upsell-section" (70:1414). Unlike the panels above it, the heading
 // sits outside any card and the three cards are their own bordered boxes.
 //
-// Which three products appear is flag 08's experiment: cheap add-ons, pricier
+// Which three products appear is flag 09's experiment: cheap add-ons, pricier
 // picks or best sellers, each measured on what gets added from here and what
 // the order comes to.
 

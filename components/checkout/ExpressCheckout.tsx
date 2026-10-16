@@ -1,4 +1,4 @@
-// Flag 09's treatment: one-tap wallet buttons above the full form, the way
+// Flag 10's treatment: one-tap wallet buttons above the full form, the way
 // most storefronts now open checkout. Not one of Jen's frames; it is built
 // from her payment card's wallet buttons and her card chrome.
 //
@@ -8,7 +8,7 @@
 // wallet would supply. The button's own name and value travel with the
 // submit and tell placeOrder which wallet paid.
 //
-// formNoValidate because the only required field on the page is flag 11's
+// formNoValidate because the only required field on the page is flag 12's
 // card verification code, and a wallet verifies the shopper on its own.
 export default function ExpressCheckout({ disabled }: { disabled: boolean }) {
   const wallet =

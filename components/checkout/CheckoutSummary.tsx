@@ -70,7 +70,7 @@ export default function CheckoutSummary({
 
       <SummaryLines totals={totals} />
 
-      {/* What a shopper sees while flag 10's new processor is down. Place
+      {/* What a shopper sees while flag 11's new processor is down. Place
           Order stays below it, because trying again is the right thing to
           do: once the kill switch has fired, the retry goes through. */}
       {paymentFailed && (
