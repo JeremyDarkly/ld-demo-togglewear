@@ -52,7 +52,7 @@ pipelines, so there is nothing for that table to build.
 # learned this the hard way — as conversion metrics the same chart came out flat
 # and stepped, and the detector never fired convincingly.
 METRICS = [
-    # ---- 05 Live Inventory Service: healthy guarded release ----
+    # ---- 06 Live Inventory Service: healthy guarded release ----
     {'metric_key': 'inventory-lookup-success',
      'metric_name': 'Inventory Lookup Success',
      'event_key': 'inventory-lookup-success',
@@ -88,7 +88,7 @@ METRICS = [
      'success_criteria': 'HigherThanBaseline',
      'tags': ['guarded-release', 'inventory', 'togglewear', 'business']},
 
-    # ---- 06 Order Pipeline v2: failed guarded release ----
+    # ---- 07 Order Pipeline v2: failed guarded release ----
     {'metric_key': 'order-pipeline-success-rate',
      'metric_name': 'Order Pipeline Success Rate',
      'event_key': 'order-pipeline-success-rate',
@@ -126,7 +126,7 @@ METRICS = [
      'success_criteria': 'HigherThanBaseline',
      'tags': ['guarded-release', 'orders', 'togglewear', 'business']},
 
-    # ---- 07 to 09: the experiments ----
+    # ---- 08 to 10: the experiments ----
     #
     # Unlike everything above, these events are real: the storefront sends
     # them (lib/events.ts) as well as the generator, so a demo can click
@@ -152,7 +152,7 @@ METRICS = [
      'metric_name': 'Complete Your Look Add',
      'event_key': 'upsell-added',
      'metric_description': 'Added one of the three "Complete your look" picks on the cart page. '
-                           'Its own event so flag 08 can tell these apart from any other add.',
+                           'Its own event so flag 09 can tell these apart from any other add.',
      'numeric': False,
      'unit': '',
      'success_criteria': 'HigherThanBaseline',
@@ -186,9 +186,9 @@ METRICS = [
      'success_criteria': 'HigherThanBaseline',
      'tags': ['experiment', 'revenue', 'togglewear']},
 
-    # ---- 12 Recommendation Engine: adaptive trigger ----
+    # ---- 13 Recommendation Engine: adaptive trigger ----
     #
-    # What flag 12's adaptive trigger watches. A running total rather than a
+    # What flag 13's adaptive trigger watches. A running total rather than a
     # conversion: a conversion counts each shopper once, so one person
     # clicking through a demo could never cross a threshold of more than a
     # few. The storefront sends 1 per failed row (lib/events.ts).
@@ -196,7 +196,7 @@ METRICS = [
      'metric_name': 'Recommendations Failed',
      'event_key': 'recommendations-failed',
      'metric_description': 'The personalized "Recommended for you" row failed to load. Flag '
-                           '12\'s adaptive trigger switches to best sellers when this climbs.',
+                           '13\'s adaptive trigger switches to best sellers when this climbs.',
      'numeric': True,
      'unit': 'failures',
      'success_criteria': 'LowerThanBaseline',
@@ -206,7 +206,7 @@ METRICS = [
 
 # Metric groups — funnels, passed to LDPlatform.create_metric_group(**spec)
 #
-# The four steps of a purchase, in order. Flag 09's experiment reads it as its
+# The four steps of a purchase, in order. Flag 10's experiment reads it as its
 # primary metric, so the result says where the express checkout changes the
 # drop-off rather than only whether more orders came out of the end.
 METRIC_GROUPS = [
@@ -354,7 +354,43 @@ FLAGS = [
                ['swagRecommendations', 'production'],
                {'timeout': 432000000}]]},
 
-    # ---- Capability 3: guarded releases, healthy and failed ----
+    # ---- Capability 3: debugging a release with observability ----
+    #
+    # A release that breaks the way real ones do, and the evidence an engineer
+    # follows to find out why. ToggleWear's answer to ToggleStore's A4, which
+    # garbles the page and throws errors from a timer: here the code is
+    # ordinary and the bug is a real one, so every signal points at it.
+    #
+    # Evaluated on the server, in pages/api/catalog/[slug].ts, which makes it
+    # the one flag a demo can show running in the backend. v2 of the catalog
+    # reads a product's sizes off its size chart; one-size items have no
+    # chart, so v2 returns sizes: null for them, and the product page, written
+    # against v1, crashes rendering the size picker. That is seven of the
+    # eleven products — both hats and every accessory — while the socks,
+    # hoodie, tee and crewneck keep working, which is the clue.
+    #
+    #   errors         -> the TypeError from ProductDetails, real stack trace
+    #   logs           -> the catalog route's "No size chart" warning
+    #   traces         -> the request from the browser into catalog.getProduct,
+    #                     with the flag evaluation and the null in the response
+    #   session replay -> the shopper opening a product and losing the panel
+    #
+    # Created off, and off is its resting state: turning it on is the demo,
+    # turning it off is the fix.
+    {'flag': {'flag_key': 'catalogApiV2',
+              'flag_name': '05 - Catalog API v2 - Debugging with Observability',
+              'description': 'Serves product pages from v2 of the catalog API, evaluated on the '
+                             'server. v2 breaks one-size products; turn it on and follow the '
+                             'errors, logs, traces and session replays to find out why. Resting '
+                             'state: off.',
+              'variations': [{'value': True, 'name': 'Use Catalog API v2'},
+                             {'value': False, 'name': 'Use Catalog API v1'}],
+              'tags': ['observability', 'release', 'catalog', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 1},
+     'post': []},
+
+    # ---- Capability 4: guarded releases, healthy and failed ----
     #
     # Neither of these has a surface in the storefront, and that is on purpose:
     # a guarded release is a story about a service degrading, and the evidence
@@ -366,7 +402,7 @@ FLAGS = [
     # trips. The generator simply makes the new service look better than the
     # old one.
     {'flag': {'flag_key': 'inventoryServiceV2',
-              'flag_name': '05 - Live Inventory Service - Guarded Release (Healthy)',
+              'flag_name': '06 - Live Inventory Service - Guarded Release (Healthy)',
               'description': 'Replaces nightly stock snapshots with live inventory lookups. The '
                              'rollout is monitored on lookup success, latency and errors, all of '
                              'which improve, so it advances to 100% on its own.',
@@ -396,7 +432,7 @@ FLAGS = [
     # headroom against a regression that turns catastrophic around minute six
     # leaves the rollback plenty of room to fire.
     {'flag': {'flag_key': 'orderPipelineV2',
-              'flag_name': '06 - Order Pipeline v2 - Guarded Release (Failed)',
+              'flag_name': '07 - Order Pipeline v2 - Guarded Release (Failed)',
               'description': 'Routes checkout through the rebuilt order pipeline. Error rate and '
                              'latency climb once traffic arrives and success rate falls away, so '
                              'LaunchDarkly detects the regression and rolls the flag back without '
@@ -426,7 +462,7 @@ FLAGS = [
                 'stages': [{'allocation': 25000, 'durationMillis': 1200000},
                            {'allocation': 50000, 'durationMillis': 1200000}]}]]},
 
-    # ---- Capability 4: experimentation ----
+    # ---- Capability 5: experimentation ----
     #
     # Three experiments, one of each kind a retail team runs most: an offer,
     # a merchandising choice and a checkout change. Each flag is created off
@@ -457,7 +493,7 @@ FLAGS = [
     # from the account menu stands in for a cart left yesterday, Empty clears
     # it, and the bar changes without a reload.
     {'flag': {'flag_key': 'announcementOffer',
-              'flag_name': '07 - Announcement Banner Offer - Feature Experiment',
+              'flag_name': '08 - Announcement Banner Offer - Feature Experiment',
               'description': 'The offer in the bar across the top of every page. Members get '
                              'their own message and signed-in shoppers who came back to a cart '
                              'get a reminder with a comeback code; guests are split between free '
@@ -490,7 +526,7 @@ FLAGS = [
     # is fair game, signed in or not, so the whole default rule is the
     # experiment. The product sets are UPSELL_SETS in lib/cart.ts.
     {'flag': {'flag_key': 'upsellPicks',
-              'flag_name': '08 - Complete Your Look Picks - Feature Experiment',
+              'flag_name': '09 - Complete Your Look Picks - Feature Experiment',
               'description': 'Which three products the cart suggests under "Complete your '
                              'look": cheap add-ons, pricier picks or best sellers. Measured on '
                              'order revenue, so the winner is the set that raises the order '
@@ -507,7 +543,7 @@ FLAGS = [
     # costly to build and risky to get wrong, which is why real teams test
     # them one change at a time, and it keeps the funnel chart readable.
     {'flag': {'flag_key': 'expressCheckout',
-              'flag_name': '09 - Express Checkout - Funnel Experiment',
+              'flag_name': '10 - Express Checkout - Funnel Experiment',
               'description': 'Adds one-tap PayPal and Apple Pay buttons above the checkout '
                              'form. Measured on the whole purchase funnel, from product view '
                              'to placed order.',
@@ -518,7 +554,7 @@ FLAGS = [
               'off_variation': 0},
      'post': []},
 
-    # ---- Capability 5: kill switches ----
+    # ---- Capability 6: kill switches ----
     #
     # Flags that an observability alert flips through a flag trigger, with no
     # one in the loop. ToggleWear's versions of core-demo's A9 and A10: one
@@ -541,10 +577,11 @@ FLAGS = [
     # (say, more than 3 in 5 minutes) calls the trigger, the flag turns off,
     # and off serves the current processor, so the next order goes through.
     {'flag': {'flag_key': 'newPaymentProcessor',
-              'flag_name': '10 - New Payment Processor - Kill Switch',
+              'flag_name': '11 - New Payment Processor - Kill Switch',
               'description': 'Charges orders through the new payment processor. A trigger turns '
                              'it off, back to the current processor, when an observability alert '
-                             'on PaymentProcessorError fires.',
+                             'on PaymentProcessorError fires. Resting state: on — turn it back on '
+                             'after a demo.',
               'variations': [{'value': True, 'name': 'Use New Payment Processor'},
                              {'value': False, 'name': 'Use Current Payment Processor'}],
               'tags': ['kill-switch', 'trigger', 'checkout', 'togglewear'],
@@ -565,10 +602,11 @@ FLAGS = [
     # payments ask for a texted code before the order is placed. Turning it
     # back off once the attack is over is a person's call, which is realistic.
     {'flag': {'flag_key': 'cardTestingProtection',
-              'flag_name': '11 - Card Testing Protection - Kill Switch',
+              'flag_name': '12 - Card Testing Protection - Auto-Enable Trigger',
               'description': 'Asks for a texted verification code before a card payment. A '
                              'trigger turns it on when an observability alert on CardDeclinedError '
-                             'fires, the signature of bots testing stolen cards.',
+                             'fires, the signature of bots testing stolen cards. Resting state: '
+                             'off — turn it back off after a demo.',
               'variations': [{'value': True, 'name': 'Require Card Verification'},
                              {'value': False, 'name': 'Standard Checkout'}],
               'tags': ['kill-switch', 'trigger', 'checkout', 'fraud', 'togglewear'],
@@ -580,7 +618,7 @@ FLAGS = [
                 'comment': 'Created by DemoBuilder. Called by the observability alert on '
                            'CardDeclinedError to require card verification.'}]]},
 
-    # ---- Capability 6: adaptive triggers ----
+    # ---- Capability 7: adaptive triggers ----
     #
     # A kill switch turns a flag off or on; an adaptive trigger switches a rule
     # to a different variation, and it watches a LaunchDarkly metric itself
@@ -597,10 +635,12 @@ FLAGS = [
     # Adaptive triggers do not switch back on their own either, so restoring
     # personalized picks after a demo is done by hand too.
     {'flag': {'flag_key': 'recommendationEngine',
-              'flag_name': '12 - Recommendation Engine - Adaptive Trigger',
+              'flag_name': '13 - Recommendation Engine - Adaptive Trigger',
               'description': 'What fills the "Recommended for you" row: personalized picks from '
                              'the recommendation service, or best sellers. An adaptive trigger on '
-                             'Recommendations Failed falls back to best sellers.',
+                             'Recommendations Failed falls back to best sellers. Resting state: '
+                             'Personalized Picks — switch it back after a demo, since an adaptive '
+                             'trigger does not restore the variation itself.',
               'variations': [{'value': 'personalized', 'name': 'Personalized Picks'},
                              {'value': 'best-sellers', 'name': 'Best Sellers'}],
               'tags': ['adaptive-trigger', 'recommendations', 'togglewear'],
