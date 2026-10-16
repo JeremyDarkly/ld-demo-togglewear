@@ -1,5 +1,6 @@
 import type { LoyaltyTier, Person } from "./shopper";
 import type { CartLine } from "./cart";
+import type { Stop, TrackingRoute } from "./tracking";
 
 // The account page's data. Jen drew it for one person, Alex Rivera, a gold
 // member, so these are her values with the products swapped for ones that
@@ -121,7 +122,24 @@ export type PastOrder = {
   // Greenwich, which is every machine this demo runs on.
   arrivesOn: string;
   events: ShipmentEvent[];
+  // Every stop on the way, for live tracking (flag 04). Only on a parcel that
+  // is still moving; the last event's "where" is one of these stops, and is
+  // where the live position starts from.
+  route?: TrackingRoute;
 };
+
+const OAKLAND: Stop = { city: "Oakland, CA", lat: 37.8, lon: -122.27 };
+const RENO: Stop = { city: "Reno, NV", lat: 39.53, lon: -119.81 };
+const SALT_LAKE_CITY: Stop = { city: "Salt Lake City, UT", lat: 40.76, lon: -111.89 };
+const DENVER: Stop = { city: "Denver, CO", lat: 39.74, lon: -104.99 };
+
+// A parcel on its way, for the live tracking panel: the newest order that
+// still has a route to travel.
+export function activeShipmentFor(person: Person): PastOrder | undefined {
+  return ordersFor(person).find(
+    (order) => order.route && order.events.length < SHIPMENT_STAGES.length,
+  );
+}
 
 // Each shopper's most recent orders, keyed by the person they belong to. Not
 // the whole history: Diane has eleven lifetime orders and the card is headed
@@ -145,6 +163,17 @@ const ORDERS: Record<string, PastOrder[]> = {
         { label: "Packed at the warehouse", on: "Mar 13", where: "Oakland, CA" },
         { label: "In transit", on: "Mar 14", where: "Reno, NV" },
       ],
+      route: {
+        unit: "mi",
+        stops: [
+          OAKLAND,
+          RENO,
+          SALT_LAKE_CITY,
+          DENVER,
+          { city: "Amarillo, TX", lat: 35.22, lon: -101.83 },
+          { city: "Austin, TX", lat: 30.27, lon: -97.74 },
+        ],
+      },
     },
     {
       ref: "LD-890312",
@@ -186,6 +215,16 @@ const ORDERS: Record<string, PastOrder[]> = {
         { label: "Packed at the warehouse", on: "Mar 15", where: "Oakland, CA" },
         { label: "In transit", on: "Mar 16", where: "Portland, OR" },
       ],
+      route: {
+        unit: "mi",
+        stops: [
+          OAKLAND,
+          { city: "Redding, CA", lat: 40.59, lon: -122.39 },
+          { city: "Medford, OR", lat: 42.33, lon: -122.87 },
+          { city: "Portland, OR", lat: 45.52, lon: -122.68 },
+          { city: "Seattle, WA", lat: 47.61, lon: -122.33 },
+        ],
+      },
     },
     {
       ref: "LD-902246",
@@ -210,6 +249,34 @@ const ORDERS: Record<string, PastOrder[]> = {
   ],
   "megan-caldwell": [
     {
+      ref: "LD-930268",
+      placedOn: "Placed on Mar 13, 2026",
+      status: "In transit",
+      lines: [
+        { slug: "togglewear-hoodie", size: "M", quantity: 1 },
+        { slug: "water-bottle", size: "One size", quantity: 1 },
+      ],
+      action: "Track package delivery",
+      carrier: "ToggleShip International",
+      tracking: "TS4820194120NL",
+      destination: "Amsterdam, NL",
+      arrivesOn: "2026-03-20T12:00:00",
+      events: [
+        { label: "Order placed", on: "Mar 13", where: "Oakland, CA" },
+        { label: "Packed at the warehouse", on: "Mar 14", where: "Oakland, CA" },
+        { label: "In transit", on: "Mar 15", where: "Louisville, KY" },
+      ],
+      route: {
+        unit: "km",
+        stops: [
+          OAKLAND,
+          { city: "Louisville, KY", lat: 38.25, lon: -85.76 },
+          { city: "Cologne, DE", lat: 50.94, lon: 6.96 },
+          { city: "Amsterdam, NL", lat: 52.37, lon: 4.9 },
+        ],
+      },
+    },
+    {
       ref: "LD-915830",
       placedOn: "Placed on Feb 20, 2026",
       status: "Delivered",
@@ -231,6 +298,26 @@ const ORDERS: Record<string, PastOrder[]> = {
     },
   ],
   "chris-donovan": [
+    {
+      ref: "LD-931904",
+      placedOn: "Placed on Mar 15, 2026",
+      status: "In transit",
+      lines: [
+        { slug: "togglewear-tee", size: "L", quantity: 1 },
+        { slug: "sticker-pack", size: "One size", quantity: 1 },
+      ],
+      action: "Track package delivery",
+      carrier: "ToggleShip Standard",
+      tracking: "TS4820195978US",
+      destination: "Denver, CO",
+      arrivesOn: "2026-03-18T12:00:00",
+      events: [
+        { label: "Order placed", on: "Mar 15", where: "Oakland, CA" },
+        { label: "Packed at the warehouse", on: "Mar 15", where: "Oakland, CA" },
+        { label: "In transit", on: "Mar 16", where: "Reno, NV" },
+      ],
+      route: { unit: "mi", stops: [OAKLAND, RENO, SALT_LAKE_CITY, DENVER] },
+    },
     {
       ref: "LD-921409",
       placedOn: "Placed on Mar 4, 2026",

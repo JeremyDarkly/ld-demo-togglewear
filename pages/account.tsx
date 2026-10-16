@@ -3,6 +3,7 @@ import Footer from "@/components/layout/Footer";
 import ProfileCard from "@/components/account/ProfileCard";
 import TierStatusCard from "@/components/account/TierStatusCard";
 import OrderHistory from "@/components/account/OrderHistory";
+import LiveTracking from "@/components/account/LiveTracking";
 import SavedItems from "@/components/account/SavedItems";
 import ReferralCard from "@/components/account/ReferralCard";
 import Preferences from "@/components/account/Preferences";
@@ -11,6 +12,7 @@ import SwagAssistant from "@/components/ui/SwagAssistant";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { isGuest } from "@/lib/shopper";
+import { activeShipmentFor } from "@/lib/account";
 
 // Figma "account-profile" (78:1485). Jen drew it for a gold member, which is
 // the only variant that exists — but it is one page rather than one page per
@@ -25,7 +27,8 @@ import { isGuest } from "@/lib/shopper";
 // grey page — this is the one place in the store that is behind sign-in.
 export default function AccountPage() {
   const { person, persona, shopper } = useShopper();
-  const { swagTierProgram } = useFlags();
+  const { swagTierProgram, liveOrderTracking } = useFlags();
+  const shipment = activeShipmentFor(person);
 
   return (
     <>
@@ -49,6 +52,12 @@ export default function AccountPage() {
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-12">
+              {/* Flag 04, a progressive rollout: beta testers and developers
+                  first, then everyone else on the schedule. Only when there
+                  is a parcel on its way to follow. */}
+              {liveOrderTracking && shipment && (
+                <LiveTracking order={shipment} />
+              )}
               <OrderHistory />
               <SavedItems />
               <ReferralCard />
