@@ -21,6 +21,8 @@ export const EVENTS = {
   // Carries the order total as its metric value, so a metric can measure
   // revenue per visitor rather than only whether an order happened.
   orderPlaced: "order-placed",
+  // Copy Link on the account page's referral card, flag 11's metric.
+  referralLinkCopied: "referral-link-copied",
 } as const;
 
 export type ShopperEvent = (typeof EVENTS)[keyof typeof EVENTS];

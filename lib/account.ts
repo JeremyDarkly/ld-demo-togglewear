@@ -360,11 +360,21 @@ export function savedSlugsFor(personId: string): string[] {
 }
 
 // The link is per shopper and comes from referralLinkFor; what is left here is
-// the offer itself, which is the store's and the same for everyone.
-export const REFERRAL = {
-  headline: "Give $20, Get $20",
-  description:
-    "Invite your team members to join ToggleWear. They'll get $20 USD off their first order, and you'll earn 150 loyalty points plus $20 USD credit once they checkout.",
+// the offer itself, which is the store's. Flag 11 decides which one a shopper
+// sees, so the keys are its variation values.
+export type ReferralOffer = "store-credit" | "free-tee";
+
+export const REFERRAL: Record<ReferralOffer, { headline: string; description: string }> = {
+  "store-credit": {
+    headline: "Give $20, Get $20",
+    description:
+      "Invite your team members to join ToggleWear. They'll get $20 USD off their first order, and you'll earn 150 loyalty points plus $20 USD credit once they checkout.",
+  },
+  "free-tee": {
+    headline: "Give a Tee, Get a Tee",
+    description:
+      "Invite your team members to join ToggleWear. They'll get a free ToggleWear Tee with their first order, and you'll earn 150 loyalty points plus a free tee of your own once they check out.",
+  },
 };
 
 export type Preference = {
