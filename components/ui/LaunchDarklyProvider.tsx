@@ -9,6 +9,7 @@ import {
   useLDClient,
 } from "launchdarkly-react-client-sdk";
 import Observability from "@launchdarkly/observability";
+import SessionReplay from "@launchdarkly/session-replay";
 
 import { useCart } from "@/components/cart/CartProvider";
 import { useShopper } from "@/components/ui/ShopperProvider";
@@ -62,8 +63,37 @@ export default function LaunchDarklyProvider({
         // Errors, logs and traces for the Monitoring tab and for observability
         // alerts. The kill switches depend on it: an alert can only watch
         // observability data, not custom events, so the payment errors that
-        // turn flag 10 off have to arrive this way.
-        plugins: [new Observability({ serviceName: "togglewear-storefront" })],
+        // turn flag 11 off have to arrive this way.
+        //
+        // tracingOrigins sends a traceparent header with every request to the
+        // storefront's own API, which is what joins a browser session to the
+        // server spans and logs of the request it made. Bodies are recorded so
+        // a trace shows what the catalog actually returned, except for the
+        // SDK's own calls to LaunchDarkly, which would only bury them.
+        plugins: [
+          new Observability({
+            serviceName: "togglewear-storefront",
+            version: process.env.NEXT_PUBLIC_APP_VERSION,
+            tracingOrigins: true,
+            networkRecording: {
+              enabled: true,
+              recordHeadersAndBody: true,
+              urlBlocklist: ["launchdarkly.com"],
+            },
+          }),
+          // "default" rather than the stricter default of the plugin: strict
+          // scrambles every word on the page, which leaves a replay of a shop
+          // nobody can read. default still scrambles anything that looks like
+          // personal data, which covers the checkout form.
+          new SessionReplay({
+            serviceName: "togglewear-storefront",
+            privacySetting: "default",
+            contextFriendlyName: (context) =>
+              "name" in context && typeof context.name === "string"
+                ? context.name
+                : undefined,
+          }),
+        ],
       },
     }).then((provider) => {
       if (!cancelled) setProvider(() => provider as ProviderComponent);
