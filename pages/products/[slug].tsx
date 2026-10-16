@@ -34,7 +34,7 @@ export default function ProductPage({ product }: { product: Product }) {
   // non-member landing here by URL should not see one.
   const hidden = product.membersOnly && variant !== "loyaltyGold";
 
-  // A plain part of the store, with no flag on it: flag 13's recommendation
+  // A plain part of the store, with no flag on it: flag 14's recommendation
   // engine is a backend scenario the generator plays out in LaunchDarkly, not
   // something this row shows. Recommendations are everything except what you
   // are already looking at, and a member's include the members-only drop.

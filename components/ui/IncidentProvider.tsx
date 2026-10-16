@@ -8,14 +8,14 @@ import {
 } from "react";
 
 // The incident a demo can stage from the account menu: a payment outage, in
-// which the new processor fails every charge so flag 11's kill switch can
+// which the new processor fails every charge so flag 12's kill switch can
 // turn it off.
 //
 // It is the cause and never the cure. Nothing here changes a flag; the
 // storefront only reports what went wrong, LaunchDarkly decides what to do
 // about it, and the page changes because the flag did.
 //
-// Flags 12 and 13 react to trouble too, but theirs happens behind the store
+// Flags 13 and 14 react to trouble too, but theirs happens behind the store
 // rather than in it, so they are started from the demo generator (Cmd+K)
 // instead of from here.
 

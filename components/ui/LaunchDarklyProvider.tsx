@@ -63,7 +63,7 @@ export default function LaunchDarklyProvider({
         // Errors, logs and traces for the Monitoring tab and for observability
         // alerts. The kill switches depend on it: an alert can only watch
         // observability data, not custom events, so the payment errors that
-        // turn flag 11 off have to arrive this way.
+        // turn flag 12 off have to arrive this way.
         //
         // tracingOrigins sends a traceparent header with every request to the
         // storefront's own API, which is what joins a browser session to the

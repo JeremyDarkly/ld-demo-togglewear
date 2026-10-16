@@ -23,7 +23,7 @@ export default function PaymentMethod() {
         <h2 className="font-sohne text-h6 font-medium text-grays-ld-black">
           Payment Method
         </h2>
-        {/* Flag 11, on screen so the kill switch has something to visibly
+        {/* Flag 12, on screen so the kill switch has something to visibly
             change: this flips the moment the flag is turned off. */}
         <p className="shrink-0 font-sohne-mono text-xsmall-mono uppercase text-grays-04">
           {newPaymentProcessor === true ? "New processor" : "Current processor"}

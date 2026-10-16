@@ -282,8 +282,8 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         </p>
       </div>
 
-      {/* The trouble flag 11 reacts to. This only causes the problem; the
-          fix arrives from LaunchDarkly, which is the demo. Flags 12 and 13
+      {/* The trouble flag 12 reacts to. This only causes the problem; the
+          fix arrives from LaunchDarkly, which is the demo. Flags 13 and 14
           are backend scenarios, started from the demo generator (Cmd+K). */}
       <div className="flex flex-col gap-2 border-t border-grays-hairline px-5 py-4">
         <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
@@ -291,7 +291,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         </p>
         <IncidentRow
           label="Payment outage"
-          title="The new payment processor fails every charge until flag 11 is turned off"
+          title="The new payment processor fails every charge until flag 12 is turned off"
         >
           <OutageToggle on={paymentOutage} onChange={setPaymentOutage} />
         </IncidentRow>
