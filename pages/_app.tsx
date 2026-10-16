@@ -9,6 +9,7 @@ import { IncidentProvider } from "@/components/ui/IncidentProvider";
 import { ShopperProvider } from "@/components/ui/ShopperProvider";
 import { SwagAssistantProvider } from "@/components/ui/SwagAssistantProvider";
 import LaunchDarklyProvider from "@/components/ui/LaunchDarklyProvider";
+import DemoGenerator from "@/components/generator/DemoGenerator";
 import "@/styles/globals.css";
 
 // next/font is only allowed in _app, not _document, so the CSS variable the
@@ -76,9 +77,8 @@ export default function App({ Component, pageProps }: AppProps) {
           <LaunchDarklyProvider>
             <SavedItemsProvider>
               <OrderProvider>
-                {/* Staged from the account menu and felt on the checkout and
-                    product pages, so it outlives a page change like the
-                    cart does. */}
+                {/* Staged from the account menu and felt on the checkout
+                    page, so it outlives a page change like the cart does. */}
                 <IncidentProvider>
                   {/* The assistant's conversation outlives a page change too,
                       and the cart's help card opens it from outside the
@@ -87,6 +87,9 @@ export default function App({ Component, pageProps }: AppProps) {
                     <div key={asPath} data-page-transition>
                       <Component {...pageProps} />
                     </div>
+                    {/* Outside the keyed wrapper, so moving between pages
+                        does not close it. */}
+                    <DemoGenerator />
                   </SwagAssistantProvider>
                 </IncidentProvider>
               </OrderProvider>
