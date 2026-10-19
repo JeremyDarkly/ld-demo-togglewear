@@ -3279,60 +3279,286 @@ class LDPlatform:
         return variations
     
     ##################################################
-    # Create Alert
+    # Observability alerts
     ##################################################
+    #
+    # There is no public REST endpoint for alerts. The LaunchDarkly UI and the
+    # LaunchDarkly MCP servers both create them with the createAlert mutation
+    # on the observability backend's GraphQL API, which takes an ordinary API
+    # access token as Gonfalon-Authorization and the LD project's _id as the
+    # observability project. It is an internal API, so a field could change.
+
+    O11Y_GRAPHQL_URL = "https://pri.observability.app.launchdarkly.com"
+
+    CREATE_ALERT_MUTATION = """
+mutation CreateAlert(
+  $project_id: StringID!
+  $name: String!
+  $product_type: ProductType!
+  $function_type: MetricAggregator!
+  $query: String
+  $threshold_value: Float
+  $threshold_window: Int
+  $threshold_cooldown: Int
+  $threshold_type: ThresholdType
+  $threshold_condition: ThresholdCondition
+  $destinations: [AlertDestinationInput!]!
+) {
+  createAlert(
+    project_id: $project_id
+    name: $name
+    product_type: $product_type
+    function_type: $function_type
+    query: $query
+    threshold_value: $threshold_value
+    threshold_window: $threshold_window
+    threshold_cooldown: $threshold_cooldown
+    threshold_type: $threshold_type
+    threshold_condition: $threshold_condition
+    destinations: $destinations
+  ) {
+    id
+  }
+}"""
+
+    DELETE_ALERT_MUTATION = """
+mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
+  deleteAlert(project_id: $project_id, alert_id: $alert_id)
+}"""
+
+    # A project made seconds ago may not be open to alerts yet, so a refused
+    # createAlert is retried a few times before giving up.
+    ALERT_CREATE_ATTEMPTS = 4
+    ALERT_RETRY_DELAY = 10.0
+
+    # How long create_trigger_alert waits for the alert's creation notice to
+    # reach the flag trigger before moving on.
+    TRIGGER_PING_TIMEOUT = 90.0
+
+    def _o11y_graphql(self, query, variables, secrets=()):
+        """POST one operation to the observability GraphQL API.
+
+        Returns (data, errors). Error text has every value in `secrets`
+        replaced, because a validation message can echo an input back, and
+        a webhook destination is a trigger URL.
+        """
+        res = self.getrequest(
+            "POST",
+            self.O11Y_GRAPHQL_URL,
+            json={"query": query, "variables": variables},
+            headers={
+                "Content-Type": "application/json",
+                "Gonfalon-Authorization": self.api_key,
+                "x-project-id": self.project_internal_id,
+            },
+        )
+
+        def scrub(text):
+            for secret in secrets:
+                if secret:
+                    text = text.replace(secret, "***")
+            return text
+
+        if res.status_code != 200:
+            return None, [scrub(f"HTTP {res.status_code} {res.text[:300]}")]
+        body = self._parse_json_response(res, context="observability GraphQL")
+        errors = [scrub(str(e.get("message"))) for e in body.get("errors") or []]
+        return body.get("data"), errors
+
     def create_alert(
         self,
         alert_name,
-        description,
-        alert_type="anomaly",
-        flag_key=None,
-        environment="production"
+        product_type,
+        query,
+        threshold_value,
+        threshold_window,
+        threshold_cooldown=None,
+        function_type="Count",
+        destinations=None,
     ):
+        """Create a constant-threshold observability alert. Returns its ID, or None.
+
+        Fires when the `function_type` of matching records over the last
+        `threshold_window` seconds is above `threshold_value`. Each destination
+        is {"destination_type", "type_id", "type_name"}; for a Webhook, type_id
+        is the URL, which is never printed.
         """
-        Creates an alert in LaunchDarkly
-        
-        Args:
-            alert_name: Name of the alert
-            description: Description of the alert
-            alert_type: Type of alert (anomaly, threshold, etc.)
-            flag_key: Optional flag key to associate with the alert
-            environment: Environment key (default: production)
-        """
-        url = f"https://app.launchdarkly.com/api/v2/projects/{self.project_key}/alerts"
-        
-        payload = {
+        destinations = destinations or []
+        variables = {
+            "project_id": self.project_internal_id,
             "name": alert_name,
-            "description": description,
-            "kind": alert_type,
-            "environmentKey": environment
+            "product_type": product_type,
+            "function_type": function_type,
+            "query": query,
+            "threshold_value": threshold_value,
+            "threshold_window": threshold_window,
+            "threshold_cooldown": threshold_cooldown or threshold_window,
+            "threshold_type": "Constant",
+            "threshold_condition": "Above",
+            "destinations": destinations,
         }
-        
-        # adding flag filter if specified
-        if flag_key:
-            payload["filter"] = {
-                "flagKey": flag_key
-            }
-        
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": self.api_key,
-        }
-        
-        response = self.getrequest("POST", url, json=payload, headers=headers)
-        
-        if response.status_code not in [200, 201]:
-            print(f"Error creating alert: HTTP {response.status_code}")
-            print(f"Response: {response.text}")
-            return response
-        
-        data = json.loads(response.text)
-        if "message" in data:
-            print("Error creating alert: " + data["message"])
-        else:
-            print(f"✅ Alert created: {alert_name}")
-        
-        return response
+        secrets = [d["type_id"] for d in destinations]
+
+        for attempt in range(1, self.ALERT_CREATE_ATTEMPTS + 1):
+            data, errors = self._o11y_graphql(self.CREATE_ALERT_MUTATION, variables, secrets)
+            alert = (data or {}).get("createAlert")
+            if alert and alert.get("id"):
+                print(f"  Alert created: {alert_name}")
+                return str(alert["id"])
+            if attempt < self.ALERT_CREATE_ATTEMPTS:
+                time.sleep(self.ALERT_RETRY_DELAY)
+
+        print(f"  Error creating alert {alert_name}: {'; '.join(errors) or 'no alert returned'}")
+        return None
+
+    def delete_alert(self, alert_id):
+        data, errors = self._o11y_graphql(
+            self.DELETE_ALERT_MUTATION,
+            {"project_id": self.project_internal_id, "alert_id": alert_id},
+        )
+        if errors or not (data or {}).get("deleteAlert"):
+            print(f"  Error deleting alert {alert_id}: {'; '.join(errors) or 'not deleted'}")
+
+    def _flag_trigger_count(self, flag_key, env_key, trigger_id):
+        res = self.getrequest(
+            "GET",
+            f"https://app.launchdarkly.com/api/v2/flags/{self.project_key}/{flag_key}"
+            f"/triggers/{env_key}/{trigger_id}",
+            headers={"Authorization": self.api_key},
+        )
+        if res.status_code != 200:
+            return 0
+        return self._parse_json_response(res, context="flag trigger").get("_triggerCount") or 0
+
+    def create_trigger_alert(
+        self,
+        flag_key,
+        env_key,
+        action,
+        alert_name,
+        product_type,
+        query,
+        threshold_value,
+        threshold_window,
+        threshold_cooldown=None,
+        trigger_comment=None,
+    ):
+        """Create a flag trigger and an alert whose webhook calls it.
+
+        The trigger URL is a secret, shown once in the create response; it
+        goes straight into the alert's destination and is never printed.
+
+        Creating an alert sends an ALERT_CREATED notice to its destinations,
+        so the trigger fires once at setup. This waits for that call to land,
+        then returns, leaving the flag in whatever state the trigger put it:
+        the caller sets the resting state afterwards (a toggle_flag post step).
+        """
+        res = self.create_flag_trigger(flag_key, env_key, action=action, comment=trigger_comment)
+        if res.status_code >= 400:
+            return None
+        trigger = self._parse_json_response(res, context=f"create_flag_trigger {flag_key}")
+        trigger_url = trigger.get("triggerURL")
+        trigger_id = trigger.get("_id")
+        if not trigger_url or not trigger_id:
+            print(f"  Error: trigger for {flag_key} came back without its URL or ID")
+            return None
+
+        alert_id = self.create_alert(
+            alert_name,
+            product_type,
+            query,
+            threshold_value,
+            threshold_window,
+            threshold_cooldown=threshold_cooldown,
+            destinations=[{
+                "destination_type": "Webhook",
+                "type_id": trigger_url,
+                "type_name": f"{flag_key} trigger",
+            }],
+        )
+        if alert_id is None:
+            return None
+
+        deadline = time.time() + self.TRIGGER_PING_TIMEOUT
+        while self._flag_trigger_count(flag_key, env_key, trigger_id) < 1:
+            if time.time() > deadline:
+                print(f"  Warning: the alert's setup notice never reached {flag_key}'s trigger. "
+                      f"If it arrives late it will flip the flag, so check {flag_key} is in "
+                      f"its resting state.")
+                break
+            time.sleep(2)
+        return alert_id
+
+    def create_adaptive_trigger(
+        self,
+        flag_key,
+        env_key,
+        serve_value,
+        alert_name,
+        product_type,
+        query,
+        threshold_value,
+        threshold_window,
+        threshold_cooldown=None,
+    ):
+        """Create an alert and an adaptive trigger that serves `serve_value` when it fires.
+
+        The trigger acts on the default rule. `query` may contain
+        {environment_id}, filled with the environment's _id, which is how
+        LaunchDarkly custom events are scoped in observability. Mirrors the
+        LaunchDarkly UI: if the trigger cannot be created, the alert is
+        deleted rather than left behind.
+        """
+        headers = {"Authorization": self.api_key, "Content-Type": "application/json"}
+        base = f"https://app.launchdarkly.com/api/v2/projects/{self.project_key}/environments/{env_key}"
+
+        res = self.getrequest("GET", base, headers=headers)
+        if res.status_code != 200:
+            print(f"  Error: could not read environment {env_key}: HTTP {res.status_code}")
+            return None
+        environment_id = self._parse_json_response(res, context=f"environment {env_key}").get("_id")
+
+        flag = self._get_flag_json(flag_key) or {}
+        variation_id = next(
+            (v["_id"] for v in flag.get("variations", []) if v.get("value") == serve_value),
+            None,
+        )
+        if variation_id is None:
+            print(f"  Error: {flag_key} has no variation with value {serve_value!r}")
+            return None
+
+        alert_id = self.create_alert(
+            alert_name,
+            product_type,
+            query.format(environment_id=environment_id),
+            threshold_value,
+            threshold_window,
+            threshold_cooldown=threshold_cooldown,
+        )
+        if alert_id is None:
+            return None
+
+        res = self.getrequest(
+            "POST",
+            base + "/adaptive-triggers",
+            headers=headers,
+            json={
+                "name": alert_name,
+                "resourceKind": "flag",
+                "resourceKey": flag_key,
+                "triggerSource": {"type": "observabilityAlert", "alertId": int(alert_id)},
+                "task": {"instructions": [{
+                    "kind": "updateFallthroughVariationOrRollout",
+                    "variationId": variation_id,
+                }]},
+            },
+        )
+        if res.status_code not in (200, 201):
+            print(f"  Error creating adaptive trigger on {flag_key}: HTTP {res.status_code} {res.text[:300]}")
+            self.delete_alert(alert_id)
+            return None
+        print(f"  Adaptive trigger created: {flag_key} (serves {serve_value})")
+        return alert_id
 
     ##################################################
     # Agent Optimization API methods
