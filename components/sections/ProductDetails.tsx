@@ -1,8 +1,9 @@
 import { useState } from "react";
 import Image from "next/image";
+import { LDObserve } from "@launchdarkly/observability";
 import SectionPanel from "@/components/layout/SectionPanel";
 import { useCart } from "@/components/cart/CartProvider";
-import SizeGuideDialog from "@/components/ui/SizeGuideDialog";
+import SizeGuideDialog, { SizeGuideBoundary } from "@/components/ui/SizeGuideDialog";
 import { useSavedItems } from "@/components/account/SavedItemsProvider";
 import {
   formatPrice,
@@ -10,8 +11,23 @@ import {
   type PricingVariant,
   type Product,
 } from "@/lib/products";
-import { sizeChartFor } from "@/lib/sizeGuide";
+import { sizeChartFor, type SizeChart } from "@/lib/sizeGuide";
+import { useStockBadge } from "@/lib/catalog";
 import { EVENTS, useTrack } from "@/lib/events";
+
+class UnknownSkuError extends Error {
+  name = "UnknownSkuError";
+}
+
+// The catalog's SKU for the size the shopper picked, which is what a cart
+// line is reserved against. Keyed exactly as the picker labels the sizes,
+// which is what v1 sends; flag 05's v2 lowercases the keys, so under v2
+// there is no "M" here to find.
+function skuFor(skus: Record<string, string>, slug: string, size: string) {
+  const sku = skus[size];
+  if (!sku) throw new UnknownSkuError(`No SKU for ${slug} in size ${size}`);
+  return sku;
+}
 
 // Figma "product details" (70:1837 default, 70:1540 loyalty), which Jen
 // annotated "personalized product details" in the file.
@@ -30,18 +46,30 @@ import { EVENTS, useTrack } from "@/lib/events";
 // below needs the inset to separate the two cards. On the product page the
 // section in between is the recommendation row, and the panels would meet
 // with no gap at all on any page without one unless this is decided per page.
+//
+// liveSizeChart and skus come from the catalog API once it answers. Until it
+// does, the guide uses the chart worked out from the sizes the page was built
+// with, and Add to Cart has no SKU to check, which is fine for a cart that
+// only lives in the browser.
 export default function ProductDetails({
   product,
   variant = "default",
   flushBottom = false,
+  liveSizeChart,
+  skus,
 }: {
   product: Product;
   variant?: PricingVariant;
   flushBottom?: boolean;
+  liveSizeChart?: SizeChart | null;
+  skus?: Record<string, string>;
 }) {
   const [size, setSize] = useState(product.defaultSize);
   const [colorIndex, setColorIndex] = useState(0);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [guideFailed, setGuideFailed] = useState(false);
+  const [addFailed, setAddFailed] = useState(false);
+  const stockBadge = useStockBadge(product.slug);
   const { add } = useCart();
   const track = useTrack();
   const { has, toggle: toggleSaved } = useSavedItems();
@@ -58,6 +86,23 @@ export default function ProductDetails({
   // is a size to choose between — which still hides it on every one-size
   // item in the catalogue.
   const sizeChart = sizeChartFor(product.sizes);
+  const guideChart = liveSizeChart ?? sizeChart;
+
+  function addToCart() {
+    try {
+      const sku = skus ? skuFor(skus, product.slug, size) : undefined;
+      add(product.slug, size);
+      track(EVENTS.addToCart, { slug: product.slug, size, sku });
+      setAddFailed(false);
+    } catch (err) {
+      LDObserve.recordError(err as Error, "Add to cart failed", {
+        component: "ProductDetails",
+        "product.slug": product.slug,
+        "product.size": size,
+      });
+      setAddFailed(true);
+    }
+  }
 
   return (
     <SectionPanel
@@ -99,7 +144,9 @@ export default function ProductDetails({
             <p className="font-sohne font-medium text-base-blue">
               {isMember ? "Members Only Swag Drop" : "Official Swag Drop"}
             </p>
-            <p className="shrink-0 font-sohne text-grays-04">{product.badge}</p>
+            <p className="shrink-0 font-sohne text-grays-04">
+              {stockBadge ?? product.badge}
+            </p>
           </div>
 
           <h1 className="font-sora text-[32px] font-semibold leading-[1.05] tracking-[-1.6px] text-grays-ld-black md:text-h3">
@@ -132,7 +179,12 @@ export default function ProductDetails({
             <p className="font-sohne text-small font-medium text-grays-ld-black">
               Select Size
             </p>
-            {sizeChart && (
+            {sizeChart && guideFailed && (
+              <p className="shrink-0 font-sohne text-xsmall text-grays-04">
+                Size guide unavailable
+              </p>
+            )}
+            {sizeChart && !guideFailed && (
               <button
                 type="button"
                 onClick={() => setGuideOpen(true)}
@@ -143,12 +195,20 @@ export default function ProductDetails({
             )}
           </div>
 
-          {guideOpen && sizeChart && (
-            <SizeGuideDialog
-              productName={product.name}
-              chart={sizeChart}
-              onClose={() => setGuideOpen(false)}
-            />
+          {guideOpen && guideChart && (
+            <SizeGuideBoundary
+              productSlug={product.slug}
+              onError={() => {
+                setGuideOpen(false);
+                setGuideFailed(true);
+              }}
+            >
+              <SizeGuideDialog
+                productName={product.name}
+                chart={guideChart}
+                onClose={() => setGuideOpen(false)}
+              />
+            </SizeGuideBoundary>
           )}
 
           <div className="flex flex-wrap gap-2.5">
@@ -200,14 +260,25 @@ export default function ProductDetails({
         <div className="flex flex-col gap-3">
           <button
             type="button"
-            onClick={() => {
-              add(product.slug, size);
-              track(EVENTS.addToCart, { slug: product.slug, size });
-            }}
+            onClick={addToCart}
             className="w-full rounded-[2px] bg-grays-ld-black py-[18px] font-sohne text-large-medium font-medium text-grays-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black focus-visible:ring-offset-2"
           >
             Add to Cart
           </button>
+          {/* The same panel checkout shows when a payment fails. */}
+          {addFailed && (
+            <div
+              role="alert"
+              className="flex flex-col gap-1 rounded-[2px] border border-base-orange p-4"
+            >
+              <p className="font-sohne text-small font-medium text-grays-ld-black">
+                We couldn&apos;t add this item to your cart
+              </p>
+              <p className="font-sohne text-xsmall text-grays-04">
+                Please try again in a moment.
+              </p>
+            </div>
+          )}
           {/* The same button saves and unsaves, so the label says which it
               will do next and aria-pressed carries the state. Saved gains the
               LD Black border Jen uses for a selected size, rather than a new

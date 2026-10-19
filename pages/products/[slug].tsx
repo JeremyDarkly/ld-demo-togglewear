@@ -3,7 +3,9 @@ import { type GetStaticPaths, type GetStaticProps } from "next";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ProductDetails from "@/components/sections/ProductDetails";
-import ProductDetailsBoundary from "@/components/sections/ProductDetailsBoundary";
+import ProductDetailsBoundary, {
+  ProductUnavailable,
+} from "@/components/sections/ProductDetailsBoundary";
 import RecommendedForYou from "@/components/sections/RecommendedForYou";
 import DropPromo from "@/components/sections/DropPromo";
 import SwagAssistant from "@/components/ui/SwagAssistant";
@@ -27,7 +29,7 @@ export default function ProductPage({ product }: { product: Product }) {
   // The sizes on sale come from the catalog API once it answers, over the
   // ones the page was built with. Which catalog answers is flag 05's call,
   // made on the server.
-  const live = useLiveProduct(product.slug);
+  const { live, timedOut } = useLiveProduct(product.slug);
   const shown = live ? { ...product, sizes: live.sizes } : product;
 
   // Members-only products are absent from the default catalogue, so a
@@ -70,6 +72,12 @@ export default function ProductPage({ product }: { product: Product }) {
             </p>
           </div>
         </section>
+      ) : timedOut ? (
+        <ProductUnavailable
+          flushBottom={showRecommendations}
+          title="This product is taking too long to load"
+          body="Our catalog didn't answer in time. Try again in a little while, or keep browsing in the meantime."
+        />
       ) : (
         // Flush only when the recommendation row follows, since that section
         // brings its own padding. Otherwise the panel keeps its own 10px
@@ -84,6 +92,8 @@ export default function ProductPage({ product }: { product: Product }) {
             product={shown}
             variant={variant}
             flushBottom={showRecommendations}
+            liveSizeChart={live?.sizeChart}
+            skus={live?.skus}
           />
         </ProductDetailsBoundary>
       )}

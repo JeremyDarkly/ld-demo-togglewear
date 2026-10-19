@@ -1,8 +1,36 @@
-import { useEffect, useRef } from "react";
+import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { LDObserve } from "@launchdarkly/observability";
 
 import { useDialog } from "@/components/ui/useDialog";
 import { type SizeChart } from "@/lib/sizeGuide";
+
+// Keeps a size guide that fails to render from taking the product panel down
+// with it, and records the error, which React would otherwise keep from the
+// observability plugin. The page then says the guide is unavailable instead.
+export class SizeGuideBoundary extends Component<
+  { productSlug: string; onError: () => void; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    LDObserve.recordError(error, "Size guide failed to open", {
+      component: "SizeGuideDialog",
+      "product.slug": this.props.productSlug,
+      componentStack: info.componentStack ?? "",
+    });
+    this.props.onError();
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 // The app's first real modal. Jen designed no dialog other than the swag
 // assistant panel, so the chrome is borrowed from it — 30px radius, LD Black
