@@ -6,6 +6,9 @@
 // The catalogue has two size systems: the XS–2XL run the tee, hoodie and
 // crewneck share, and the socks' S/M and L/XL. Everything else is one size.
 type SizeSystem = {
+  // Footwear sizes are shoe sizes, which catalog v2 converts through a
+  // sizing service of its own (pages/api/catalog/[slug].ts).
+  kind: "apparel" | "footwear";
   // Column headings, not counting the size column itself.
   columns: string[];
   measurements: Record<string, string[]>;
@@ -13,6 +16,7 @@ type SizeSystem = {
 };
 
 const APPAREL: SizeSystem = {
+  kind: "apparel",
   columns: ["To fit chest", "Body length"],
   measurements: {
     // Each range starts where the last one ends. The old grade jumped from
@@ -28,6 +32,7 @@ const APPAREL: SizeSystem = {
 };
 
 const SOCKS: SizeSystem = {
+  kind: "footwear",
   columns: ["US shoe size", "EU"],
   measurements: {
     "S/M": ["6–9", "38–41"],
@@ -39,6 +44,7 @@ const SOCKS: SizeSystem = {
 const SYSTEMS = [APPAREL, SOCKS];
 
 export type SizeChart = {
+  kind: SizeSystem["kind"];
   columns: string[];
   rows: { size: string; values: string[] }[];
   note: string;
@@ -63,5 +69,5 @@ export function sizeChartFor(sizes: string[]): SizeChart | undefined {
 
   if (rows.length < 2) return undefined;
 
-  return { columns: system.columns, rows, note: system.note };
+  return { kind: system.kind, columns: system.columns, rows, note: system.note };
 }
