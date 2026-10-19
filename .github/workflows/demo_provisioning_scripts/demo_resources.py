@@ -369,27 +369,40 @@ FLAGS = [
     # garbles the page and throws errors from a timer: here the code is
     # ordinary and the bug is a real one, so every signal points at it.
     #
-    # Evaluated on the server, in pages/api/catalog/[slug].ts, which makes it
-    # the one flag a demo can show running in the backend. v2 of the catalog
-    # reads a product's sizes off its size chart; one-size items have no
-    # chart, so v2 returns sizes: null for them, and the product page, written
-    # against v1, crashes rendering the size picker. That is seven of the
-    # eleven products — both hats and every accessory — while the socks,
-    # hoodie, tee and crewneck keep working, which is the clue.
+    # Evaluated on the server, in pages/api/catalog/[slug].ts and
+    # pages/api/stock/[slug].ts, which makes it the one flag a demo can show
+    # running in the backend. v2 of the catalog changed its responses and the
+    # product page, written against v1, was never told, so one release
+    # causes five different errors, each with its own place in the store:
     #
-    #   errors         -> the TypeError from ProductDetails, real stack trace
-    #   logs           -> the catalog route's "No size chart" warning
-    #   traces         -> the request from the browser into catalog.getProduct,
-    #                     with the flag evaluation and the null in the response
-    #   session replay -> the shopper opening a product and losing the panel
+    #   1. one-size items (both hats, every accessory) -> the page crashes:
+    #      v2 sends sizes: null, a TypeError in ProductDetails
+    #   2. Checkerboard Socks -> slow, then "taking too long to load": v2's
+    #      sizing service times out, a SizingServiceTimeoutError on the server
+    #   3. hoodie or tee badge -> "Stock unavailable": the inventory gateway
+    #      answers with an HTML page, a SyntaxError parsing it
+    #   4. hoodie or tee Size Guide -> "Size guide unavailable": v2 renamed
+    #      the chart's columns, a TypeError in SizeGuideDialog
+    #   5. hoodie or tee Add to Cart -> refused: v2 lowercased the SKU keys,
+    #      an UnknownSkuError
+    #
+    # Each comes with what an engineer would follow: the error and its stack
+    # trace, the routes' logs, the trace from the browser into the server with
+    # the flag evaluation on it, and the session replay of the shopper.
     #
     # Created off, and off is its resting state: turning it on is the demo,
-    # turning it off is the fix.
+    # turning it off fixes all five at once.
     {'flag': {'flag_key': 'catalogApiV2',
               'flag_name': '05 - Catalog API v2 - Debugging with Observability',
               'description': 'Serves product pages from v2 of the catalog API, evaluated on the '
-                             'server. v2 breaks one-size products; turn it on and follow the '
-                             'errors, logs, traces and session replays to find out why. Resting '
+                             'server. One release, five different errors. Turn it on, then in the '
+                             'store: (1) open a one-size item like the Bucket Hat and the page '
+                             'crashes; (2) open the Checkerboard Socks and the page is slow, then '
+                             'times out on the server; (3) open the ToggleWear Hoodie and the '
+                             'badge says "Stock unavailable"; (4) on the hoodie, click Size Guide '
+                             'and it fails; (5) on the hoodie, click Add to Cart and it is '
+                             'refused. Then show all five in Observability (Errors, Logs, Traces, '
+                             'Session Replay) and turn the flag off to fix them all. Resting '
                              'state: off.',
               'variations': [{'value': True, 'name': 'Use Catalog API v2'},
                              {'value': False, 'name': 'Use Catalog API v1'}],
