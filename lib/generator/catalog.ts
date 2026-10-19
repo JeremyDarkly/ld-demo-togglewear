@@ -114,7 +114,7 @@ export const GENERATORS: GeneratorInfo[] = [
     kind: "Auto-enable trigger",
     does: "A bot tries stolen cards with $1 charges, two a second, and the payments service declines each one as a CardDeclinedError.",
     purpose: "Your alert on CardDeclinedError calls flag 13's trigger, the flag turns on and the attack is blocked.",
-    before: "Flag 13 is off and its alert is set up.",
+    before: "Flag 13 is off. DemoBuilder already created its alert and trigger.",
     stops: "Shortly after flag 13 turns on, or after 15 minutes.",
   },
   {
@@ -126,7 +126,7 @@ export const GENERATORS: GeneratorInfo[] = [
     kind: "Adaptive trigger",
     does: "Product pages ask the recommendation service for picks and every call times out, sending Recommendations Failed and an error.",
     purpose: "Flag 14's adaptive trigger switches to Best Sellers, and the failures stop.",
-    before: "Flag 14 serves Personalized Picks and its adaptive trigger is set up.",
+    before: "Flag 14 serves Personalized Picks. DemoBuilder already created its adaptive trigger.",
     stops: "Shortly after flag 14 switches to Best Sellers, or after 15 minutes.",
   },
 ];
