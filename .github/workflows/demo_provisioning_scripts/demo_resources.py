@@ -624,8 +624,12 @@ FLAGS = [
               'flag_name': '12 - New Payment Processor - Kill Switch',
               'description': 'Charges orders through the new payment processor. A trigger turns '
                              'it off, back to the current processor, when an observability alert '
-                             'on PaymentProcessorError fires. Resting state: on — turn it back on '
-                             'after a demo.',
+                             'on PaymentProcessorError fires (more than 3 in 5 minutes). Demo it '
+                             'from the account menu: turn on Payment outage under Simulate an '
+                             'incident, then place 4 orders. Each one fails, and the flag turns '
+                             'itself off about two minutes after the last, since the alert checks '
+                             'once a minute. The next order then goes through. Resting state: on '
+                             '— turn it back on, and Payment outage off, after a demo.',
               'variations': [{'value': True, 'name': 'Use New Payment Processor'},
                              {'value': False, 'name': 'Use Current Payment Processor'}],
               'tags': ['kill-switch', 'trigger', 'checkout', 'togglewear'],
@@ -658,9 +662,12 @@ FLAGS = [
               'flag_name': '13 - Card Testing Protection - Auto-Enable Trigger',
               'description': 'Makes the payments service verify a card before charging it. A '
                              'trigger turns it on when an observability alert on CardDeclinedError '
-                             'fires, the signature of bots testing stolen cards. Demo it with the '
-                             'Card Testing generator (Cmd+K in the store). Resting state: off — '
-                             'turn it back off after a demo.',
+                             'fires (more than 10 in a minute), the signature of bots testing '
+                             'stolen cards. Demo it with the Card Testing generator (Cmd+K in the '
+                             'store). The flag turns itself on about two minutes after the '
+                             'generator starts, since the alert checks once a minute, and the '
+                             'generator then stops. Resting state: off — turn it back off after a '
+                             'demo.',
               'variations': [{'value': True, 'name': 'Require Card Verification'},
                              {'value': False, 'name': 'Standard Checkout'}],
               'tags': ['kill-switch', 'trigger', 'checkout', 'fraud', 'togglewear'],
@@ -704,9 +711,12 @@ FLAGS = [
     {'flag': {'flag_key': 'recommendationEngine',
               'flag_name': '14 - Recommendation Engine - Adaptive Trigger',
               'description': 'Which engine the recommendation service runs: personalized picks, '
-                             'or best sellers. An adaptive trigger on Recommendations Failed falls '
-                             'back to best sellers. Demo it with the Recommendation Engine '
-                             'generator (Cmd+K in the store). Resting state: Personalized Picks — '
+                             'or best sellers. An adaptive trigger on Recommendations Failed (more '
+                             'than 3 in 5 minutes) falls back to best sellers. Demo it with the '
+                             'Recommendation Engine generator (Cmd+K in the store). The default '
+                             'rule switches itself to Best Sellers about two minutes after the '
+                             'generator starts, since the alert checks once a minute, and the '
+                             'generator then stops. Resting state: Personalized Picks — '
                              'switch it back after a demo, since an adaptive trigger does not '
                              'restore the variation itself.',
               'variations': [{'value': 'personalized', 'name': 'Personalized Picks'},
