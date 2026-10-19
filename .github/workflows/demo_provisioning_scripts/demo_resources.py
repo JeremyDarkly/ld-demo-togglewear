@@ -599,12 +599,16 @@ FLAGS = [
     # turns a risky change off when it breaks, the other turns a protection
     # on when an attack starts.
     #
-    # The chain is storefront error -> observability alert -> trigger URL ->
-    # flag. DemoBuilder creates the flag and its trigger; the alert is still
-    # made by hand, because LaunchDarkly has no public API for creating
-    # alerts. Its webhook notification is the trigger URL, which is a secret,
-    # shown once at creation and never printed here — reset the trigger in
-    # the flag's settings to get a fresh one.
+    # The chain is error -> observability alert -> trigger URL -> flag, and
+    # DemoBuilder builds all of it: create_trigger_alert makes the trigger,
+    # then an alert whose webhook is the trigger URL. The URL is a secret,
+    # shown once at creation, passed straight to the alert and never printed.
+    # The alert matches on type, which is the error's class name.
+    #
+    # Creating the alert sends its webhook a one-off "alert created" notice,
+    # which calls the trigger. create_trigger_alert waits for that call, and
+    # the toggle_flag after it puts the flag back in its resting state. Flag
+    # 12 is turned on first so that the notice has something to turn off.
     #
     # Flag 12 is staged from the account menu's "Simulate an incident" controls
     # (IncidentProvider.tsx), and its errors come from the storefront through
@@ -613,8 +617,8 @@ FLAGS = [
     # payments service, and its errors come from there.
 
     # On, serving the new processor. During a staged payment outage every
-    # approved order fails with a PaymentProcessorError; an alert on those
-    # (say, more than 3 in 5 minutes) calls the trigger, the flag turns off,
+    # approved order fails with a PaymentProcessorError; the alert on those
+    # (more than 3 in 5 minutes) calls the trigger, the flag turns off,
     # and off serves the current processor, so the next order goes through.
     {'flag': {'flag_key': 'newPaymentProcessor',
               'flag_name': '12 - New Payment Processor - Kill Switch',
@@ -627,18 +631,26 @@ FLAGS = [
               'tags': ['kill-switch', 'trigger', 'checkout', 'togglewear'],
               'on_variation': 0,
               'off_variation': 1},
-     'post': [['create_flag_trigger',
-               ['newPaymentProcessor', 'production'],
-               {'action': 'turnFlagOff',
-                'comment': 'Created by DemoBuilder. Called by the observability alert on '
-                           'PaymentProcessorError to fall back to the current processor.'}],
+     'post': [['toggle_flag',
+               ['newPaymentProcessor', 'on', 'production'],
+               {}],
+              ['create_trigger_alert',
+               ['newPaymentProcessor', 'production', 'turnFlagOff'],
+               {'alert_name': '12 - Payment Processor Errors',
+                'product_type': 'Errors',
+                'query': 'type=PaymentProcessorError',
+                'threshold_value': 3,
+                'threshold_window': 300,
+                'trigger_comment': 'Created by DemoBuilder. Called by the observability alert on '
+                                   'PaymentProcessorError to fall back to the current processor.'}],
               ['toggle_flag',
                ['newPaymentProcessor', 'on', 'production'],
-               {}]]},
+               {'comment': 'Back to its resting state after the new alert\'s setup notice '
+                           'called the trigger.'}]]},
 
     # Off. The demo generator's card-testing attack sends two $1 charges a
-    # second, which the issuer declines as CardDeclinedErrors; an alert on
-    # those (say, more than 10 in a minute) calls the trigger, the flag turns
+    # second, which the issuer declines as CardDeclinedErrors; the alert on
+    # those (more than 10 in a minute) calls the trigger, the flag turns
     # on, and the payments service refuses unverified cards, so the declines
     # stop and the generator stops itself. Turning it back off once the attack
     # is over is a person's call, which is realistic.
@@ -654,30 +666,41 @@ FLAGS = [
               'tags': ['kill-switch', 'trigger', 'checkout', 'fraud', 'togglewear'],
               'on_variation': 0,
               'off_variation': 1},
-     'post': [['create_flag_trigger',
-               ['cardTestingProtection', 'production'],
-               {'action': 'turnFlagOn',
-                'comment': 'Created by DemoBuilder. Called by the observability alert on '
-                           'CardDeclinedError to require card verification.'}]]},
+     'post': [['create_trigger_alert',
+               ['cardTestingProtection', 'production', 'turnFlagOn'],
+               {'alert_name': '13 - Declined Card Spike',
+                'product_type': 'Errors',
+                'query': 'type=CardDeclinedError',
+                'threshold_value': 10,
+                'threshold_window': 60,
+                'trigger_comment': 'Created by DemoBuilder. Called by the observability alert on '
+                                   'CardDeclinedError to require card verification.'}],
+              ['toggle_flag',
+               ['cardTestingProtection', 'off', 'production'],
+               {'comment': 'Back to its resting state after the new alert\'s setup notice '
+                           'called the trigger.'}]]},
 
     # ---- Capability 7: adaptive triggers ----
     #
     # A kill switch turns a flag off or on; an adaptive trigger switches a rule
-    # to a different variation, and it watches a LaunchDarkly metric itself
-    # rather than waiting for an alert to call it.
+    # to a different variation. It is still driven by an alert, but one that
+    # LaunchDarkly attaches to the flag itself, with no URL in between.
     #
     # On, serving personalized picks. A backend scenario with no screen in the
     # store: the demo generator (Cmd+K) plays the recommendation service,
     # which times out on every personalized request, recording the error and
-    # sending recommendations-failed. The trigger on the default rule (say,
-    # above 3 in 5 minutes) switches it to best sellers, a list the store
+    # sending recommendations-failed. The trigger on the default rule (more
+    # than 3 in 5 minutes) switches it to best sellers, a list the store
     # already has, with nothing to fail, and the generator stops itself.
     #
-    # The trigger itself is added by hand on the default rule, for the same
-    # reason as the kill switches' alerts: the adaptive triggers API needs the
-    # ID of an alert, and alerts cannot be created through the public API.
-    # Adaptive triggers do not switch back on their own either, so restoring
-    # personalized picks after a demo is done by hand too.
+    # create_adaptive_trigger makes the alert, then the adaptive trigger on the
+    # default rule that points at it, as the LaunchDarkly UI does. The alert
+    # counts Recommendations Failed events rather than reproducing the
+    # metric, which averages per shopper: each made-up shopper fails once, so
+    # that average sits at 1 and would never cross a threshold. An adaptive
+    # trigger has no webhook, so nothing fires at setup. It does not switch
+    # back on its own either, so restoring personalized picks after a demo is
+    # done by hand.
     {'flag': {'flag_key': 'recommendationEngine',
               'flag_name': '14 - Recommendation Engine - Adaptive Trigger',
               'description': 'Which engine the recommendation service runs: personalized picks, '
@@ -693,7 +716,14 @@ FLAGS = [
               'off_variation': 1},
      'post': [['toggle_flag',
                ['recommendationEngine', 'on', 'production'],
-               {}]]},
+               {}],
+              ['create_adaptive_trigger',
+               ['recommendationEngine', 'production', 'best-sellers'],
+               {'alert_name': '14 - Recommendations Failed',
+                'product_type': 'LDCustomEvents',
+                'query': 'environment_id={environment_id} key=recommendations-failed',
+                'threshold_value': 3,
+                'threshold_window': 300}]]},
 ]
 
 # Segments — created in every environment listed, with shared rules
