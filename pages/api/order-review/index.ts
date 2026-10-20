@@ -104,12 +104,32 @@ function addUsage(total: LDTokenUsage, usage?: LDTokenUsage) {
 
 type AgentRun = { text: string; metrics: LDAIMetrics };
 
+// The shape the Order Decision agent answers in. Bedrock makes the model
+// fill it in as a tool call, so the answer always has these fields rather
+// than being JSON the model was asked nicely to write, which it now and then
+// broke. Ours rather than LaunchDarkly's because this code reads it.
+const DECISION_SCHEMA = {
+  type: "object",
+  properties: {
+    decision: { type: "string", enum: DECISIONS },
+    score: { type: "number", description: "The total risk points, at most 100." },
+    summary: {
+      type: "string",
+      description: "One or two sentences to the shopper, shown at checkout.",
+    },
+  },
+  required: ["decision", "score", "summary"],
+};
+
 // One agent: its instructions as the system prompt, what it is handed as the
-// user message, and its tools, the first of which it has to call.
+// user message, and its tools, the first of which it has to call. With an
+// answer schema, the agent answers by filling it in, and its text is that
+// answer as JSON.
 async function runAgent(
   config: LDAIAgentConfig,
   input: string,
   registry: ToolRegistry,
+  answerSchema?: Record<string, unknown>,
 ): Promise<AgentRun> {
   const llm = await createLangChainModel(config);
   const definitions = (config.model?.parameters?.tools as unknown[]) ?? [];
@@ -122,6 +142,15 @@ async function runAgent(
   ];
   const tokens: LDTokenUsage = { total: 0, input: 0, output: 0 };
   const toolCalls: string[] = [];
+
+  if (answerSchema) {
+    const { raw, parsed } = await llm
+      .withStructuredOutput(answerSchema, { name: "record_decision", includeRaw: true })
+      .invoke(messages);
+    addUsage(tokens, getAIUsageFromResponse(raw as AIMessage));
+    const text = parsed ? JSON.stringify(parsed) : textOf(raw as AIMessage);
+    return { text, metrics: { success: Boolean(parsed), tokens, toolCalls } };
+  }
 
   for (let round = 0; ; round += 1) {
     // Bedrock needs the tools on every request once one has been called,
@@ -150,13 +179,11 @@ async function runAgent(
   }
 }
 
-// The Order Decision agent answers in JSON. Anything else, or a decision
-// that is not one of the three, is treated as no decision.
+// The Order Decision agent's answer, filled in to DECISION_SCHEMA. Anything
+// that still is not one of the three decisions is treated as no decision.
 function parseDecision(text: string): { decision: FraudDecision; summary: string } | null {
-  const json = text.match(/\{[\s\S]*\}/)?.[0];
-  if (!json) return null;
   try {
-    const parsed = JSON.parse(json);
+    const parsed = JSON.parse(text);
     if (!DECISIONS.includes(parsed.decision) || typeof parsed.summary !== "string") return null;
     return { decision: parsed.decision, summary: parsed.summary.trim() };
   } catch {
@@ -200,7 +227,14 @@ async function runGraph(
   // Runs one node, records it on its own tracker, and streams it starting
   // and finishing. show turns what the agent wrote into what the panel
   // shows, which only differs for the Order Decision agent's JSON.
-  const run = async (key: string, input: string, show = (text: string) => text) => {
+  const run = async (
+    key: string,
+    input: string,
+    { show = (text: string) => text, answerSchema }: {
+      show?: (text: string) => string;
+      answerSchema?: Record<string, unknown>;
+    } = {},
+  ) => {
     const node = graph.getNode(key);
     if (!node) throw new Error(`The graph has no ${key} node`);
     const config = node.getConfig();
@@ -217,9 +251,13 @@ async function runGraph(
     try {
       const result = await tracker.trackMetricsOf(
         (r: AgentRun) => r.metrics,
-        () => runAgent(config, input, tools.registry),
+        () => runAgent(config, input, tools.registry, answerSchema),
       );
-      if (!result.metrics.success) throw new Error(`${key} returned an empty answer`);
+      // The start of what it did say, so the error in Observability shows
+      // what went wrong rather than only that something did.
+      if (!result.metrics.success) {
+        throw new Error(`${key} returned no usable answer: ${result.text.slice(0, 200)}`);
+      }
       path.push(key);
       addUsage(tokens, result.metrics.tokens);
       send({
@@ -234,9 +272,9 @@ async function runGraph(
   };
 
   // A handoff succeeded once the agent handed to has finished its part.
-  const handOff = async (from: string, to: string, input: string, show?: (t: string) => string) => {
+  const handOff = async (from: string, to: string, input: string) => {
     try {
-      const text = await run(to, input, show);
+      const text = await run(to, input);
       graphTracker.trackHandoffSuccess(from, to);
       return text;
     } catch (err) {
@@ -264,7 +302,7 @@ async function runGraph(
     const verdictText = await run(
       decider.getKey(),
       `Order ${order.ref}.\n\nCase summary from Order Intake:\n${summary}\n\n${reports}`,
-      (text) => parseDecision(text)?.summary ?? text,
+      { show: (text) => parseDecision(text)?.summary ?? text, answerSchema: DECISION_SCHEMA },
     );
     for (const node of specialists) {
       graphTracker.trackHandoffSuccess(node.getKey(), decider.getKey());
@@ -273,7 +311,9 @@ async function runGraph(
     const signals = tools.signals;
     const score = riskScore(signals);
     const verdict = parseDecision(verdictText);
-    if (!verdict) throw new Error("The decision agent did not answer in JSON");
+    if (!verdict) {
+      throw new Error(`The decision agent did not answer with a decision: ${verdictText.slice(0, 200)}`);
+    }
     let decision = verdict.decision;
     if (decision !== "decline" && isBlockedZip(order.shipTo.zip)) {
       decision = "decline";
