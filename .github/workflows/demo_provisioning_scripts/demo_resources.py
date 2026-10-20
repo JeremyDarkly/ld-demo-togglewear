@@ -11,7 +11,7 @@ Tables:
     SEGMENTS        -> created per environment listed, with shared rules
     CONTEXT_KINDS   -> [context_key, for_experiment]
     EXPERIMENTS     -> toggled flag, metrics, create_experiment kwargs
-    AI_MODEL_CONFIGS -> LDPlatform.create_custom_model_config(**spec)
+    PROMPT_SNIPPETS -> LDPlatform.create_snippet(**spec)
     AI_TOOLS        -> LDPlatform.create_ai_tool(**spec)
     AI_CONFIGS      -> create_ai_config(**spec["config"]), its variations,
                        tools, judges, targeting, then switched on
@@ -862,6 +862,43 @@ EXPERIMENTS = [
 # here rather than in the app: the model and its parameters, the prompt, the
 # tools it may call and the judges that score it.
 
+# Prompt snippets — LDPlatform.create_snippet(**spec)
+#
+# Prompt text more than one variation needs, kept once in LaunchDarkly's
+# Library instead of copied into each. A variation writes
+# {{snippet.<key>#<version>}} where the text belongs and LaunchDarkly swaps it
+# in when the variation is served, so the storefront only ever sees the whole
+# prompt. Editing a snippet makes a new version and leaves every variation on
+# the one it names until someone moves it, which is the demo: change the
+# returns window, see which variations use the snippet, update them on
+# purpose.
+PROMPT_SNIPPETS = [
+    {'key': 'togglewear-store-policies',
+     'name': 'ToggleWear Store Policies',
+     'description': 'Shipping and returns, as the Swag Assistant quotes them and the Accuracy '
+                    'Judge checks them.',
+     'text': (
+         "ToggleWear store policies:\n"
+         "- Shipping is free on every order and arrives in 3 to 5 business days.\n"
+         "- Unworn items can be returned within 30 days."),
+     'tags': ['policies', 'togglewear', 'shared']},
+    {'key': 'togglewear-brand-voice',
+     'name': 'ToggleWear Brand Voice',
+     'description': 'How anything that talks to ToggleWear shoppers should sound.',
+     'text': (
+         "ToggleWear brand voice:\n"
+         "- Friendly and upbeat, like a teammate who knows the merch well.\n"
+         "- Plain, everyday words, with no hype and no emojis.\n"
+         "- Speak to the shopper directly, and use their first name at most once.\n"
+         "- When something is not available, say so and suggest the closest thing that is."),
+     'tags': ['brand', 'togglewear', 'shared']},
+]
+
+
+def _snippet(key):
+    return '{{snippet.' + key + '#1}}'
+
+
 # Shared by both variations, so the two differ only where they are meant to:
 # the model, its length and the style it asks for.
 _SWAG_ASSISTANT_GROUNDING = (
@@ -869,9 +906,10 @@ _SWAG_ASSISTANT_GROUNDING = (
     "search-products to find items, get-product-details for sizes, fit and materials, "
     "get-member-perks for this shopper's discounts, points and rewards, and get-order-status "
     "for their recent orders and deliveries. Only mention products and orders a tool returned, "
-    "and never make up a price, size, color, stock level, date or tracking number.\n\n"
-    "Store policies: shipping is free on every order and arrives in 3 to 5 business days, and "
-    "unworn items can be returned within 30 days.\n\n"
+    "and never make up a price, size, color, stock level, date or tracking number. When you "
+    "talk about an order, give its order number.\n\n"
+    + _snippet('togglewear-store-policies') + "\n\n"
+    + _snippet('togglewear-brand-voice') + "\n\n"
     "Questions about this shopper's own orders, account and perks are part of shopping here. "
     "If a question has nothing to do with ToggleWear, say in one sentence that you can only "
     "help with shopping at ToggleWear."
@@ -893,40 +931,19 @@ _JUDGE_OPENING = (
     "this reply.\n\n"
 )
 
-# Bedrock only serves these two Claude models through cross-region inference
-# profiles, whose ids carry a us. prefix, and refuses the bare model id.
-# LaunchDarkly's built-in Bedrock models use the bare id, and a variation's
-# model name is always its model config's id, so the built-ins cannot be
-# pointed at the profile. Hence a model config of our own for each.
-#
-# The variations name a model config by its key; the id is the model name the
-# AI SDK hands Bedrock. Keys cannot hold the colon in Haiku's id, hence two
-# names for each.
-_HAIKU = 'claude-haiku-4-5-us'
+# The models, all on Bedrock, through the US cross-region inference profiles
+# (the us. prefix) that Bedrock requires for them. Each is LaunchDarkly's own
+# built-in model config for that profile, which carries Bedrock's US price, so
+# the Monitoring tab's cost is right without our keeping prices up to date.
+# A variation names its model config by key; the id is the model name the AI
+# SDK hands Bedrock. LaunchDarkly derives Haiku's key from an id with a colon
+# in it, hence the suffix.
+_HAIKU = 'Bedrock.us.anthropic.claude-haiku-4-5-20251001-v1-0-f23b6a28'
 _HAIKU_ID = 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
-_SONNET = 'claude-sonnet-4-6-us'
+_SONNET = 'Bedrock.us.anthropic.claude-sonnet-4-6'
 _SONNET_ID = 'us.anthropic.claude-sonnet-4-6'
-
-# Model configs — LDPlatform.create_custom_model_config(**spec)
-#
-# Prices are Bedrock's per-token rates, the same LaunchDarkly's built-in
-# entries for these models carry, so the Monitoring tab's cost is real.
-AI_MODEL_CONFIGS = [
-    {'model_key': _HAIKU,
-     'model_id': _HAIKU_ID,
-     'model_name': 'Claude Haiku 4.5 (Bedrock, US)',
-     'provider': 'Bedrock',
-     'cost_per_input_token': 0.000001,
-     'cost_per_output_token': 0.000005,
-     'tags': ['bedrock', 'togglewear']},
-    {'model_key': _SONNET,
-     'model_id': _SONNET_ID,
-     'model_name': 'Claude Sonnet 4.6 (Bedrock, US)',
-     'provider': 'Bedrock',
-     'cost_per_input_token': 0.000003,
-     'cost_per_output_token': 0.000015,
-     'tags': ['bedrock', 'togglewear']},
-]
+_GPT = 'Bedrock.us.openai.gpt-6-luna'
+_GPT_ID = 'us.openai.gpt-6-luna'
 
 # Tools — LDPlatform.create_ai_tool(**spec)
 #
@@ -1016,9 +1033,8 @@ AI_CONFIGS = [
                     'parameters': {'maxTokens': 500, 'temperature': 0.0}},
           'messages': [{'role': 'system', 'content': (
               _JUDGE_OPENING
-              + "Score how accurate the response is against that data and the store's policies: "
-                "shipping is free on every order and arrives in 3 to 5 business days, and "
-                "unworn items can be returned within 30 days.\n\n"
+              + _snippet('togglewear-store-policies') + "\n\n"
+              + "Score how accurate the response is against that data and those policies.\n\n"
                 "1.0: every product, price, size, material, discount and policy it states "
                 "matches.\n"
                 "0.7: accurate, with a small imprecision that would not mislead the shopper.\n"
@@ -1059,49 +1075,53 @@ AI_CONFIGS = [
     # ---- The Swag Assistant ----
     #
     # Two variations that differ in a way a demo can see from across the
-    # room: a small, fast model giving short answers, and a stronger one
-    # giving the kind of answer a good store stylist would. Members get the
-    # second, matched on the same Gold and Platinum segments the rest of the
-    # store targets, so switching shopper in the account menu switches
-    # variation — and the label under each reply says which one answered.
+    # room: a small, fast OpenAI model giving short answers, and a stronger
+    # Claude model giving the kind of answer a good store concierge would.
+    # Members get the second, matched on the same Gold and Platinum segments
+    # the rest of the store targets, so switching shopper in the account menu
+    # switches variation, and the chat header says which one is serving.
     {'config': {'config_key': 'swag-assistant',
                 'config_name': 'Swag Assistant',
                 'description': 'The chat assistant in the storefront (the button at the bottom '
-                               'right). Everyone gets Quick Answers (Claude Haiku 4.5, one to '
-                               'three sentences); Gold and Platinum members get Detailed Answers '
+                               'right). Everyone gets Standard (OpenAI GPT-6 Luna, one to three '
+                               'sentences); Gold and Platinum members get Member Concierge '
                                '(Claude Sonnet 4.6, fuller answers that compare options and '
-                               'explain fit). Both call four tools against the live catalog and '
-                               'the shopper\'s orders, '
-                               'and the Accuracy and Relevance judges score every reply. '
-                               'Duration, tokens, tool calls, judge scores and shoppers\' thumbs '
-                               'up or down appear per variation on the Monitoring tab. Demo it: '
-                               'ask "Help me pick a hoodie" as the guest, then switch to Alex '
-                               'Rivera (Gold) in the account menu, press Reset and ask again — '
-                               'the label under each reply names the variation. Switch the '
-                               'config off and the assistant falls back to scripted replies.',
+                               'explain fit). Both run on Bedrock, call four tools against the '
+                               'live catalog and the shopper\'s orders, and share the store '
+                               'policies and brand voice snippets from the Library. The Accuracy '
+                               'and Relevance judges score every reply. Duration, tokens, cost, '
+                               'tool calls, judge scores and shoppers\' thumbs up or down appear '
+                               'per variation on the Monitoring tab. Demo it: open the chat as '
+                               'Alex Rivera (Gold), ask "Help me pick a hoodie", then change the '
+                               'Gold and Platinum rule to Standard here — the chat header switches '
+                               'to GPT-6 Luna within a second. Switch the config off and the '
+                               'assistant falls back to scripted replies.',
                 'tags': ['ai-config', 'swag-assistant', 'togglewear']},
      'variations': [
-         {'ai_config_version_key': 'quick-answers',
-          'ai_model_config_key': _HAIKU,
-          'ai_config_version_name': 'Quick Answers',
-          'description': 'Claude Haiku 4.5 with a short, to-the-point prompt. Everyone\'s default.',
-          'model': {'modelName': _HAIKU_ID,
-                    'parameters': {'maxTokens': 300, 'temperature': 0.3}},
+         {'ai_config_version_key': 'standard',
+          'ai_model_config_key': _GPT,
+          'ai_config_version_name': 'Standard',
+          'description': 'OpenAI GPT-6 Luna with a short, to-the-point prompt. Everyone\'s '
+                         'default.',
+          # No temperature: Bedrock refuses the whole request if a GPT-6
+          # model is sent one.
+          'model': {'modelName': _GPT_ID,
+                    'parameters': {'maxTokens': 300}},
           'messages': [{'role': 'system', 'content': (
               _SWAG_ASSISTANT_OPENING
               + "Keep every answer to one to three short sentences, and recommend at most two "
                 "products. Write plain text with no markdown, headings or bullet points.\n\n"
               + _SWAG_ASSISTANT_GROUNDING)}]},
-         {'ai_config_version_key': 'detailed-answers',
+         {'ai_config_version_key': 'member-concierge',
           'ai_model_config_key': _SONNET,
-          'ai_config_version_name': 'Detailed Answers',
+          'ai_config_version_name': 'Member Concierge',
           'description': 'Claude Sonnet 4.6 with a fuller prompt that compares options and '
                          'explains fit. Served to Gold and Platinum members.',
           'model': {'modelName': _SONNET_ID,
                     'parameters': {'maxTokens': 900, 'temperature': 0.6}},
           'messages': [{'role': 'system', 'content': (
               _SWAG_ASSISTANT_OPENING
-              + "Answer like a knowledgeable store stylist, in up to two short paragraphs. When "
+              + "Answer like a knowledgeable store concierge, in up to two short paragraphs. When "
                 "the shopper is choosing, compare two or three options and say who each one "
                 "suits. When size matters, use the size chart from get-product-details to "
                 "recommend a size and explain the fit. When the shopper is a member, quote their "
@@ -1112,9 +1132,12 @@ AI_CONFIGS = [
      'tools': ['search-products', 'get-product-details', 'get-member-perks', 'get-order-status'],
      'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0},
                 {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0}],
+     # The chat header reads this config's flag in the browser to show which
+     # variation is serving, live.
+     'client_side': True,
      'environment': 'production',
-     'rules': [['detailed-answers',
+     'rules': [['member-concierge',
                 [{'contextKind': 'user', 'attribute': 'segmentMatch', 'op': 'segmentMatch',
                   'negate': False, 'values': ['gold-members', 'platinum-members']}]]],
-     'fallthrough': 'quick-answers'},
+     'fallthrough': 'standard'},
 ]

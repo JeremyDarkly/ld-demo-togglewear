@@ -27,7 +27,7 @@ from demo_resources import (
     SEGMENTS,
     CONTEXT_KINDS,
     EXPERIMENTS,
-    AI_MODEL_CONFIGS,
+    PROMPT_SNIPPETS,
     AI_TOOLS,
     AI_CONFIGS,
 )
@@ -191,15 +191,18 @@ class DemoBuilder:
         print("Done")
         self.contexts_created = True
 
-    # Create the AI model configs, tools and AI Configs (definitions live in
-    # the AI_MODEL_CONFIGS, AI_TOOLS and AI_CONFIGS tables above)
+    # Create the prompt snippets, tools and AI Configs (definitions live in
+    # the PROMPT_SNIPPETS, AI_TOOLS and AI_CONFIGS tables above). The models
+    # are LaunchDarkly's built-in ones, so there are none to create.
     def create_ai_configs(self):
         if not self.segments_created:
             print("Error: Segments not created")
             return
-        print("Creating AI model configs...")
-        for spec in AI_MODEL_CONFIGS:
-            self.ldproject.create_custom_model_config(**spec)
+        # First, because a variation that names a snippet cannot be saved
+        # before the snippet exists.
+        print("Creating prompt snippets...")
+        for spec in PROMPT_SNIPPETS:
+            self.ldproject.create_snippet(**spec)
 
         print("Creating AI tools...")
         # A variation attaches a tool at a version, which is whatever the
@@ -239,6 +242,10 @@ class DemoBuilder:
             # switches it on: LDPlatform.toggle_ai_config sends an instruction
             # the AI Config targeting API no longer accepts.
             self.ldproject.toggle_flag(key, "on", env)
+            # AI Configs are created without the project's default client-side
+            # availability, so the browser cannot see one until it is asked for.
+            if spec.get("client_side"):
+                self.ldproject.update_flag_client_side_availability(key)
             print(f"  AI Config created: {spec['config']['config_name']}")
         print("Done")
         self.ai_config_created = True
