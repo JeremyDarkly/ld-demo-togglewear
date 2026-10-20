@@ -56,10 +56,6 @@ const BULK_QUANTITY = 5;
 // The blocklist. One entry, because it only exists to be the lever.
 const BLOCKED_ZIPS = ["99999"];
 
-// How long the agent appears to think. Long enough that an audience sees it
-// happen, short enough that nobody waits.
-export const ASSESS_MS = 1400;
-
 export function isBlockedZip(zip: string) {
   return BLOCKED_ZIPS.includes(zip.trim());
 }
