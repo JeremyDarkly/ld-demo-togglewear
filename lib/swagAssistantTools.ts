@@ -79,6 +79,8 @@ export type SwagAssistantTools = {
   // Every product a tool told the model about, so the reply can show cards
   // for the ones it went on to recommend and none that it made up.
   seenSlugs: Set<string>;
+  // The same for orders, by order number.
+  seenOrders: Set<string>;
 };
 
 export function swagAssistantTools(context: LDContext): SwagAssistantTools {
@@ -86,6 +88,7 @@ export function swagAssistantTools(context: LDContext): SwagAssistantTools {
   const member = isMember(person);
   const catalogue = productsFor(variantFor(person.tier));
   const seenSlugs = new Set<string>();
+  const seenOrders = new Set<string>();
 
   const registry: ToolRegistry = {
     "search-products": (args: {
@@ -208,6 +211,7 @@ export function swagAssistantTools(context: LDContext): SwagAssistantTools {
       return {
         signed_in: true,
         orders: ordersFor(person).map((order) => {
+          seenOrders.add(order.ref);
           const latest = order.events[order.events.length - 1];
           const delivered = order.status === "Delivered";
           return {
@@ -232,5 +236,5 @@ export function swagAssistantTools(context: LDContext): SwagAssistantTools {
     },
   };
 
-  return { registry, seenSlugs };
+  return { registry, seenSlugs, seenOrders };
 }
