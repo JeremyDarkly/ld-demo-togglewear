@@ -61,3 +61,32 @@ export type AgentStep = {
 export type OrderReviewEvent =
   | { type: "step"; step: AgentStep }
   | { type: "result"; assessment: FraudAssessment; scripted?: boolean };
+
+// Asks pages/api/order-review to review an order, handing each event to
+// onEvent as it arrives. Resolves once the stream has ended, which for a
+// held or declined order is after the case note, well after the result.
+export async function streamOrderReview(
+  headers: Record<string, string>,
+  order: OrderReviewRequest,
+  onEvent: (event: OrderReviewEvent) => void,
+) {
+  const res = await fetch("/api/order-review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(order),
+  });
+  if (!res.ok || !res.body) throw new Error(`Order review answered ${res.status}`);
+
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffered = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffered += value;
+    // A chunk can end partway through a line, which waits for the next one.
+    const lines = buffered.split("\n");
+    buffered = lines.pop() ?? "";
+    for (const line of lines) if (line.trim()) onEvent(JSON.parse(line));
+  }
+  if (buffered.trim()) onEvent(JSON.parse(buffered));
+}
