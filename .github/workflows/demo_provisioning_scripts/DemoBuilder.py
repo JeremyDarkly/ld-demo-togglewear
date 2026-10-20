@@ -31,6 +31,8 @@ from demo_resources import (
     PROMPT_SNIPPETS,
     AI_TOOLS,
     AI_CONFIGS,
+    AGENT_CONFIGS,
+    AGENT_GRAPHS,
 )
 
 
@@ -74,6 +76,8 @@ class DemoBuilder:
         self.create_flags()
         # After the segments, which the Swag Assistant's member rule matches.
         self.create_ai_configs()
+        # After the agents, since a graph's nodes have to exist.
+        self.create_agent_graphs()
         # After the flags, which each experiment takes over, and before the
         # results, so the generated traffic lands in a running iteration.
         self.create_and_run_experiments()
@@ -218,7 +222,7 @@ class DemoBuilder:
                 tool_versions[spec["tool_key"]] = 1
 
         print("Creating AI Configs...")
-        for spec in AI_CONFIGS:
+        for spec in AI_CONFIGS + AGENT_CONFIGS:
             key = spec["config"]["config_key"]
             env = spec["environment"]
             self.ldproject.create_ai_config(**spec["config"])
@@ -253,6 +257,23 @@ class DemoBuilder:
             print(f"  AI Config created: {spec['config']['config_name']}")
         print("Done")
         self.ai_config_created = True
+
+    def create_agent_graphs(self):
+        if not self.ai_config_created:
+            print("Error: AI Configs not created")
+            return
+        print("Creating agent graphs...")
+        for spec in AGENT_GRAPHS:
+            self.ldproject.create_agent_graph(
+                spec["graph_key"],
+                spec["graph_name"],
+                spec["description"],
+                [{"key": key, "sourceConfig": source, "targetConfig": target}
+                 for key, source, target in spec["edges"]],
+                root_config_key=spec["root"],
+            )
+            print(f"  Agent graph created: {spec['graph_name']}")
+        print("Done")
 
     # An AI Config's guarded rollout, started at build time for
     # results_generator.py to walk to 100%. Its metrics are the ones
