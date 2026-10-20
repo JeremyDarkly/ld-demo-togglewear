@@ -8,10 +8,15 @@
     "start": "next start"
   },
   "dependencies": {
+    "@langchain/aws": "^1.4.7",
+    "@langchain/core": "^1.2.18",
     "@launchdarkly/node-server-sdk": "^9.10.14",
     "@launchdarkly/observability": "^1.2.0",
     "@launchdarkly/observability-node": "^1.4.0",
+    "@launchdarkly/server-sdk-ai": "^2.0.15",
+    "@launchdarkly/server-sdk-ai-langchain": "^0.8.26",
     "@launchdarkly/session-replay": "^1.2.0",
+    "langchain": "^1.5.18",
     "launchdarkly-react-client-sdk": "^3.9.4",
     "next": "^16.0.8",
     "react": "^19.2.1",
