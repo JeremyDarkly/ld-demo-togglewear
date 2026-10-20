@@ -79,7 +79,7 @@ export const GENERATORS: GeneratorInfo[] = [
     outcome: "succeeds",
     does: "Shoppers open product pages and get stylist notes from Sonnet or Opus. Opus's notes score a little higher with both judges, at the same speed and error rate.",
     purpose: "Shows a model upgrade guarded by judge scores walking all the way to 100%.",
-    before: "Start a guarded rollout to Claude Opus 5.5 on the Personal Stylist's default rule. The generator waits for it.",
+    before: "Set the Personal Stylist's default rule back to Claude Sonnet 4.6, then start a guarded rollout to Claude Opus 5.5 on it. The generator waits for it.",
     stops: "When the rollout reaches 100%.",
   },
   {
@@ -92,7 +92,7 @@ export const GENERATORS: GeneratorInfo[] = [
     outcome: "rollsBack",
     does: "The same notes, but after four minutes Opus's judge scores start slipping, while its speed and errors stay normal.",
     purpose: "Shows LaunchDarkly rolling back a model whose answers got worse, which errors and latency alone would never catch.",
-    before: "Start a guarded rollout to Claude Opus 5.5 on the Personal Stylist's default rule, with automatic rollback. The generator waits for it.",
+    before: "Set the Personal Stylist's default rule back to Claude Sonnet 4.6, then start a guarded rollout to Claude Opus 5.5 on it, with automatic rollback. The generator waits for it.",
     stops: "When LaunchDarkly rolls the config back.",
   },
   {
