@@ -1,4 +1,10 @@
-import { initAi, type LDAIClient } from "@launchdarkly/server-sdk-ai";
+import type { LDContext } from "@launchdarkly/node-server-sdk";
+import {
+  initAi,
+  type LDAIClient,
+  type LDAICompletionConfig,
+  type LDAIConfigTracker,
+} from "@launchdarkly/server-sdk-ai";
 // LangChain loads its Bedrock model with import() on a package name held in
 // a variable, which the build cannot follow, so the standalone server would
 // ship without it and every model build would fail in production. Importing
@@ -7,7 +13,7 @@ import "@langchain/aws";
 import { getServerClient } from "@/lib/ldServer";
 
 // The LaunchDarkly AI client, for the routes that answer with an AI Config
-// (the swag assistant today). It wraps the same server client the flags use
+// (the swag assistant and the personal stylist). It wraps the same server client the flags use
 // rather than starting a second one, so AI Config evaluations and the
 // metrics they record arrive under the same SDK connection as everything
 // else this server does.
@@ -32,6 +38,35 @@ export function getAiClient(): Promise<LDAIClient | null> {
     });
   }
   return aiClientPromise;
+}
+
+// The judges attached to the variation that answered, run the way the AI
+// SDK's managed model runs them: each judge is its own AI Config, its score
+// is recorded on this reply's tracker, and nothing waits for them — the
+// shopper has their answer before the judges have read it.
+export async function judge(
+  aiClient: LDAIClient,
+  config: LDAICompletionConfig,
+  context: LDContext,
+  tracker: LDAIConfigTracker,
+  input: string,
+  output: string,
+) {
+  const attached = config.judgeConfiguration?.judges ?? [];
+  await Promise.all(
+    attached.map(async ({ key, samplingRate }) => {
+      const judge = await aiClient.createJudge(
+        key,
+        context,
+        undefined,
+        undefined,
+        "langchain",
+        samplingRate,
+      );
+      const result = await judge?.evaluate(input, output);
+      if (result?.sampled) tracker.trackJudgeResult(result);
+    }),
+  );
 }
 
 // Thumbs up and down arrive in a later request than the reply they rate, and

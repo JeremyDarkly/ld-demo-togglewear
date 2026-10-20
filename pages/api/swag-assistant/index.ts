@@ -1,9 +1,7 @@
 import { randomUUID } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
-import type { LDContext } from "@launchdarkly/node-server-sdk";
 import { LDObserve } from "@launchdarkly/observability-node";
 import type {
-  LDAIClient,
   LDAICompletionConfig,
   LDAIConfigTracker,
   LDAIMetrics,
@@ -21,7 +19,7 @@ import {
   ToolMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
-import { getAiClient, rememberReply } from "@/lib/aiServer";
+import { getAiClient, judge, rememberReply } from "@/lib/aiServer";
 import { contextFromRequest } from "@/lib/ldServer";
 import { productBySlug } from "@/lib/products";
 import { TIER_LABELS, isGuest, shopperById } from "@/lib/shopper";
@@ -168,35 +166,6 @@ async function converse(
       messages.push(new ToolMessage({ content: text, tool_call_id: call.id ?? "" }));
     }
   }
-}
-
-// The judges attached to the variation that answered, run the way the AI
-// SDK's managed model runs them: each judge is its own AI Config, its score
-// is recorded on this reply's tracker, and nothing waits for them — the
-// shopper has their answer before the judges have read it.
-async function judge(
-  aiClient: LDAIClient,
-  config: LDAICompletionConfig,
-  context: LDContext,
-  tracker: LDAIConfigTracker,
-  input: string,
-  output: string,
-) {
-  const attached = config.judgeConfiguration?.judges ?? [];
-  await Promise.all(
-    attached.map(async ({ key, samplingRate }) => {
-      const judge = await aiClient.createJudge(
-        key,
-        context,
-        undefined,
-        undefined,
-        "langchain",
-        samplingRate,
-      );
-      const result = await judge?.evaluate(input, output);
-      if (result?.sampled) tracker.trackJudgeResult(result);
-    }),
-  );
 }
 
 function servedBy(tracker: LDAIConfigTracker) {
