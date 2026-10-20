@@ -15,6 +15,8 @@ export default function SwagAssistant() {
     messages,
     memberPricing,
     send,
+    pending,
+    rate,
     reset,
     expanded,
     toggleExpanded,
@@ -27,7 +29,9 @@ export default function SwagAssistant() {
       messages={messages}
       memberPricing={memberPricing}
       expanded={expanded}
+      pending={pending}
       onSend={send}
+      onRate={rate}
       onClose={close}
       onReset={reset}
       onToggleExpand={toggleExpanded}

@@ -5,6 +5,7 @@ import { formatPrice, memberPriceUsd, type Product } from "@/lib/products";
 import {
   SUGGESTED_PROMPTS,
   type ChatMessage,
+  type FeedbackKind,
 } from "@/lib/swagAssistant";
 
 // A compact version of the product card for use inside a chat bubble. The
@@ -55,6 +56,117 @@ function ChatProduct({
   );
 }
 
+// A thumb, drawn inline for the same reason as the expand glyphs below.
+// Thumbs down is the same path turned over.
+const THUMB_PATH =
+  "M5 7.5V13H2.5V7.5H5Zm0 5.5h6.3a1.4 1.4 0 0 0 1.37-1.1l.8-3.6A1.4 1.4 0 0 0 12.1 6.6H9.2l.45-2.3a1.2 1.2 0 0 0-2.25-.8L5 7.5";
+
+function ThumbButton({
+  kind,
+  chosen,
+  disabled,
+  onClick,
+}: {
+  kind: FeedbackKind;
+  chosen: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={chosen}
+      aria-label={kind === "positive" ? "Helpful answer" : "Unhelpful answer"}
+      className={`rounded-[4px] p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black ${
+        chosen
+          ? "text-grays-ld-black"
+          : "text-grays-03 enabled:hover:text-grays-ld-black disabled:opacity-40"
+      }`}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        className={kind === "negative" ? "rotate-180" : undefined}
+      >
+        <path
+          d={THUMB_PATH}
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+          fill={chosen ? "currentColor" : "none"}
+        />
+      </svg>
+    </button>
+  );
+}
+
+// The line under a reply: which variation of the Swag Assistant AI Config
+// wrote it, and the thumbs that rate it. It is how a demo shows targeting
+// at work without leaving the store: switch from a guest to a Gold member,
+// ask the same thing, and the label changes along with the answer.
+function ReplyFooter({
+  message,
+  onRate,
+}: {
+  message: ChatMessage;
+  onRate: (messageId: string, kind: FeedbackKind) => void;
+}) {
+  if (message.scripted) {
+    return (
+      <p className="font-sohne text-xsmall text-grays-03">
+        Scripted reply · the AI Config is off
+      </p>
+    );
+  }
+  if (!message.servedBy || !message.replyId) return null;
+
+  return (
+    <div className="flex items-center gap-2 font-sohne text-xsmall text-grays-03">
+      <span>
+        {message.servedBy.variation} · {message.servedBy.model}
+      </span>
+      <span className="flex items-center gap-0.5">
+        {(["positive", "negative"] as const).map((kind) => (
+          <ThumbButton
+            key={kind}
+            kind={kind}
+            chosen={message.feedback === kind}
+            disabled={Boolean(message.feedback)}
+            onClick={() => onRate(message.id, kind)}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+// Three dots in the assistant's bubble while a reply is on its way. A real
+// model takes a few seconds, more when it calls tools, and an empty panel
+// for that long reads as broken.
+function TypingBubble({ expanded }: { expanded: boolean }) {
+  return (
+    <div
+      role="status"
+      aria-label="The swag assistant is typing"
+      className={`flex items-center gap-1 self-start rounded-[12px] bg-grays-01 ${
+        expanded ? "px-4 py-3.5" : "px-3 py-3"
+      }`}
+    >
+      {[0, 150, 300].map((delay) => (
+        <span
+          key={delay}
+          className="size-1.5 animate-bounce rounded-full bg-grays-03"
+          style={{ animationDelay: `${delay}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 // The expanded swag assistant. Jen designed only the collapsed launcher, so
 // this panel is a proposal built from her tokens: the 30px panel radius, the
 // 12px radius she uses on buttons, LD Black chrome, Base/Blue for the
@@ -69,7 +181,9 @@ export default function ChatPanel({
   messages,
   memberPricing,
   expanded,
+  pending,
   onSend,
+  onRate,
   onClose,
   onReset,
   onToggleExpand,
@@ -77,7 +191,9 @@ export default function ChatPanel({
   messages: ChatMessage[];
   memberPricing: boolean;
   expanded: boolean;
+  pending: boolean;
   onSend: (text: string) => void;
+  onRate: (messageId: string, kind: FeedbackKind) => void;
   onClose: () => void;
   onReset: () => void;
   onToggleExpand: () => void;
@@ -88,11 +204,11 @@ export default function ChatPanel({
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, pending]);
 
   function submit(text: string) {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || pending) return;
     onSend(trimmed);
     setDraft("");
   }
@@ -196,13 +312,17 @@ export default function ChatPanel({
                 a conversation easier to read, and legible to a room watching
                 a shared screen, is larger type. The padding grows with it so
                 the bubbles do not end up tight around bigger text. */}
+            {/* pre-line keeps the paragraph breaks a longer answer comes
+                with, which would otherwise collapse into one block. */}
             <div
-              className={`rounded-[12px] font-sohne ${
+              className={`whitespace-pre-line rounded-[12px] font-sohne ${
                 expanded ? "px-4 py-2.5 text-main" : "px-3 py-2 text-small"
               } ${
                 m.role === "user"
                   ? "max-w-[80%] self-end bg-base-blue text-grays-white"
-                  : "max-w-[85%] self-start bg-grays-01 text-grays-ld-black"
+                  : m.failed
+                    ? "max-w-[85%] self-start bg-grays-01 text-grays-04"
+                    : "max-w-[85%] self-start bg-grays-01 text-grays-ld-black"
               }`}
             >
               {m.text}
@@ -219,10 +339,18 @@ export default function ChatPanel({
                   ))}
                 </div>
               )}
+
+              {(m.scripted || m.replyId) && (
+                <div className="self-start">
+                  <ReplyFooter message={m} onRate={onRate} />
+                </div>
+              )}
             </div>
           ))}
 
-          {messages.length === 1 && (
+          {pending && <TypingBubble expanded={expanded} />}
+
+          {messages.length === 1 && !pending && (
             <div className="flex flex-wrap gap-2">
               {SUGGESTED_PROMPTS.map((p) => (
                 <button
@@ -260,7 +388,7 @@ export default function ChatPanel({
 
         <button
           type="submit"
-          disabled={!draft.trim()}
+          disabled={!draft.trim() || pending}
           aria-label="Send message"
           className="flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-grays-ld-black bg-base-lime text-grays-ld-black transition-opacity disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black focus-visible:ring-offset-2"
         >
