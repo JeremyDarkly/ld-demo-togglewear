@@ -1,4 +1,5 @@
 import { useShopper } from "@/components/ui/ShopperProvider";
+import OrderReviewSteps, { type OrderReviewProgress } from "./OrderReviewSteps";
 import type { FraudAssessment } from "@/lib/fraudAgent";
 
 // The agent's verdict, shown under Place Order. Jen has not drawn this —
@@ -7,7 +8,9 @@ import type { FraudAssessment } from "@/lib/fraudAgent";
 //
 // The signals are listed rather than summarised because the reasoning is the
 // demo. "Declined" on its own is a payment page; "declined, and here is what
-// the agent saw" is AgentControl.
+// the agent saw" is AgentControl. Under them, each Order Review agent's
+// part in the decision, and for a held or declined order the case note,
+// which is still being written when the verdict first appears.
 
 const TONE: Record<
   FraudAssessment["decision"],
@@ -33,9 +36,13 @@ const TONE: Record<
 export default function FraudReview({
   assessment,
   orderRef,
+  steps,
+  scripted,
 }: {
   assessment: FraudAssessment;
   orderRef: string;
+  steps: OrderReviewProgress;
+  scripted: boolean;
 }) {
   const tone = TONE[assessment.decision];
   const { person } = useShopper();
@@ -50,7 +57,7 @@ export default function FraudReview({
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <p className="font-sohne text-xsmall-caps font-medium uppercase text-grays-04">
-            Fraud Triage Agent
+            Order Review
           </p>
           <p className={`font-sohne text-main font-medium ${tone.title}`}>
             {tone.label}
@@ -77,6 +84,20 @@ export default function FraudReview({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Said out loud because it is a demo beat in itself: switching off
+          any one agent in LaunchDarkly lands here rather than breaking
+          checkout. */}
+      {scripted ? (
+        <p className="border-t border-grays-hairline pt-4 font-sohne text-xsmall text-grays-04">
+          Reviewed by the scripted rules: the Order Review agent graph is off or could not be
+          reached.
+        </p>
+      ) : (
+        <div className="border-t border-grays-hairline pt-4">
+          <OrderReviewSteps steps={steps} />
+        </div>
       )}
 
       {assessment.decision === "approve" && (
