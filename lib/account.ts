@@ -1,5 +1,6 @@
 import type { LoyaltyTier, Person } from "./shopper";
 import type { CartLine } from "./cart";
+import type { ShipTo } from "./order";
 import type { Stop, TrackingRoute } from "./tracking";
 
 // The account page's data. Jen drew it for one person, Alex Rivera, a gold
@@ -343,6 +344,68 @@ const ORDERS: Record<string, PastOrder[]> = {
 
 export function ordersFor(person: Person): PastOrder[] {
   return ORDERS[person.id] ?? [];
+}
+
+// Where each shopper's orders go, prefilled at checkout. In the same city
+// as their past orders above, so the Account History agent reads an order
+// placed as them as going where their orders always go, and changing the
+// address on stage is something it notices.
+export type HomeAddress = ShipTo & { country: "US" | "NL" };
+
+const ADDRESSES: Record<string, HomeAddress> = {
+  "alex-rivera": {
+    name: "Alex Rivera",
+    street: "2210 South Lamar Blvd",
+    apartment: "Apt 312",
+    city: "Austin",
+    state: "TX",
+    zip: "78704",
+    country: "US",
+  },
+  "diane-whitaker": {
+    name: "Diane Whitaker",
+    street: "1418 Queen Anne Ave N",
+    apartment: "",
+    city: "Seattle",
+    state: "WA",
+    zip: "98109",
+    country: "US",
+  },
+  // A Dutch postcode, four digits and two letters, and the country where a
+  // US address has its state.
+  "megan-caldwell": {
+    name: "Megan Caldwell",
+    street: "Keizersgracht 214",
+    apartment: "3rd floor",
+    city: "Amsterdam",
+    state: "NL",
+    zip: "1016 DZ",
+    country: "NL",
+  },
+  "chris-donovan": {
+    name: "Chris Donovan",
+    street: "1600 Wynkoop St",
+    apartment: "Unit 4C",
+    city: "Denver",
+    state: "CO",
+    zip: "80202",
+    country: "US",
+  },
+};
+
+// Jen's Alex Morgan, for a guest, who has no address on file.
+const GUEST_ADDRESS: HomeAddress = {
+  name: "Alex Morgan",
+  street: "91 Orchard Street",
+  apartment: "Apt 4B",
+  city: "New York",
+  state: "NY",
+  zip: "10001",
+  country: "US",
+};
+
+export function addressFor(person: Person): HomeAddress {
+  return ADDRESSES[person.id] ?? GUEST_ADDRESS;
 }
 
 // Where each shopper's wishlist starts. Alex's are Jen's two: a trucker hat
