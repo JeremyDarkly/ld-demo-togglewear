@@ -35,9 +35,10 @@ type Attributes = Record<string, string | number | boolean>;
 // and how long the triggers wait for their flag to react, before giving up
 // rather than sending forever in a tab someone forgot about.
 const WAIT_LIMIT_MS = 15 * 60_000;
-// A guarded rollout's own schedule decides when it ends, and flag 07's is
-// forty minutes, so the cap on one running is well past that.
-const RUN_LIMIT_MS = 60 * 60_000;
+// A guarded rollout's own schedule decides when it ends. The shortest the
+// LaunchDarkly UI offers is an hour, and one took 59 minutes end to end, so
+// the cap on one running is well past that.
+const RUN_LIMIT_MS = 2 * 60 * 60_000;
 
 // ---------------------------------------------------------------- helpers
 
@@ -126,7 +127,7 @@ const inventoryService: Scenario = async (run) => {
   let sent = 0;
 
   while (rolloutRunning(INVENTORY_FLAG_KEY)) {
-    if (Date.now() > deadline) return "Stopped after an hour with the rollout still going.";
+    if (Date.now() > deadline) return "Stopped after two hours with the rollout still going.";
 
     const ctx = shopperContext();
     const live = await client.variation(INVENTORY_FLAG_KEY, ctx, false);
@@ -284,7 +285,7 @@ const orderPipeline: Scenario = async (run) => {
   let failingAnnounced = false;
 
   while (rolloutRunning(ORDER_FLAG_KEY)) {
-    if (Date.now() > deadline) return "Stopped after an hour with the rollout still going.";
+    if (Date.now() > deadline) return "Stopped after two hours with the rollout still going.";
 
     const elapsed = (Date.now() - start) / 1000;
     if (elapsed >= SUSTAIN_END_S && !failingAnnounced) {
@@ -414,7 +415,7 @@ function stylistUpgrade(failing: boolean): Scenario {
     let slipAnnounced = false;
 
     while (rolloutRunning(PERSONAL_STYLIST_KEY)) {
-      if (Date.now() > deadline) return "Stopped after an hour with the rollout still going.";
+      if (Date.now() > deadline) return "Stopped after two hours with the rollout still going.";
 
       const elapsed = (Date.now() - start) / 1000;
       if (failing && elapsed >= STYLIST_SUSTAIN_END_S && !slipAnnounced) {
