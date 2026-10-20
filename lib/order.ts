@@ -18,6 +18,10 @@ export type PlacedOrder = {
   // Carried through so the receipt can say the agent cleared the order. The
   // agent running and nobody seeing it is a wasted demo beat.
   riskScore: number;
+  // The scripted rules cleared it rather than the Order Review agents,
+  // because the agent graph was off or out of reach. Absent on orders
+  // stored before the agents existed.
+  scripted?: boolean;
 };
 
 export type ShipTo = {

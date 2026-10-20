@@ -8,10 +8,12 @@ export default function PaymentSummary({
   totals,
   paymentLabel,
   riskScore,
+  scripted,
 }: {
   totals: CartTotals;
   paymentLabel: string;
   riskScore: number;
+  scripted: boolean;
 }) {
   return (
     <section className="flex flex-col gap-6 rounded-[2px] border border-grays-hairline bg-grays-white p-8">
@@ -36,9 +38,12 @@ export default function PaymentSummary({
         {/* Not in Jen's design. The Order Review agents clearing the order
             is the whole point of the checkout step, and without a line here
             the only evidence they ran is a moment the audience already
-            forgot. */}
+            forgot. It also says when they did not, which is where an SE
+            who switched an agent off points to show checkout carried on. */}
         <p className="font-sohne text-xsmall text-grays-04">
-          Cleared by the Order Review agents — risk {riskScore}/100.
+          {scripted
+            ? `Cleared by the scripted review, with the Order Review agents off — risk ${riskScore}/100.`
+            : `Cleared by the Order Review agents — risk ${riskScore}/100.`}
         </p>
       </div>
     </section>

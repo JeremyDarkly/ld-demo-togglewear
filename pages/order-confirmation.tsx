@@ -46,6 +46,7 @@ export default function OrderConfirmationPage() {
                   totals={order.totals}
                   paymentLabel={order.paymentLabel}
                   riskScore={order.riskScore}
+                  scripted={Boolean(order.scripted)}
                 />
                 {/* Black here rather than the purple of Place Order, which
                     Jen reserves for the step that takes the money. */}

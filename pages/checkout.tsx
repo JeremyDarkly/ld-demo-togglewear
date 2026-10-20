@@ -95,7 +95,7 @@ export default function CheckoutPage() {
     const ref = orderNumber();
     const payment = paymentLabel(read("express-method") || read("pay-method"));
 
-    const decide = (verdict: FraudAssessment) => {
+    const decide = (verdict: FraudAssessment, byScript: boolean) => {
       // The charge, which only happens to an order the agent approved. During
       // a staged outage the new processor (flag 12) fails it, and the error
       // is what the kill switch's alert counts. Once the flag is off the same
@@ -128,6 +128,7 @@ export default function CheckoutPage() {
           shipTo,
           paymentLabel: payment,
           riskScore: verdict.score,
+          scripted: byScript,
         });
         // Approved orders only: one the fraud agent holds or declines has not
         // been placed. The total is the metric value, in dollars, after any
@@ -160,7 +161,7 @@ export default function CheckoutPage() {
         } else if (!answered) {
           answered = true;
           setScripted(Boolean(reviewEvent.scripted));
-          decide(reviewEvent.assessment);
+          decide(reviewEvent.assessment, Boolean(reviewEvent.scripted));
         }
       });
     } catch (err) {
@@ -170,7 +171,7 @@ export default function CheckoutPage() {
     // cannot; this is for when the route could not be reached at all.
     if (!answered) {
       setScripted(true);
-      decide(assessOrder(underReview(order)));
+      decide(assessOrder(underReview(order)), true);
     }
   }
 
