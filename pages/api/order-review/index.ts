@@ -55,7 +55,9 @@ import { servedByFor } from "@/lib/swagAssistant";
 // The specialists are made to call their tool before they answer, since the
 // tool is where their facts come from, and the score is added up from what
 // the tools found rather than read from a model. The decision itself is the
-// model's, with one exception: an order to a blocked ZIP is never approved.
+// model's, with one exception: an order to a blocked ZIP is always declined,
+// since that is the decline lever an SE pulls on stage and it cannot be left
+// to a model's judgement on the day.
 //
 // With the graph off (in LaunchDarkly, switching off any one of its agents
 // switches it off), LaunchDarkly unreachable, or a model failing or slow,
@@ -273,7 +275,7 @@ async function runGraph(
     const verdict = parseDecision(verdictText);
     if (!verdict) throw new Error("The decision agent did not answer in JSON");
     let decision = verdict.decision;
-    if (decision === "approve" && isBlockedZip(order.shipTo.zip)) {
+    if (decision !== "decline" && isBlockedZip(order.shipTo.zip)) {
       decision = "decline";
       span.setAttribute("orderReview.guard", "blocked-zip");
     }
@@ -282,7 +284,7 @@ async function runGraph(
       score,
       signals,
       // The scripted decline's wording when the guard overrode the model,
-      // whose summary was written for an approval.
+      // whose summary was written for a different decision.
       summary:
         decision === verdict.decision ? verdict.summary : assessOrder(underReview(order)).summary,
     };
