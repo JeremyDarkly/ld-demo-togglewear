@@ -33,11 +33,12 @@ export default function PaymentSummary({
         <p className="font-sohne text-small text-grays-04">
           Billing address matches shipping.
         </p>
-        {/* Not in Jen's design. The fraud agent clearing the order is the
-            whole point of the checkout step, and without a line here the
-            only evidence it ran is a pause the audience already forgot. */}
+        {/* Not in Jen's design. The Order Review agents clearing the order
+            is the whole point of the checkout step, and without a line here
+            the only evidence they ran is a moment the audience already
+            forgot. */}
         <p className="font-sohne text-xsmall text-grays-04">
-          Cleared by the fraud triage agent — risk {riskScore}/100.
+          Cleared by the Order Review agents — risk {riskScore}/100.
         </p>
       </div>
     </section>
