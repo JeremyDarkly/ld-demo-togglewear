@@ -1,6 +1,9 @@
 import type { LDClient, LDContext } from "@launchdarkly/node-server-sdk";
 import { LDObserve } from "@launchdarkly/observability-node";
+import { LDFeedbackKind } from "@launchdarkly/server-sdk-ai";
+import { getAiClient } from "@/lib/aiServer";
 import { rolloutRunning } from "@/lib/ldServer";
+import { PERSONAL_STYLIST_KEY } from "@/lib/personalStylist";
 import { BEST_SELLERS } from "@/lib/products";
 import type { GeneratorStatus } from "@/lib/generator/catalog";
 import {
@@ -79,13 +82,13 @@ function flush(client: LDClient) {
 // Waits for a guarded rollout to appear on the flag. Events tracked before
 // one exists are attributed to no release and quietly do nothing, so the
 // generator sends nothing until then.
-async function waitForRollout(run: Run, flag: string, flagKey: string) {
+async function waitForRollout(run: Run, what: string, flagKey: string) {
   const deadline = Date.now() + WAIT_LIMIT_MS;
   while (!rolloutRunning(flagKey)) {
     if (Date.now() > deadline) return false;
     run.update({
       state: "waiting",
-      detail: `Waiting for a guarded rollout on flag ${flag}. Start one in LaunchDarkly.`,
+      detail: `Waiting for a guarded rollout on ${what}. Start one in LaunchDarkly.`,
     });
     await sleep(2000, run.signal);
   }
@@ -111,7 +114,7 @@ const INVENTORY_SERVED_KEY = "inventory-lookups-served";
 // release guardian finds no regression and the rollout walks its ramp.
 const inventoryService: Scenario = async (run) => {
   const { client, signal } = run;
-  if (!(await waitForRollout(run, "06", INVENTORY_FLAG_KEY))) {
+  if (!(await waitForRollout(run, "flag 06", INVENTORY_FLAG_KEY))) {
     return "No guarded rollout was started on flag 06 within 15 minutes.";
   }
 
@@ -264,7 +267,7 @@ const CATASTROPHE_END_S = 480;
 
 const orderPipeline: Scenario = async (run) => {
   const { client, signal } = run;
-  if (!(await waitForRollout(run, "07", ORDER_FLAG_KEY))) {
+  if (!(await waitForRollout(run, "flag 07", ORDER_FLAG_KEY))) {
     return "No guarded rollout was started on flag 07 within 15 minutes.";
   }
 
@@ -361,6 +364,142 @@ const orderPipeline: Scenario = async (run) => {
   const outcome = await rolloutOutcome(client, ORDER_FLAG_KEY);
   return `The rollout ${outcome} after ${sent.toLocaleString()} orders.`;
 };
+
+// ------------------------------- Personal Stylist on Opus 5.5, AI Config
+
+const STYLIST_OPUS = "claude-opus-5-5";
+const ACCURACY_JUDGE_KEY = "togglewear-accuracy-judge";
+const RELEVANCE_JUDGE_KEY = "togglewear-relevance-judge";
+const ACCURACY_METRIC_KEY = "$ld:ai:judge:accuracy";
+const RELEVANCE_METRIC_KEY = "$ld:ai:judge:relevance";
+
+// Each note is a real evaluation of the Personal Stylist for a made-up
+// shopper, so the guarded rollout decides which model they get, and then
+// everything a real note records goes through the same AI SDK tracker
+// pages/api/personal-stylist uses: duration, success or error, tokens, both
+// judges' scores and the odd thumb. What it does not do is call Bedrock.
+// The scores are invented, which keeps a demo free and its outcome certain.
+//
+// Both models get the same duration and error rate. A real Opus is slower,
+// and the detector rolls back on a few hundred milliseconds if Completion
+// time is one of the metrics, so the only difference either generator
+// draws is the one each story is about: the quality of the notes.
+//
+// Healthy: Opus's notes score a few points higher with both judges from the
+// start. Failing: Opus matches Sonnet exactly for four minutes, so there is
+// genuinely nothing to find, then its scores slide over the next four, as
+// if a prompt change had made its notes ramble and get sizes wrong. Errors
+// and duration never move, which is the point: only the judges catch it.
+const STYLIST_SUSTAIN_END_S = 240;
+const STYLIST_SLIDE_END_S = 480;
+
+function stylistUpgrade(failing: boolean): Scenario {
+  return async (run) => {
+    const { client, signal } = run;
+    if (!(await waitForRollout(run, "the Personal Stylist", PERSONAL_STYLIST_KEY))) {
+      return "No guarded rollout was started on the Personal Stylist within 15 minutes.";
+    }
+    const aiClient = await getAiClient();
+    if (!aiClient) return "The LaunchDarkly AI client could not start.";
+
+    run.update({
+      state: "running",
+      detail: failing
+        ? "Writing stylist notes. Opus holds up for four minutes, then its scores slip."
+        : "Writing stylist notes on both models while the rollout advances.",
+    });
+    const start = Date.now();
+    const deadline = start + RUN_LIMIT_MS;
+    let sent = 0;
+    let slipAnnounced = false;
+
+    while (rolloutRunning(PERSONAL_STYLIST_KEY)) {
+      if (Date.now() > deadline) return "Stopped after an hour with the rollout still going.";
+
+      const elapsed = (Date.now() - start) / 1000;
+      if (failing && elapsed >= STYLIST_SUSTAIN_END_S && !slipAnnounced) {
+        slipAnnounced = true;
+        run.update({
+          detail: "Opus's notes are scoring worse. Waiting for LaunchDarkly to roll it back.",
+        });
+      }
+
+      const ctx = shopperContext();
+      const config = await aiClient.completionConfig(PERSONAL_STYLIST_KEY, ctx, {
+        enabled: false,
+      });
+      if (config.enabled) {
+        const tracker = config.createTracker();
+        const onOpus = tracker.getTrackData().variationKey === STYLIST_OPUS;
+
+        // How far Opus's scores sit from Sonnet's: a little ahead when
+        // healthy, level and then falling behind when failing.
+        let lift = onOpus ? 0.05 : 0;
+        if (failing) {
+          const progress = clamp(
+            (elapsed - STYLIST_SUSTAIN_END_S) / (STYLIST_SLIDE_END_S - STYLIST_SUSTAIN_END_S),
+            0,
+            1,
+          );
+          lift = onOpus ? -0.35 * progress : 0;
+        }
+
+        tracker.trackDuration(clamp(Math.round(gauss(2600, 450)), 1200, 4500));
+        if (Math.random() < 0.01) {
+          tracker.trackError();
+        } else {
+          tracker.trackSuccess();
+          // Real notes' sizes: Opus writes no more words but bills about
+          // four times the output tokens, which is the cost an SE can point
+          // at beside its better scores.
+          const input = randint(820, 980);
+          const output = onOpus ? randint(320, 420) : randint(60, 110);
+          tracker.trackTokens({ input, output, total: input + output });
+          tracker.trackJudgeResult({
+            judgeConfigKey: ACCURACY_JUDGE_KEY,
+            metricKey: ACCURACY_METRIC_KEY,
+            success: true,
+            sampled: true,
+            score: clamp(gauss(0.88 + lift, 0.06), 0, 1),
+          });
+          tracker.trackJudgeResult({
+            judgeConfigKey: RELEVANCE_JUDGE_KEY,
+            metricKey: RELEVANCE_METRIC_KEY,
+            success: true,
+            sampled: true,
+            score: clamp(gauss(0.85 + lift, 0.06), 0, 1),
+          });
+          // About one note in ten gets a thumb, mostly up, and more often
+          // down once a failing Opus's notes have slipped.
+          if (Math.random() < 0.1) {
+            const down = Math.random() < 0.15 - lift;
+            tracker.trackFeedback({
+              kind: down ? LDFeedbackKind.Negative : LDFeedbackKind.Positive,
+            });
+          }
+        }
+      }
+
+      sent += 1;
+      if (sent % 30 === 0) run.update({ sent });
+      await sleep(30, signal);
+    }
+
+    run.update({ sent });
+    flush(client);
+    const settled = await aiClient.completionConfig(PERSONAL_STYLIST_KEY, shopperContext(), {
+      enabled: false,
+    });
+    const outcome =
+      settled.enabled && settled.createTracker().getTrackData().variationKey === STYLIST_OPUS
+        ? "reached 100%"
+        : "was rolled back";
+    return `The rollout ${outcome} after ${sent.toLocaleString()} stylist notes.`;
+  };
+}
+
+const stylistUpgradeHealthy = stylistUpgrade(false);
+const stylistUpgradeFailing = stylistUpgrade(true);
 
 // --------------------------------------------------- 08 to 11 experiments
 //
@@ -700,6 +839,8 @@ const recommendationsOutage: Scenario = async (run) => {
 export const SCENARIOS = {
   inventoryService,
   orderPipeline,
+  stylistUpgrade: stylistUpgradeHealthy,
+  stylistRegression: stylistUpgradeFailing,
   announcementOffer,
   upsellPicks,
   expressCheckout,

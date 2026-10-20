@@ -10,6 +10,8 @@
 export type GeneratorId =
   | "inventoryService"
   | "orderPipeline"
+  | "stylistUpgrade"
+  | "stylistRegression"
   | "announcementOffer"
   | "upsellPicks"
   | "expressCheckout"
@@ -56,6 +58,34 @@ export const GENERATORS: GeneratorInfo[] = [
     purpose: "Shows LaunchDarkly catching a regression and rolling the flag back on its own.",
     before: "Start a guarded rollout on flag 07 with automatic rollback. The generator waits for it.",
     stops: "When LaunchDarkly rolls the flag back.",
+  },
+  // The Personal Stylist is an AI Config rather than a numbered flag, so its
+  // badge says AI. One story told two ways: the same upgrade from Claude
+  // Sonnet 4.6 to Claude Opus 5.5, going right or going wrong, so an SE can
+  // pick which one the room sees.
+  {
+    id: "stylistUpgrade",
+    group: "Guarded releases",
+    flag: "AI",
+    flagKey: "personal-stylist",
+    name: "Personal Stylist on Opus 5.5",
+    kind: "AI Config guarded release, healthy",
+    does: "Shoppers open product pages and get stylist notes from Sonnet or Opus. Opus's notes score a little higher with both judges, at the same speed and error rate.",
+    purpose: "Shows a model upgrade guarded by judge scores walking all the way to 100%.",
+    before: "Start a guarded rollout to Claude Opus 5.5 on the Personal Stylist's default rule. The generator waits for it.",
+    stops: "When the rollout reaches 100%.",
+  },
+  {
+    id: "stylistRegression",
+    group: "Guarded releases",
+    flag: "AI",
+    flagKey: "personal-stylist",
+    name: "Personal Stylist on Opus 5.5",
+    kind: "AI Config guarded release, fails",
+    does: "The same notes, but after four minutes Opus's judge scores start slipping, while its speed and errors stay normal.",
+    purpose: "Shows LaunchDarkly rolling back a model whose answers got worse, which errors and latency alone would never catch.",
+    before: "Start a guarded rollout to Claude Opus 5.5 on the Personal Stylist's default rule, with automatic rollback. The generator waits for it.",
+    stops: "When LaunchDarkly rolls the config back.",
   },
   {
     id: "announcementOffer",
