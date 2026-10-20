@@ -1185,24 +1185,26 @@ AI_CONFIGS = [
     # asks it anything: the prompt is filled in with the product and the
     # shopper's orders, and one call writes the note. Its two variations are
     # the same prompt on two models, which is a model upgrade, and a model
-    # upgrade is what a guarded rollout is for. Everyone starts on Sonnet; an
-    # SE starts the rollout to Opus on the default rule, with the judges,
-    # completion errors and completion time as its metrics, and the
-    # Personal Stylist generators in the Cmd+K panel supply the traffic.
+    # upgrade is what a guarded rollout is for. Everyone starts on Sonnet, and
+    # the build starts a guarded rollout to Opus on the default rule that
+    # results_generator.py walks to 100%, so a new environment already has a
+    # finished one to show. An SE who wants to run one live puts the rule
+    # back on Sonnet and uses the Personal Stylist generators in Cmd+K.
     {'config': {'config_key': 'personal-stylist',
                 'config_name': 'Personal Stylist',
                 'description': 'The "Your stylist\'s take" note on every product page: a size, how '
                                'it fits and what to wear it with, written for the shopper looking '
                                'at it from the product and their past orders. Two variations, '
                                'the same prompt on Claude Sonnet 4.6 (everyone today) and Claude '
-                               'Opus 5.5 (the upgrade). Demo it: start a guarded rollout to '
-                               'Claude Opus 5.5 on the default rule, with the Accuracy and '
-                               'Relevance judges, Completion error count and Completion time as '
-                               'metrics and automatic rollback on, then start the Personal '
-                               'Stylist generator in the Cmd+K panel. The healthy one walks the '
-                               'rollout to 100%; the failing one has Opus\'s judge scores slip '
-                               'until LaunchDarkly rolls it back. The model under each note says '
-                               'which one wrote it.',
+                               'Opus 5.5 (the upgrade). The build already ran a guarded rollout '
+                               'from Sonnet to Opus, finished at 100%, to show as it is. To run '
+                               'one live: set the default rule back to Claude Sonnet 4.6, start '
+                               'a guarded rollout to Claude Opus 5.5 with Accuracy, Relevance and '
+                               'Completion error count as metrics and automatic rollback on, '
+                               'then start a Personal Stylist generator in the Cmd+K panel. The '
+                               'Succeeds one walks the rollout to 100%; the Rolls back one has '
+                               'Opus\'s judge scores slip until LaunchDarkly rolls it back. The '
+                               'model under each note says which one wrote it.',
                 'tags': ['ai-config', 'personal-stylist', 'togglewear']},
      'variations': [
          {'ai_config_version_key': 'claude-sonnet-4-6',
@@ -1224,5 +1226,20 @@ AI_CONFIGS = [
      'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0},
                 {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0}],
      'environment': 'production',
-     'fallthrough': 'claude-sonnet-4-6'},
+     'fallthrough': 'claude-sonnet-4-6',
+     # Four even steps rather than LDPlatform's 1/5/10/25/50, which keeps Opus
+     # on 1% for a fifth of the rollout, too few notes for the judge charts
+     # to read as anything. Ten minutes in all, like flag 06's, so the build
+     # waits no longer for it; the UI's shortest is an hour. Completion time
+     # is not a metric because LaunchDarkly measures it per request, not per
+     # user, and a guarded rollout's metrics have to share a context kind.
+     'guarded_rollout': {'control': 'claude-sonnet-4-6',
+                         'target': 'claude-opus-5-5',
+                         'metrics': ['ld_autogen__ai-judge-accuracy',
+                                     'ld_autogen__ai-judge-relevance',
+                                     'ld_autogen__ai-completion-error'],
+                         'stages': [{'allocation': 5000, 'durationMillis': 150000},
+                                    {'allocation': 10000, 'durationMillis': 150000},
+                                    {'allocation': 25000, 'durationMillis': 150000},
+                                    {'allocation': 50000, 'durationMillis': 150000}]}},
 ]

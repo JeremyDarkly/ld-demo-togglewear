@@ -13,6 +13,7 @@ import json
 import os
 from dotenv import load_dotenv
 import subprocess
+import time
 import sys
 # Load environment variables from .env file
 load_dotenv()
@@ -81,10 +82,11 @@ class DemoBuilder:
     # Synthetic traffic for the guarded releases and the experiments, in a
     # subprocess so the SDK client it opens is torn down with it.
     #
-    # Has to run after create_flags: both generators poll for their flag's
-    # rollout and give up if it never turns up.  Blocks while they work, which
-    # is around ten minutes — flag 07 is rolled back after six to eight, and
-    # flag 06 takes the full ten to walk its rollout up to 100%.
+    # Has to run after create_flags and create_ai_configs: the guarded release
+    # generators poll for their rollout and give up if it never turns up.
+    # Blocks while they work, which is around ten minutes — flag 07 is rolled
+    # back after six to eight, and flag 06 and the Personal Stylist take the
+    # full ten to walk their rollouts up to 100%.
     def generate_results(self):
         print("Generating demo results — allow around 10 minutes", end="...\n")
         env = os.environ.copy()
@@ -246,9 +248,37 @@ class DemoBuilder:
             # availability, so the browser cannot see one until it is asked for.
             if spec.get("client_side"):
                 self.ldproject.update_flag_client_side_availability(key)
+            if spec.get("guarded_rollout"):
+                self.start_ai_config_guarded_rollout(key, env, spec["guarded_rollout"])
             print(f"  AI Config created: {spec['config']['config_name']}")
         print("Done")
         self.ai_config_created = True
+
+    # An AI Config's guarded rollout, started at build time for
+    # results_generator.py to walk to 100%. Its metrics are the ones
+    # LaunchDarkly generates itself for AI Configs, which it makes along with
+    # a project's first AI Config, so they are waited for rather than assumed.
+    def start_ai_config_guarded_rollout(self, key, env, rollout):
+        missing = list(rollout["metrics"])
+        for _ in range(12):
+            missing = [m for m in missing if not self.ldproject.metric_exists(m)]
+            if not missing:
+                break
+            time.sleep(5)
+        if missing:
+            print(f"  Error: no guarded rollout on {key}, metrics not found: {', '.join(missing)}")
+            return
+        res = self.ldproject.add_ai_agent_guarded_rollout(
+            key,
+            env,
+            metrics=rollout["metrics"],
+            rollback=True,
+            control_key=rollout["control"],
+            target_key=rollout["target"],
+            stages=rollout["stages"],
+        )
+        if res is not None and res.status_code < 300:
+            print(f"  Guarded rollout started on {key}: {rollout['control']} to {rollout['target']}")
 
     # Create and run all the experiments (definitions live in the EXPERIMENTS table above)
     def create_and_run_experiments(self):
