@@ -866,14 +866,15 @@ EXPERIMENTS = [
 # the model, its length and the style it asks for.
 _SWAG_ASSISTANT_GROUNDING = (
     "Use your tools rather than memory for anything about the catalog or this shopper: "
-    "search-products to find items, get-product-details for sizes, fit and materials, and "
-    "get-member-perks for this shopper's discounts, points and rewards. Only mention products "
-    "a tool returned, by their exact name, and never make up a price, size, color or stock "
-    "level.\n\n"
+    "search-products to find items, get-product-details for sizes, fit and materials, "
+    "get-member-perks for this shopper's discounts, points and rewards, and get-order-status "
+    "for their recent orders and deliveries. Only mention products and orders a tool returned, "
+    "and never make up a price, size, color, stock level, date or tracking number.\n\n"
     "Store policies: shipping is free on every order and arrives in 3 to 5 business days, and "
     "unworn items can be returned within 30 days.\n\n"
-    "If a question has nothing to do with shopping at ToggleWear, say in one sentence that "
-    "you can only help with that."
+    "Questions about this shopper's own orders, account and perks are part of shopping here. "
+    "If a question has nothing to do with ToggleWear, say in one sentence that you can only "
+    "help with shopping at ToggleWear."
 )
 
 # {{shopper_name}} and {{loyalty_tier}} are filled in by the storefront for
@@ -965,6 +966,14 @@ AI_TOOLS = [
     {'tool_key': 'get-member-perks',
      'description': 'Returns what this shopper gets: their loyalty tier, member discount, the '
                     'codes they can use, loyalty points and the next reward, and shipping.',
+     'schema': {'type': 'object',
+                'properties': {},
+                'additionalProperties': False,
+                'required': []}},
+    {'tool_key': 'get-order-status',
+     'description': 'Returns this shopper\'s recent orders: what was in each, its status, the '
+                    'carrier and tracking number, the latest delivery update and when it '
+                    'arrives or arrived. Guests have no orders.',
      'schema': {'type': 'object',
                 'properties': {},
                 'additionalProperties': False,
@@ -1061,7 +1070,8 @@ AI_CONFIGS = [
                                'right). Everyone gets Quick Answers (Claude Haiku 4.5, one to '
                                'three sentences); Gold and Platinum members get Detailed Answers '
                                '(Claude Sonnet 4.6, fuller answers that compare options and '
-                               'explain fit). Both call three tools against the live catalog, '
+                               'explain fit). Both call four tools against the live catalog and '
+                               'the shopper\'s orders, '
                                'and the Accuracy and Relevance judges score every reply. '
                                'Duration, tokens, tool calls, judge scores and shoppers\' thumbs '
                                'up or down appear per variation on the Monitoring tab. Demo it: '
@@ -1099,7 +1109,7 @@ AI_CONFIGS = [
                 "markdown, headings or bullet points, and separate paragraphs with a blank "
                 "line.\n\n"
               + _SWAG_ASSISTANT_GROUNDING)}]}],
-     'tools': ['search-products', 'get-product-details', 'get-member-perks'],
+     'tools': ['search-products', 'get-product-details', 'get-member-perks', 'get-order-status'],
      'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0},
                 {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0}],
      'environment': 'production',
