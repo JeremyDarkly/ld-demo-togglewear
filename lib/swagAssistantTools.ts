@@ -1,12 +1,13 @@
 import type { LDContext } from "@launchdarkly/node-server-sdk";
 import type { ToolRegistry } from "@launchdarkly/server-sdk-ai";
-import { tierStatusFor } from "@/lib/account";
+import { ordersFor, tierStatusFor } from "@/lib/account";
 import {
   LOYALTY_DISCOUNT,
   WELCOME_CODE,
   WELCOME_DISCOUNT,
   filterLabel,
   memberPriceUsd,
+  productBySlug,
   productsFor,
   type Product,
 } from "@/lib/products";
@@ -62,6 +63,16 @@ function matches(product: Product, terms: string[]) {
 }
 
 const MAX_RESULTS = 6;
+
+// "2026-03-17T12:00:00" as "Mar 17, 2026". The midday time in the data is
+// there so this cannot slip to the day before (lib/account.ts says why).
+function readableDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export type SwagAssistantTools = {
   registry: ToolRegistry;
@@ -180,6 +191,43 @@ export function swagAssistantTools(context: LDContext): SwagAssistantTools {
         points_to_next_reward: status.atTop
           ? 0
           : Math.max(status.target - status.points, 0),
+      };
+    },
+
+    // The same recent orders the account page lists, so the assistant and
+    // the Recent Orders card can never disagree about where a parcel is.
+    "get-order-status": () => {
+      if (isGuest(person)) {
+        return {
+          signed_in: false,
+          orders: [],
+          note: "Guests have no order history here. Signing in from the account menu shows their orders.",
+        };
+      }
+
+      return {
+        signed_in: true,
+        orders: ordersFor(person).map((order) => {
+          const latest = order.events[order.events.length - 1];
+          const delivered = order.status === "Delivered";
+          return {
+            order_number: order.ref,
+            placed: order.placedOn.replace(/^Placed on /, ""),
+            status: order.status,
+            items: order.lines.map((line) => ({
+              name: productBySlug(line.slug)?.name ?? line.slug,
+              size: line.size,
+              quantity: line.quantity,
+            })),
+            carrier: order.carrier,
+            tracking_number: order.tracking,
+            destination: order.destination,
+            [delivered ? "delivered_on" : "estimated_arrival"]: readableDate(order.arrivesOn),
+            latest_update: latest
+              ? `${latest.label}, ${latest.where}, ${latest.on}`
+              : null,
+          };
+        }),
       };
     },
   };
