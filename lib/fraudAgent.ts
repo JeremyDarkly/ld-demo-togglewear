@@ -1,11 +1,10 @@
-// The fraud triage agent that sits in front of Place Order.
+// The fraud review that sits in front of Place Order.
 //
-// This is a scripted stand-in, the same shape as the swag assistant: real
-// inputs, deterministic reasoning, no model call yet. When the LaunchDarkly
-// project exists the scoring below gets replaced by an AI Config, and the
-// four knobs marked FLAG become the demo — change the threshold and watch a
-// clean order start getting held, or kill the agent outright and watch every
-// order sail through.
+// Orders are reviewed by the Order Review agent graph in LaunchDarkly
+// (pages/api/order-review). This file is its rules and its fallback: the
+// agents' tools find their signals with the checks below, and with the graph
+// switched off, or the models unreachable, assessOrder reviews the order
+// itself, the same shape as the swag assistant's scripted replies.
 //
 // Deterministic on purpose. An SE has to be able to produce any outcome on
 // stage on the first try, so each one has its own lever and each lever works
@@ -36,9 +35,9 @@ export type OrderUnderReview = {
   maxLineQuantity: number;
 };
 
-// FLAG: both thresholds. Sliding REVIEW_AT down to 30 holds the ordinary
-// order, which is the fastest way to show a config change landing without a
-// deploy.
+// The fallback's thresholds. The Order Decision agent's own are in its
+// instructions in LaunchDarkly, as the same numbers, so sliding its review
+// threshold down to 30 holds the ordinary order without a deploy.
 //
 // The two soft signals are weighted at 45 each so that either one on its own
 // clears REVIEW_AT, and the two together clear DECLINE_AT. Anything less and
@@ -48,28 +47,38 @@ const REVIEW_AT = 40;
 const DECLINE_AT = 70;
 const SOFT_SIGNAL_POINTS = 45;
 
-// FLAG: the value above which an order is worth a second look.
+// The value above which an order is worth a second look.
 const HIGH_VALUE_USD = 250;
 
-// FLAG: the quantity that reads as resale rather than a personal order.
+// The quantity that reads as resale rather than a personal order.
 const BULK_QUANTITY = 5;
 
-// FLAG: the blocklist. One entry, because it only exists to be the lever.
+// The blocklist. One entry, because it only exists to be the lever.
 const BLOCKED_ZIPS = ["99999"];
 
 // How long the agent appears to think. Long enough that an audience sees it
 // happen, short enough that nobody waits.
 export const ASSESS_MS = 1400;
 
-export function assessOrder(order: OrderUnderReview): FraudAssessment {
-  const signals: RiskSignal[] = [];
+export function isBlockedZip(zip: string) {
+  return BLOCKED_ZIPS.includes(zip.trim());
+}
 
-  if (BLOCKED_ZIPS.includes(order.zip.trim())) {
-    signals.push({
+// The checks behind the Order Review agents' tools (lib/orderReviewTools.ts)
+// as well as the scripted review below, so the agents and their fallback
+// always find the same signals in the same order.
+export function shippingSignals(order: OrderUnderReview): RiskSignal[] {
+  if (!isBlockedZip(order.zip)) return [];
+  return [
+    {
       label: `Shipping ZIP ${order.zip.trim()} matches a known reshipping address`,
       points: 80,
-    });
-  }
+    },
+  ];
+}
+
+export function paymentSignals(order: OrderUnderReview): RiskSignal[] {
+  const signals: RiskSignal[] = [];
 
   if (order.total > HIGH_VALUE_USD) {
     signals.push({
@@ -85,13 +94,24 @@ export function assessOrder(order: OrderUnderReview): FraudAssessment {
     });
   }
 
-  const score = Math.min(
+  return signals;
+}
+
+export function riskScore(signals: RiskSignal[]) {
+  return Math.min(
     100,
     signals.reduce((sum, signal) => sum + signal.points, 0),
   );
+}
 
-  const decision: FraudDecision =
-    score >= DECLINE_AT ? "decline" : score >= REVIEW_AT ? "review" : "approve";
+export function decisionFor(score: number): FraudDecision {
+  return score >= DECLINE_AT ? "decline" : score >= REVIEW_AT ? "review" : "approve";
+}
+
+export function assessOrder(order: OrderUnderReview): FraudAssessment {
+  const signals = [...shippingSignals(order), ...paymentSignals(order)];
+  const score = riskScore(signals);
+  const decision = decisionFor(score);
 
   return { decision, score, signals, summary: SUMMARIES[decision] };
 }
