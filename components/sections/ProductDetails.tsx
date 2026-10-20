@@ -4,6 +4,7 @@ import { LDObserve } from "@launchdarkly/observability";
 import SectionPanel from "@/components/layout/SectionPanel";
 import { useCart } from "@/components/cart/CartProvider";
 import SizeGuideDialog, { SizeGuideBoundary } from "@/components/ui/SizeGuideDialog";
+import StylistNote from "@/components/sections/StylistNote";
 import { useSavedItems } from "@/components/account/SavedItemsProvider";
 import {
   formatPrice,
@@ -256,6 +257,8 @@ export default function ProductDetails({
             </div>
           </div>
         )}
+
+        <StylistNote slug={product.slug} />
 
         <div className="flex flex-col gap-3">
           <button
