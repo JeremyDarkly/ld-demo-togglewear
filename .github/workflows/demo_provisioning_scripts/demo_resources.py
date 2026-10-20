@@ -1029,6 +1029,40 @@ AI_TOOLS = [
                 'properties': {},
                 'additionalProperties': False,
                 'required': []}},
+
+    # The Order Review agents' tools (lib/orderReviewTools.ts). None takes an
+    # argument: each reads the order being reviewed, which the storefront
+    # binds to the tool for that one review. The rules and points they apply
+    # are fixed in code, so every lever at checkout works the same way every
+    # time and the agents reason from the same facts.
+    {'tool_key': 'get-order-details',
+     'description': 'Returns the order under review: its items and quantities, the total, the '
+                    'payment method, the shipping address and who placed it.',
+     'schema': {'type': 'object',
+                'properties': {},
+                'additionalProperties': False,
+                'required': []}},
+    {'tool_key': 'check-payment-risk',
+     'description': 'Checks the order\'s value and quantities against the store\'s payment '
+                    'rules and returns any risk signals with their points.',
+     'schema': {'type': 'object',
+                'properties': {},
+                'additionalProperties': False,
+                'required': []}},
+    {'tool_key': 'check-shipping-address',
+     'description': 'Checks the shipping address against known reshipping addresses and returns '
+                    'any risk signal with its points.',
+     'schema': {'type': 'object',
+                'properties': {},
+                'additionalProperties': False,
+                'required': []}},
+    {'tool_key': 'get-account-history',
+     'description': 'Returns the account that placed the order: whether they are signed in, '
+                    'their loyalty tier, when they joined and their past orders.',
+     'schema': {'type': 'object',
+                'properties': {},
+                'additionalProperties': False,
+                'required': []}},
 ]
 
 # AI Configs — each one is created, then its variations, then the tools and
@@ -1242,4 +1276,158 @@ AI_CONFIGS = [
                                     {'allocation': 10000, 'durationMillis': 150000},
                                     {'allocation': 25000, 'durationMillis': 150000},
                                     {'allocation': 50000, 'durationMillis': 150000}]}},
+]
+
+
+# ---- The Order Review agents ----
+#
+# Six agent-mode AI Configs that review every order placed at checkout,
+# joined up by the Order Review agent graph below and run by
+# pages/api/order-review. Order Intake reads the order and hands it to three
+# specialists, who work at the same time; the Decision agent weighs their
+# findings and approves, holds or declines it; and the Case Note agent writes
+# the note for the review team, only for an order that was not approved.
+#
+# The specialists' tools apply fixed rules (lib/orderReviewTools.ts), so the
+# levers at checkout always land: a total over $250 or five of one item is
+# held, ZIP 99999 is declined. What the models own is reading the facts and
+# saying what they mean, and the Decision agent's thresholds, which are in its
+# instructions so an SE can change them here and watch an ordinary order get
+# held. The storefront refuses to approve a blocked ZIP whatever the agents
+# say.
+#
+# Switching any one of them off switches the whole graph off, and checkout
+# falls back to its scripted review.
+
+# variation key, variation name, model ID
+_AGENT_MODELS = {_HAIKU: ('claude-haiku-4-5', 'Claude Haiku 4.5', _HAIKU_ID),
+                 _SONNET: ('claude-sonnet-4-6', 'Claude Sonnet 4.6', _SONNET_ID)}
+
+
+# Temperature 0 because the same order should get the same review every time
+# it is placed in a demo.
+def _agent(key, name, description, model, max_tokens, instructions, tools=()):
+    variation_key, variation_name, model_id = _AGENT_MODELS[model]
+    return {'config': {'config_key': key,
+                       'config_name': name,
+                       'description': description,
+                       'mode': 'agent',
+                       'tags': ['ai-config', 'agent', 'order-review', 'togglewear']},
+            'variations': [
+                {'ai_config_version_key': variation_key,
+                 'ai_model_config_key': model,
+                 'ai_config_version_name': variation_name,
+                 'description': 'Reviews every order today.',
+                 'model': {'modelName': model_id,
+                           'parameters': {'maxTokens': max_tokens, 'temperature': 0}},
+                 'instructions': instructions}],
+            'tools': list(tools),
+            'environment': 'production',
+            'fallthrough': variation_key}
+
+_ORDER_REVIEW_OPENING = (
+    "You are part of ToggleWear's Order Review team, a set of agents that checks every order "
+    "placed in LaunchDarkly's merch store before it is charged. "
+)
+
+AGENT_CONFIGS = [
+    _agent('order-intake-agent', 'Order Intake',
+           'The first of the six Order Review agents. Reads the order with get-order-details and '
+           'writes the short case summary the three specialists start from. Demo it: open the '
+           'Order Review agent graph to see where it sits.',
+           _HAIKU, 300,
+           _ORDER_REVIEW_OPENING
+           + "You take each new order first. Call get-order-details, then write a case summary "
+             "of two or three sentences for the specialists who check it next: what was "
+             "ordered, the total, the payment method, where it ships and whether a signed-in "
+             "member or a guest placed it. State facts only; judging the risk is the "
+             "specialists' job. Plain text, no markdown.",
+           tools=['get-order-details']),
+    _agent('payment-risk-agent', 'Payment Risk',
+           'Order Review specialist. Checks the order\'s value and quantities with '
+           'check-payment-risk. Demo it: put more than $250 in the cart, or five of one item, '
+           'and this is the agent that flags it.',
+           _HAIKU, 200,
+           _ORDER_REVIEW_OPENING
+           + "You are the payment risk specialist. Call check-payment-risk and report what it "
+             "found in one or two sentences, giving each signal with its points. If it found "
+             "nothing, say the value and quantities look like an ordinary order. Report the "
+             "points exactly as the tool gives them. Plain text, no markdown.",
+           tools=['check-payment-risk']),
+    _agent('shipping-check-agent', 'Shipping Check',
+           'Order Review specialist. Checks the shipping address with check-shipping-address. '
+           'Demo it: change the ZIP code at checkout to 99999, a known reshipping address, and '
+           'this is the agent that flags it.',
+           _HAIKU, 200,
+           _ORDER_REVIEW_OPENING
+           + "You are the shipping specialist. Call check-shipping-address and report what it "
+             "found in one or two sentences, giving the signal with its points. If it found "
+             "nothing, say the address looks ordinary. Report the points exactly as the tool "
+             "gives them. Plain text, no markdown.",
+           tools=['check-shipping-address']),
+    _agent('account-history-agent', 'Account History',
+           'Order Review specialist. Compares the order with the account that placed it, using '
+           'get-account-history. It adds context rather than risk points: a returning Gold '
+           'member reads differently from a first-time guest.',
+           _HAIKU, 200,
+           _ORDER_REVIEW_OPENING
+           + "You are the account history specialist. Call get-account-history and say in one "
+             "or two sentences what the account tells the team about this order: how long "
+             "they have been a customer, their tier, and how this order compares with their "
+             "past ones. A guest has no history, which is ordinary in itself. You add context "
+             "only and never add risk points. Plain text, no markdown.",
+           tools=['get-account-history']),
+    _agent('fraud-decision-agent', 'Order Decision',
+           'Weighs the three specialists\' findings and approves, holds or declines the order, '
+           'with the explanation the shopper sees at checkout. Demo it: lower the review '
+           'threshold in these instructions from 40 to 30 and an ordinary order with any signal '
+           'at all starts getting held, with no deploy.',
+           _SONNET, 400,
+           _ORDER_REVIEW_OPENING
+           + "You make the call on each order once the three specialists have reported. Add "
+             "up the risk points they report; the account history specialist adds none. Then "
+             "decide:\n"
+             "- 70 points or more: decline\n"
+             "- 40 points or more: review, which holds the order for a person on the team\n"
+             "- under 40: approve\n\n"
+             "Reply with JSON only, in this shape: {\"decision\": \"approve\" | \"review\" | "
+             "\"decline\", \"score\": <total points, at most 100>, \"summary\": \"<one or two "
+             "sentences to the shopper>\"}. The summary is shown to the shopper at checkout: "
+             "say what happens to their order next, and for a held or declined order what "
+             "caught it, in plain words, without naming the agents or the points. Nobody is "
+             "charged for an order that is held or declined.\n\n"
+             + _snippet('togglewear-brand-voice')),
+    _agent('case-note-agent', 'Case Note',
+           'The last Order Review agent, which only runs when an order is held or declined. '
+           'Writes the note a person on the review team picks the order up from.',
+           _HAIKU, 300,
+           _ORDER_REVIEW_OPENING
+           + "An order has just been held or declined, and you write the case note a person on "
+             "the review team will pick it up from. In three or four sentences: the decision, "
+             "each signal that drove it and its points, what the account history adds, and the "
+             "one thing the reviewer should check first. Write for a colleague, not the "
+             "shopper. Plain text, no markdown."),
+]
+
+
+# Agent graphs — LDPlatform.create_agent_graph, after AGENT_CONFIGS, since
+# every node has to exist first. root is where a review starts; each edge
+# is [key, source config, target config].
+AGENT_GRAPHS = [
+    {'graph_key': 'order-review',
+     'graph_name': 'Order Review',
+     'description': 'Reviews every order placed at checkout. Order Intake hands the order to '
+                    'three specialists at once, Payment Risk, Shipping Check and Account '
+                    'History; the Order Decision agent weighs their findings; and Case Note '
+                    'writes up any order that was held or declined. Its Monitoring tab shows '
+                    'each agent\'s speed, errors and handoffs, and how many orders took the '
+                    'case note path.',
+     'root': 'order-intake-agent',
+     'edges': [['intake-to-payment', 'order-intake-agent', 'payment-risk-agent'],
+               ['intake-to-shipping', 'order-intake-agent', 'shipping-check-agent'],
+               ['intake-to-account', 'order-intake-agent', 'account-history-agent'],
+               ['payment-to-decision', 'payment-risk-agent', 'fraud-decision-agent'],
+               ['shipping-to-decision', 'shipping-check-agent', 'fraud-decision-agent'],
+               ['account-to-decision', 'account-history-agent', 'fraud-decision-agent'],
+               ['decision-to-case-note', 'fraud-decision-agent', 'case-note-agent']]},
 ]
