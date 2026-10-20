@@ -9,6 +9,7 @@ A resource that does not fit its table's shape can name a method here with
 """
 
 import LDPlatform
+import json
 import os
 from dotenv import load_dotenv
 import subprocess
@@ -26,6 +27,9 @@ from demo_resources import (
     SEGMENTS,
     CONTEXT_KINDS,
     EXPERIMENTS,
+    AI_MODEL_CONFIGS,
+    AI_TOOLS,
+    AI_CONFIGS,
 )
 
 
@@ -67,6 +71,8 @@ class DemoBuilder:
         self.create_metrics()
         self.create_metric_groups()
         self.create_flags()
+        # After the segments, which the Swag Assistant's member rule matches.
+        self.create_ai_configs()
         # After the flags, which each experiment takes over, and before the
         # results, so the generated traffic lands in a running iteration.
         self.create_and_run_experiments()
@@ -184,6 +190,58 @@ class DemoBuilder:
             self.ldproject.create_context(context_key, for_experiment=for_experiment)
         print("Done")
         self.contexts_created = True
+
+    # Create the AI model configs, tools and AI Configs (definitions live in
+    # the AI_MODEL_CONFIGS, AI_TOOLS and AI_CONFIGS tables above)
+    def create_ai_configs(self):
+        if not self.segments_created:
+            print("Error: Segments not created")
+            return
+        print("Creating AI model configs...")
+        for spec in AI_MODEL_CONFIGS:
+            self.ldproject.create_custom_model_config(**spec)
+
+        print("Creating AI tools...")
+        # A variation attaches a tool at a version, which is whatever the
+        # create call hands back.
+        tool_versions = {}
+        for spec in AI_TOOLS:
+            response = self.ldproject.create_ai_tool(**spec)
+            try:
+                tool_versions[spec["tool_key"]] = json.loads(response.text).get("version", 1)
+            except (json.JSONDecodeError, AttributeError):
+                tool_versions[spec["tool_key"]] = 1
+
+        print("Creating AI Configs...")
+        for spec in AI_CONFIGS:
+            key = spec["config"]["config_key"]
+            env = spec["environment"]
+            self.ldproject.create_ai_config(**spec["config"])
+            for variation in spec["variations"]:
+                self.ldproject.create_ai_config_versions(key, **variation)
+                variation_key = variation["ai_config_version_key"]
+                if spec.get("tools"):
+                    self.ldproject.patch_variation_tools(
+                        key,
+                        variation_key,
+                        [{"key": t, "version": tool_versions.get(t, 1)} for t in spec["tools"]],
+                    )
+                if spec.get("judges"):
+                    self.ldproject.attach_judges_to_variation(key, variation_key, spec["judges"])
+            for variation_key, clauses in spec.get("rules", []):
+                self.ldproject.update_ai_config_targeting_add_rule(
+                    key, env, self.ldproject.get_ai_config_variation_id(key, variation_key), clauses
+                )
+            self.ldproject.update_ai_config_targeting(
+                key, env, self.ldproject.get_ai_config_variation_id(key, spec["fallthrough"])
+            )
+            # An AI Config is a flag underneath, and the flag toggle is what
+            # switches it on: LDPlatform.toggle_ai_config sends an instruction
+            # the AI Config targeting API no longer accepts.
+            self.ldproject.toggle_flag(key, "on", env)
+            print(f"  AI Config created: {spec['config']['config_name']}")
+        print("Done")
+        self.ai_config_created = True
 
     # Create and run all the experiments (definitions live in the EXPERIMENTS table above)
     def create_and_run_experiments(self):

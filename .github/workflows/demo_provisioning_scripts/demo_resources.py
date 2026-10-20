@@ -11,6 +11,10 @@ Tables:
     SEGMENTS        -> created per environment listed, with shared rules
     CONTEXT_KINDS   -> [context_key, for_experiment]
     EXPERIMENTS     -> toggled flag, metrics, create_experiment kwargs
+    AI_MODEL_CONFIGS -> LDPlatform.create_custom_model_config(**spec)
+    AI_TOOLS        -> LDPlatform.create_ai_tool(**spec)
+    AI_CONFIGS      -> create_ai_config(**spec["config"]), its variations,
+                       tools, judges, targeting, then switched on
 
 Entries with {"custom": "<method name>"} defer to a hand-written method on
 DemoBuilder for cases that don't fit the generic shape.
@@ -843,4 +847,264 @@ EXPERIMENTS = [
                     'primary_key': 'referral-link-copied',
                     'attributes': ['device', 'location']},
      'start_iteration': True},
+]
+
+# ==========================================================================
+# AI Configs
+# ==========================================================================
+#
+# The swag assistant, the chat panel at the bottom right of every page. It is
+# a completion-mode AI Config, answering one question at a time from a
+# prompt; the fraud agent is where agent mode and a multi-agent pipeline come
+# in. The storefront's side is pages/api/swag-assistant.
+#
+# Everything about a reply that someone tuning it would want to change lives
+# here rather than in the app: the model and its parameters, the prompt, the
+# tools it may call and the judges that score it.
+
+# Shared by both variations, so the two differ only where they are meant to:
+# the model, its length and the style it asks for.
+_SWAG_ASSISTANT_GROUNDING = (
+    "Use your tools rather than memory for anything about the catalog or this shopper: "
+    "search-products to find items, get-product-details for sizes, fit and materials, and "
+    "get-member-perks for this shopper's discounts, points and rewards. Only mention products "
+    "a tool returned, by their exact name, and never make up a price, size, color or stock "
+    "level.\n\n"
+    "Store policies: shipping is free on every order and arrives in 3 to 5 business days, and "
+    "unworn items can be returned within 30 days.\n\n"
+    "If a question has nothing to do with shopping at ToggleWear, say in one sentence that "
+    "you can only help with that."
+)
+
+# {{shopper_name}} and {{loyalty_tier}} are filled in by the storefront for
+# each request (pages/api/swag-assistant/index.ts).
+_SWAG_ASSISTANT_OPENING = (
+    "You are the Swag Assistant for ToggleWear, LaunchDarkly's merch store. You are talking "
+    "with {{shopper_name}}, whose loyalty tier is {{loyalty_tier}}.\n\n"
+)
+
+# What the judges are told about the store, so a reply quoting the shipping
+# policy is checked against the same policy the assistant was given.
+_JUDGE_OPENING = (
+    "You evaluate replies from the ToggleWear Swag Assistant, the shopping assistant in "
+    "LaunchDarkly's merch store. The message history shows the conversation and, on lines "
+    "starting \"tool:\", the catalog and account data the assistant's tools returned for "
+    "this reply.\n\n"
+)
+
+# Bedrock only serves these two Claude models through cross-region inference
+# profiles, whose ids carry a us. prefix, and refuses the bare model id.
+# LaunchDarkly's built-in Bedrock models use the bare id, and a variation's
+# model name is always its model config's id, so the built-ins cannot be
+# pointed at the profile. Hence a model config of our own for each.
+#
+# The variations name a model config by its key; the id is the model name the
+# AI SDK hands Bedrock. Keys cannot hold the colon in Haiku's id, hence two
+# names for each.
+_HAIKU = 'claude-haiku-4-5-us'
+_HAIKU_ID = 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
+_SONNET = 'claude-sonnet-4-6-us'
+_SONNET_ID = 'us.anthropic.claude-sonnet-4-6'
+
+# Model configs — LDPlatform.create_custom_model_config(**spec)
+#
+# Prices are Bedrock's per-token rates, the same LaunchDarkly's built-in
+# entries for these models carry, so the Monitoring tab's cost is real.
+AI_MODEL_CONFIGS = [
+    {'model_key': _HAIKU,
+     'model_id': _HAIKU_ID,
+     'model_name': 'Claude Haiku 4.5 (Bedrock, US)',
+     'provider': 'Bedrock',
+     'cost_per_input_token': 0.000001,
+     'cost_per_output_token': 0.000005,
+     'tags': ['bedrock', 'togglewear']},
+    {'model_key': _SONNET,
+     'model_id': _SONNET_ID,
+     'model_name': 'Claude Sonnet 4.6 (Bedrock, US)',
+     'provider': 'Bedrock',
+     'cost_per_input_token': 0.000003,
+     'cost_per_output_token': 0.000015,
+     'tags': ['bedrock', 'togglewear']},
+]
+
+# Tools — LDPlatform.create_ai_tool(**spec)
+#
+# What the swag assistant can look up. LaunchDarkly holds each tool's name,
+# description and arguments, which is what the model is shown; the storefront
+# holds what it does (lib/swagAssistantTools.ts), and the keys have to match.
+# All three read the catalogue as the shopper sees it, so the assistant can
+# never tell a non-member about the members-only crewneck.
+AI_TOOLS = [
+    {'tool_key': 'search-products',
+     'description': 'Searches the ToggleWear catalog and returns matching products with their '
+                    'prices, sizes and whether they are new. Call it with no arguments to list '
+                    'everything.',
+     'schema': {'type': 'object',
+                'properties': {
+                    'query': {'type': 'string',
+                              'description': 'Words describing what the shopper wants, such as '
+                                             '"warm hoodie" or "gift for a coworker".'},
+                    'category': {'type': 'string', 'enum': ['Apparel', 'Accessories'],
+                                 'description': 'Only products in this category.'},
+                    'max_price_usd': {'type': 'number',
+                                      'description': 'Only products at or under this price.'},
+                    'new_only': {'type': 'boolean',
+                                 'description': 'Only products from the latest drop.'}},
+                'additionalProperties': False,
+                'required': []}},
+    {'tool_key': 'get-product-details',
+     'description': 'Returns one product\'s full description, features, colors, sizes and size '
+                    'chart. Use it to recommend a size or explain the fit.',
+     'schema': {'type': 'object',
+                'properties': {
+                    'slug': {'type': 'string',
+                             'description': 'The product\'s slug, as returned by '
+                                            'search-products.'}},
+                'additionalProperties': False,
+                'required': ['slug']}},
+    {'tool_key': 'get-member-perks',
+     'description': 'Returns what this shopper gets: their loyalty tier, member discount, the '
+                    'codes they can use, loyalty points and the next reward, and shipping.',
+     'schema': {'type': 'object',
+                'properties': {},
+                'additionalProperties': False,
+                'required': []}},
+]
+
+# AI Configs — each one is created, then its variations, then the tools and
+# judges on every variation, then its targeting, and finally switched on.
+#
+#   tools        tool keys from AI_TOOLS, attached to every variation
+#   judges       judge configs to score every variation's replies; they have
+#                to be created first, which is why they lead the table
+#   rules        [variation key, clauses] targeting rules, in order
+#   fallthrough  the variation everyone else gets
+AI_CONFIGS = [
+    # ---- The judges ----
+    #
+    # Judge-mode configs that score each Swag Assistant reply from 0 to 1.
+    # Ours rather than LaunchDarkly's built-in judges so they run on Bedrock
+    # like the assistant does, and know ToggleWear's policies. The AI SDK
+    # hands each one the conversation and the reply, asks for a score and a
+    # reason, and records the score on the variation that wrote the reply;
+    # the metric keys are LaunchDarkly's own judge metrics, which is what puts
+    # the scores on the Monitoring tab.
+    {'config': {'config_key': 'togglewear-accuracy-judge',
+                'config_name': 'ToggleWear Accuracy Judge',
+                'description': 'Scores every Swag Assistant reply from 0 to 1 for whether its '
+                               'facts match the catalog data its tools returned and the store\'s '
+                               'policies. Runs on Claude Haiku 4.5; the scores appear on the '
+                               'Swag Assistant\'s Monitoring tab.',
+                'tags': ['ai-config', 'judge', 'togglewear'],
+                'mode': 'judge',
+                'evaluation_metric_key': '$ld:ai:judge:accuracy',
+                'is_inverted': False},
+     'variations': [
+         {'ai_config_version_key': 'accuracy-judge',
+          'ai_model_config_key': _HAIKU,
+          'ai_config_version_name': 'Claude Haiku 4.5',
+          'model': {'modelName': _HAIKU_ID,
+                    'parameters': {'maxTokens': 500, 'temperature': 0.0}},
+          'messages': [{'role': 'system', 'content': (
+              _JUDGE_OPENING
+              + "Score how accurate the response is against that data and the store's policies: "
+                "shipping is free on every order and arrives in 3 to 5 business days, and "
+                "unworn items can be returned within 30 days.\n\n"
+                "1.0: every product, price, size, material, discount and policy it states "
+                "matches.\n"
+                "0.7: accurate, with a small imprecision that would not mislead the shopper.\n"
+                "0.4: one fact is wrong, such as a price, size or discount.\n"
+                "0.0: it invents products or perks, or gets several facts wrong.\n\n"
+                "A reply that states no facts, such as a polite refusal of an off-topic "
+                "question, scores 1.0. Explain your score in one or two sentences.")}]}],
+     'environment': 'production',
+     'fallthrough': 'accuracy-judge'},
+    {'config': {'config_key': 'togglewear-relevance-judge',
+                'config_name': 'ToggleWear Relevance Judge',
+                'description': 'Scores every Swag Assistant reply from 0 to 1 for how directly it '
+                               'answers what the shopper asked. Runs on Claude Haiku 4.5; the '
+                               'scores appear on the Swag Assistant\'s Monitoring tab.',
+                'tags': ['ai-config', 'judge', 'togglewear'],
+                'mode': 'judge',
+                'evaluation_metric_key': '$ld:ai:judge:relevance',
+                'is_inverted': False},
+     'variations': [
+         {'ai_config_version_key': 'relevance-judge',
+          'ai_model_config_key': _HAIKU,
+          'ai_config_version_name': 'Claude Haiku 4.5',
+          'model': {'modelName': _HAIKU_ID,
+                    'parameters': {'maxTokens': 500, 'temperature': 0.0}},
+          'messages': [{'role': 'system', 'content': (
+              _JUDGE_OPENING
+              + "Score how directly the response answers the shopper's latest message, given "
+                "the conversation before it.\n\n"
+                "1.0: answers exactly what was asked, with nothing the shopper has to dig past.\n"
+                "0.7: answers it, with some padding or a detail that was not asked for.\n"
+                "0.4: only partly answers it, or answers a different question.\n"
+                "0.0: ignores the question.\n\n"
+                "Declining a question that has nothing to do with shopping at ToggleWear counts "
+                "as relevant. Explain your score in one or two sentences.")}]}],
+     'environment': 'production',
+     'fallthrough': 'relevance-judge'},
+
+    # ---- The Swag Assistant ----
+    #
+    # Two variations that differ in a way a demo can see from across the
+    # room: a small, fast model giving short answers, and a stronger one
+    # giving the kind of answer a good store stylist would. Members get the
+    # second, matched on the same Gold and Platinum segments the rest of the
+    # store targets, so switching shopper in the account menu switches
+    # variation — and the label under each reply says which one answered.
+    {'config': {'config_key': 'swag-assistant',
+                'config_name': 'Swag Assistant',
+                'description': 'The chat assistant in the storefront (the button at the bottom '
+                               'right). Everyone gets Quick Answers (Claude Haiku 4.5, one to '
+                               'three sentences); Gold and Platinum members get Detailed Answers '
+                               '(Claude Sonnet 4.6, fuller answers that compare options and '
+                               'explain fit). Both call three tools against the live catalog, '
+                               'and the Accuracy and Relevance judges score every reply. '
+                               'Duration, tokens, tool calls, judge scores and shoppers\' thumbs '
+                               'up or down appear per variation on the Monitoring tab. Demo it: '
+                               'ask "Help me pick a hoodie" as the guest, then switch to Alex '
+                               'Rivera (Gold) in the account menu, press Reset and ask again — '
+                               'the label under each reply names the variation. Switch the '
+                               'config off and the assistant falls back to scripted replies.',
+                'tags': ['ai-config', 'swag-assistant', 'togglewear']},
+     'variations': [
+         {'ai_config_version_key': 'quick-answers',
+          'ai_model_config_key': _HAIKU,
+          'ai_config_version_name': 'Quick Answers',
+          'description': 'Claude Haiku 4.5 with a short, to-the-point prompt. Everyone\'s default.',
+          'model': {'modelName': _HAIKU_ID,
+                    'parameters': {'maxTokens': 300, 'temperature': 0.3}},
+          'messages': [{'role': 'system', 'content': (
+              _SWAG_ASSISTANT_OPENING
+              + "Keep every answer to one to three short sentences, and recommend at most two "
+                "products. Write plain text with no markdown, headings or bullet points.\n\n"
+              + _SWAG_ASSISTANT_GROUNDING)}]},
+         {'ai_config_version_key': 'detailed-answers',
+          'ai_model_config_key': _SONNET,
+          'ai_config_version_name': 'Detailed Answers',
+          'description': 'Claude Sonnet 4.6 with a fuller prompt that compares options and '
+                         'explains fit. Served to Gold and Platinum members.',
+          'model': {'modelName': _SONNET_ID,
+                    'parameters': {'maxTokens': 900, 'temperature': 0.6}},
+          'messages': [{'role': 'system', 'content': (
+              _SWAG_ASSISTANT_OPENING
+              + "Answer like a knowledgeable store stylist, in up to two short paragraphs. When "
+                "the shopper is choosing, compare two or three options and say who each one "
+                "suits. When size matters, use the size chart from get-product-details to "
+                "recommend a size and explain the fit. When the shopper is a member, quote their "
+                "member price and mention any perk that applies. Write plain text with no "
+                "markdown, headings or bullet points, and separate paragraphs with a blank "
+                "line.\n\n"
+              + _SWAG_ASSISTANT_GROUNDING)}]}],
+     'tools': ['search-products', 'get-product-details', 'get-member-perks'],
+     'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0},
+                {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0}],
+     'environment': 'production',
+     'rules': [['detailed-answers',
+                [{'contextKind': 'user', 'attribute': 'segmentMatch', 'op': 'segmentMatch',
+                  'negate': False, 'values': ['gold-members', 'platinum-members']}]]],
+     'fallthrough': 'quick-answers'},
 ]
