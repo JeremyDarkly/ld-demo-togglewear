@@ -26,7 +26,9 @@ import { contextFromRequest } from "@/lib/ldServer";
 import { productBySlug } from "@/lib/products";
 import { TIER_LABELS, isGuest, shopperById } from "@/lib/shopper";
 import {
+  SWAG_ASSISTANT_KEY,
   replyTo,
+  servedByFor,
   type SwagAssistantReply,
   type SwagAssistantRequest,
 } from "@/lib/swagAssistant";
@@ -40,7 +42,7 @@ import {
 // LaunchDarkly decides everything about the reply that a prompt engineer
 // would want to change without a deploy: which model, its parameters, the
 // prompt, which tools it may call and which judges score it. Targeting picks
-// the variation per shopper (Quick Answers for everyone, Detailed Answers for
+// the variation per shopper (Standard for everyone, Member Concierge for
 // Gold and Platinum members), and the metrics recorded here — duration,
 // tokens, success or error, each tool call, each judge's score, and the
 // thumbs in pages/api/swag-assistant/feedback.ts — land on whichever
@@ -55,7 +57,7 @@ import {
 //
 // With the config off, or LaunchDarkly unreachable, the scripted replies in
 // lib/swagAssistant.ts answer instead.
-export const CONFIG_KEY = "swag-assistant";
+const CONFIG_KEY = SWAG_ASSISTANT_KEY;
 
 // Enough for a search, a detail lookup and a perks check in one answer,
 // with room to spare; a model still asking for tools after that is looping.
@@ -197,21 +199,9 @@ async function judge(
   );
 }
 
-// "detailed-answers" becomes "Detailed Answers", and the Bedrock inference
-// profile "us.anthropic.claude-haiku-4-5-20251001-v1:0" becomes
-// "claude-haiku-4-5": short enough to sit under a chat bubble.
 function servedBy(tracker: LDAIConfigTracker) {
   const { variationKey, modelName } = tracker.getTrackData();
-  return {
-    variation: variationKey
-      .split("-")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" "),
-    model: modelName
-      .replace(/^(us|eu|apac|global)\./, "")
-      .replace(/^[a-z]+\./, "")
-      .replace(/-\d{8}.*$|-v\d.*$/, ""),
-  };
+  return servedByFor(variationKey, modelName);
 }
 
 // Cards for the products the reply names, in the order it names them, and
@@ -228,6 +218,16 @@ function productsNamed(text: string, seenSlugs: Set<string>) {
     .sort((a, b) => a.at - b.at)
     .slice(0, MAX_CARDS)
     .map((p) => p.slug);
+}
+
+// The same for orders, which the prompt asks the model to name by number.
+function ordersNamed(text: string, seenOrders: Set<string>) {
+  return [...seenOrders]
+    .map((ref) => ({ ref, at: text.indexOf(ref) }))
+    .filter((o) => o.at >= 0)
+    .sort((a, b) => a.at - b.at)
+    .slice(0, MAX_CARDS)
+    .map((o) => o.ref);
 }
 
 function isTurn(value: unknown): value is Turn {
@@ -326,6 +326,7 @@ export default async function handler(
     res.status(200).json({
       text: result.content,
       productSlugs: productsNamed(result.content, tools.seenSlugs),
+      orderRefs: ordersNamed(result.content, tools.seenOrders),
       replyId,
       servedBy: served,
     });

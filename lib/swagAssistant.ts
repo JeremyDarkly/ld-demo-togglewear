@@ -5,16 +5,60 @@ import {
   type Product,
 } from "@/lib/products";
 import { type AnnouncementPersona } from "@/components/layout/AnnouncementBar";
+import { type PastOrder } from "@/lib/account";
+
+// The AI Config's key. The server asks it for the prompt and model; the
+// browser reads the same flag to show which variation is serving right now.
+export const SWAG_ASSISTANT_KEY = "swag-assistant";
 
 // Which variation of the Swag Assistant AI Config wrote a reply, shown under
 // it so a demo can point at the variation without opening LaunchDarkly.
 export type ServedBy = { variation: string; model: string };
+
+// "member-concierge" becomes "Member Concierge", and the Bedrock inference
+// profile "us.anthropic.claude-haiku-4-5-20251001-v1:0" becomes
+// "Claude Haiku 4.5". The flag value only carries the provider's model id,
+// so this is the one place that turns it into something a room can read.
+export function servedByFor(variationKey: string, modelName: string): ServedBy {
+  const words = modelName
+    .replace(/^(us|eu|apac|global)\./, "")
+    .replace(/^[a-z]+\./, "")
+    .replace(/-\d{8}.*$|-v\d.*$|(-\d+)?:\d+$/, "")
+    .split("-");
+
+  const model: string[] = [];
+  for (const word of words) {
+    const previous = model[model.length - 1];
+    if (/^\d+$/.test(word) && previous && /^\d+(\.\d+)*$/.test(previous)) {
+      model[model.length - 1] = `${previous}.${word}`;
+    } else if (/^gpt$/i.test(word)) {
+      model.push("GPT");
+    } else {
+      model.push(word.charAt(0).toUpperCase() + word.slice(1));
+    }
+  }
+
+  return {
+    variation: variationKey
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" "),
+    // OpenAI writes its versions hyphenated: GPT-6 Luna, not GPT 6 Luna.
+    model: model.join(" ").replace(/\bGPT (\d)/, "GPT-$1"),
+  };
+}
+
+// What the panel header shows: the variation serving this shopper right now,
+// read from the AI Config's flag in the browser so it follows a targeting
+// change within a second, or that the config is off.
+export type LiveVariation = ServedBy | "off";
 
 export type ChatMessage = {
   id: string;
   role: "assistant" | "user";
   text: string;
   products?: Product[];
+  orders?: PastOrder[];
   // Only on replies the model wrote. The id is what a thumbs up or down is
   // sent with; the server holds the rest (lib/aiServer.ts).
   replyId?: string;
@@ -27,6 +71,9 @@ export type ChatMessage = {
   failed?: boolean;
   // The shopper's rating, once given. One per reply, as LaunchDarkly records.
   feedback?: FeedbackKind;
+  // A line across the conversation saying the serving variation changed,
+  // rather than something either side said, so it stays out of the history.
+  notice?: boolean;
 };
 
 // What the browser sends to /api/swag-assistant: the conversation so far,
@@ -40,6 +87,9 @@ export type SwagAssistantRequest = {
 export type SwagAssistantReply = {
   text: string;
   productSlugs: string[];
+  // Orders work the same way, by order number, and are looked up again in
+  // the shopper's own order history.
+  orderRefs?: string[];
   replyId?: string;
   servedBy?: ServedBy;
   scripted?: boolean;
