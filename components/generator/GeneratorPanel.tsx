@@ -67,6 +67,21 @@ function StatusDot({ state }: { state: GeneratorStatus["state"] }) {
   return <span className={`size-2 shrink-0 rounded-full ${colour}`} />;
 }
 
+// Lime and orange because the palette has no green or red; orange is
+// already what the status dot uses for a run that went wrong.
+function OutcomeTag({ outcome }: { outcome: NonNullable<GeneratorInfo["outcome"]> }) {
+  const succeeds = outcome === "succeeds";
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2.5 py-0.5 font-sohne text-xsmall font-semibold text-grays-ld-black ${
+        succeeds ? "bg-base-lime" : "bg-base-orange"
+      }`}
+    >
+      {succeeds ? "Succeeds" : "Rolls back"}
+    </span>
+  );
+}
+
 function GeneratorCard({
   info,
   status,
@@ -93,10 +108,13 @@ function GeneratorCard({
             {info.flag}
           </span>
           <div className="flex min-w-0 flex-col">
-            <p className="font-sohne text-main font-medium text-grays-ld-black">
-              {info.name}
-            </p>
-            <p className="font-sohne text-xsmall text-grays-04">{info.kind}</p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="font-sohne text-main font-medium text-grays-ld-black">
+                {info.name}
+              </p>
+              {info.outcome && <OutcomeTag outcome={info.outcome} />}
+            </div>
+            <p className="font-sohne text-small font-medium text-grays-05">{info.kind}</p>
           </div>
         </div>
 

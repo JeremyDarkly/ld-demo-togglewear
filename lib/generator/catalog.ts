@@ -28,6 +28,10 @@ export type GeneratorInfo = {
   flagKey: string;
   name: string;
   kind: string;
+  // How a guarded release ends, shown as a tag beside the name so an SE
+  // picking between the healthy and failing version of a story cannot pick
+  // the wrong one.
+  outcome?: "succeeds" | "rollsBack";
   does: string;
   purpose: string;
   before: string;
@@ -41,7 +45,8 @@ export const GENERATORS: GeneratorInfo[] = [
     flag: "06",
     flagKey: "inventoryServiceV2",
     name: "Live Inventory Service",
-    kind: "Guarded release, healthy",
+    kind: "Guarded release",
+    outcome: "succeeds",
     does: "Sends stock lookups where the new live service beats the nightly snapshot on success, speed and errors.",
     purpose: "Shows a guarded rollout walking all the way to 100% with nobody touching it.",
     before: "Start a guarded rollout on flag 06. The generator waits for it.",
@@ -53,7 +58,8 @@ export const GENERATORS: GeneratorInfo[] = [
     flag: "07",
     flagKey: "orderPipelineV2",
     name: "Order Pipeline v2",
-    kind: "Guarded release, fails",
+    kind: "Guarded release",
+    outcome: "rollsBack",
     does: "Sends orders through both pipelines. v2 is fine for four minutes, then its orders start failing, with real errors, logs and traces.",
     purpose: "Shows LaunchDarkly catching a regression and rolling the flag back on its own.",
     before: "Start a guarded rollout on flag 07 with automatic rollback. The generator waits for it.",
@@ -69,7 +75,8 @@ export const GENERATORS: GeneratorInfo[] = [
     flag: "AI",
     flagKey: "personal-stylist",
     name: "Personal Stylist on Opus 5.5",
-    kind: "AI Config guarded release, healthy",
+    kind: "AI Config guarded release",
+    outcome: "succeeds",
     does: "Shoppers open product pages and get stylist notes from Sonnet or Opus. Opus's notes score a little higher with both judges, at the same speed and error rate.",
     purpose: "Shows a model upgrade guarded by judge scores walking all the way to 100%.",
     before: "Start a guarded rollout to Claude Opus 5.5 on the Personal Stylist's default rule. The generator waits for it.",
@@ -81,7 +88,8 @@ export const GENERATORS: GeneratorInfo[] = [
     flag: "AI",
     flagKey: "personal-stylist",
     name: "Personal Stylist on Opus 5.5",
-    kind: "AI Config guarded release, fails",
+    kind: "AI Config guarded release",
+    outcome: "rollsBack",
     does: "The same notes, but after four minutes Opus's judge scores start slipping, while its speed and errors stay normal.",
     purpose: "Shows LaunchDarkly rolling back a model whose answers got worse, which errors and latency alone would never catch.",
     before: "Start a guarded rollout to Claude Opus 5.5 on the Personal Stylist's default rule, with automatic rollback. The generator waits for it.",
