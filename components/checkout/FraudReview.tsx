@@ -96,7 +96,7 @@ export default function FraudReview({
         </p>
       ) : (
         <div className="border-t border-grays-hairline pt-4">
-          <OrderReviewSteps steps={steps} />
+          <OrderReviewSteps steps={steps} decisionLabel={tone.label} />
         </div>
       )}
 
