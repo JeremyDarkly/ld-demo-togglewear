@@ -113,10 +113,18 @@ module.exports = {
           from: { opacity: "0" },
           to: { opacity: "1" },
         },
+        // The chat header's variation badge lighting up in Base/Lime when
+        // LaunchDarkly starts serving a different one, then settling back.
+        // Long enough to catch the eye of someone watching the other screen.
+        "badge-flash": {
+          from: { backgroundColor: "rgba(221, 255, 70, 0.3)", color: "#FFFFFF" },
+          to: { backgroundColor: "rgba(221, 255, 70, 0)" },
+        },
       },
       animation: {
         "drop-in": "drop-in 180ms ease-out",
         "fade-in": "fade-in 180ms ease-out",
+        "badge-flash": "badge-flash 1.6s ease-out",
       },
     },
   },

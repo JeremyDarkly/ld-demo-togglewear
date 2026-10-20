@@ -2,22 +2,48 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
-import { useLDClient } from "launchdarkly-react-client-sdk";
+import { useFlags, useLDClient } from "launchdarkly-react-client-sdk";
 import { LDObserve } from "@launchdarkly/observability";
 
 import { useShopper } from "@/components/ui/ShopperProvider";
+import { ordersFor, type PastOrder } from "@/lib/account";
 import { apiHeaders } from "@/lib/api";
 import { productBySlug, type Product } from "@/lib/products";
 import {
+  SWAG_ASSISTANT_KEY,
   greetingFor,
+  servedByFor,
   type ChatMessage,
   type FeedbackKind,
+  type LiveVariation,
   type SwagAssistantReply,
 } from "@/lib/swagAssistant";
+
+// The parts of the AI Config's flag value the badge needs. The browser gets
+// the whole value, prompt included, but only reads which variation it is.
+type AiConfigFlag = {
+  _ldMeta?: { enabled?: boolean; variationKey?: string };
+  model?: { name?: string };
+};
+
+// Null until the SDK has the flag, or when LaunchDarkly is not configured,
+// so the header shows nothing rather than a guess.
+function liveVariationFrom(value: unknown): LiveVariation | null {
+  const config = value as AiConfigFlag | undefined;
+  if (!config?._ldMeta) return null;
+  if (!config._ldMeta.enabled) return "off";
+  if (!config._ldMeta.variationKey || !config.model?.name) return null;
+  return servedByFor(config._ldMeta.variationKey, config.model.name);
+}
+
+function describe(live: LiveVariation) {
+  return live === "off" ? "off" : `${live.variation} · ${live.model}`;
+}
 
 // Owns whether the assistant is open and what has been said. Both used to
 // live in SwagAssistant itself, which meant two things: the conversation was
@@ -38,6 +64,9 @@ type SwagAssistantApi = {
   // the next question until it lands, so the history stays in order.
   pending: boolean;
   rate: (messageId: string, kind: FeedbackKind) => void;
+  // The variation LaunchDarkly would serve this shopper now. It changes the
+  // moment targeting does, without waiting for the next question.
+  live: LiveVariation | null;
   // Back to the state it has on first open, greeting and suggested prompts
   // included, so the same demo can be run again for the next prospect
   // without reloading the page.
@@ -58,7 +87,7 @@ const FAILED_TEXT =
   "Sorry, I couldn't come up with an answer just now. Try asking again in a moment.";
 
 export function SwagAssistantProvider({ children }: { children: ReactNode }) {
-  const { persona } = useShopper();
+  const { persona, person } = useShopper();
   const client = useLDClient();
   const [isOpen, setIsOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -71,6 +100,34 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
   // Bumped by reset, so a reply still in flight from the conversation that
   // was just thrown away does not land in the new one.
   const conversationRef = useRef(0);
+
+  const live = liveVariationFrom(useFlags()[SWAG_ASSISTANT_KEY]);
+  const liveLabel = live ? describe(live) : null;
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  const previousLabelRef = useRef(liveLabel);
+
+  // A switch mid-conversation also gets a line in the conversation itself,
+  // so a room watching the shared screen sees it happen. Not before anything
+  // has been asked, when the header badge alone says it.
+  useEffect(() => {
+    const previous = previousLabelRef.current;
+    previousLabelRef.current = liveLabel;
+    const now = liveRef.current;
+    if (!previous || !now || previous === liveLabel) return;
+    if (messagesRef.current.length < 2) return;
+
+    const notice: ChatMessage = {
+      id: `notice-${Date.now()}`,
+      role: "assistant",
+      notice: true,
+      text:
+        now === "off"
+          ? "The AI Config was switched off, so replies are scripted for now"
+          : `Now answering with ${now.variation} · ${now.model}`,
+    };
+    setMessages((prev) => [...prev, notice]);
+  }, [liveLabel]);
 
   const open = useCallback(() => {
     // Seeded on first open rather than on mount, so switching persona before
@@ -89,7 +146,7 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
         text,
       };
       const history = [...messagesRef.current, user]
-        .filter((m) => !m.failed)
+        .filter((m) => !m.failed && !m.notice)
         .map(({ role, text }) => ({ role, text }));
       const conversation = conversationRef.current;
 
@@ -108,6 +165,7 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok) throw new Error(`Swag assistant answered ${res.status}`);
         const body = (await res.json()) as SwagAssistantReply;
+        const pastOrders = ordersFor(person);
         reply = {
           id: body.replyId ?? `reply-${Date.now()}`,
           role: "assistant",
@@ -115,6 +173,9 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
           products: body.productSlugs
             .map((slug) => productBySlug(slug))
             .filter((p): p is Product => Boolean(p)),
+          orders: (body.orderRefs ?? [])
+            .map((ref) => pastOrders.find((o) => o.ref === ref))
+            .filter((o): o is PastOrder => Boolean(o)),
           replyId: body.replyId,
           servedBy: body.servedBy,
           scripted: body.scripted,
@@ -133,7 +194,7 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
       setMessages((prev) => [...prev, reply]);
       setPending(false);
     },
-    [client],
+    [client, person],
   );
 
   const rate = useCallback(
@@ -181,6 +242,7 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
         send,
         pending,
         rate,
+        live,
         reset,
         expanded,
         toggleExpanded,
