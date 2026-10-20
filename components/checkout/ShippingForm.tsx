@@ -2,10 +2,12 @@ import Field from "@/components/ui/Field";
 
 // Figma "shipping-form-card" (75:1419). Prefilled with Jen's Alex Morgan so
 // a demo can go straight from cart to placed order without typing, and so
-// the fraud agent has an address to reason about.
+// the Order Review agents have an address to reason about.
 //
-// The ZIP is the one field worth knowing about: it is what the fraud agent
-// keys its decline path off, so it is the lever an SE changes on stage.
+// The ZIP is the one field worth knowing about: it is what the Order Review
+// keys its decline path off, so it is the lever an SE changes on stage. Held
+// to exactly five digits, so a mistyped 999999 cannot quietly miss the
+// blocked 99999 and leave the decline looking broken.
 export default function ShippingForm() {
   return (
     <section className="flex flex-col gap-6 rounded-[2px] border border-grays-hairline bg-grays-white p-8">
@@ -51,6 +53,9 @@ export default function ShippingForm() {
           label="ZIP Code"
           defaultValue="10001"
           inputMode="numeric"
+          maxLength={5}
+          pattern="[0-9]{5}"
+          required
           className="flex-[150]"
         />
       </div>
