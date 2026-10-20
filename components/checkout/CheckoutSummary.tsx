@@ -4,6 +4,7 @@ import { useFlags } from "launchdarkly-react-client-sdk";
 import { useCart } from "@/components/cart/CartProvider";
 import SummaryLines from "@/components/cart/SummaryLines";
 import FraudReview from "./FraudReview";
+import OrderReviewSteps, { type OrderReviewProgress } from "./OrderReviewSteps";
 import { formatPrice, type PricingVariant } from "@/lib/products";
 import { cartTotals, resolveLines } from "@/lib/cart";
 import type { FraudAssessment } from "@/lib/fraudAgent";
@@ -16,12 +17,16 @@ export default function CheckoutSummary({
   assessment,
   orderRef,
   paymentFailed,
+  steps,
+  scripted,
 }: {
   variant: PricingVariant;
   assessing: boolean;
   assessment: FraudAssessment | null;
   orderRef: string;
   paymentFailed: boolean;
+  steps: OrderReviewProgress;
+  scripted: boolean;
 }) {
   const { lines, promo } = useCart();
   const { announcementOffer } = useFlags();
@@ -99,7 +104,28 @@ export default function CheckoutSummary({
         </button>
       )}
 
-      {assessment && <FraudReview assessment={assessment} orderRef={orderRef} />}
+      {/* The agents at work while the review runs, so the wait is something
+          to watch rather than a spinner. */}
+      {assessing && !assessment && (
+        <section
+          aria-busy="true"
+          className="flex flex-col gap-4 rounded-[2px] border border-grays-hairline p-5"
+        >
+          <p className="font-sohne text-xsmall-caps font-medium uppercase text-grays-04">
+            Order Review
+          </p>
+          <OrderReviewSteps steps={steps} />
+        </section>
+      )}
+
+      {assessment && (
+        <FraudReview
+          assessment={assessment}
+          orderRef={orderRef}
+          steps={steps}
+          scripted={scripted}
+        />
+      )}
     </section>
   );
 }
