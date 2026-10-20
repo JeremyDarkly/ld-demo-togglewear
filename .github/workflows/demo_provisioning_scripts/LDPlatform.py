@@ -3042,6 +3042,30 @@ class LDPlatform:
     ##################################################
     # Get AI Config Variation ID
     ##################################################
+    def get_ai_config_targeting_variation_id(self, ai_config_key, variation_key):
+        # The ID targeting knows a variation by. get_ai_config_variation_id
+        # returns the ID of the variation's latest version instead, which only
+        # matches until the variation is first edited.
+        res = self.getrequest(
+            "GET",
+            "https://app.launchdarkly.com/api/v2/projects/"
+            + self.project_key
+            + "/ai-configs/"
+            + ai_config_key
+            + "/targeting",
+            headers={"Authorization": self.api_key, "LD-API-Version": "beta"},
+        )
+        try:
+            variations = json.loads(res.text).get("variations", [])
+        except (json.JSONDecodeError, AttributeError):
+            variations = []
+        for variation in variations:
+            meta = variation.get("value", {}).get("_ldMeta", {})
+            if meta.get("variationKey") == variation_key:
+                return variation["_id"]
+        print(f"Targeting variation with key '{variation_key}' not found")
+        return None
+
     def get_ai_config_variation_id(self, ai_config_key, variation_key):
         # Seeded by create_ai_config_versions / create_ai_agent_variation,
         # so most lookups need no API call at all
@@ -3196,7 +3220,14 @@ class LDPlatform:
         weight=50000,
         notify=True,
         days=1,
+        control_key=None,
+        target_key=None,
+        stages=None,
     ):
+        # control_key and target_key name the variations to roll out from
+        # and to; without them it falls back to list order, which the API does
+        # not promise. stages overrides the days presets, as in
+        # add_guarded_rollout.
         # Since this is likely going to be added immediately after
         # creating an AI config, we're going to sleep for 2 seconds. Otherwise
         # adding the guarded rollout doesn't consistently take.
@@ -3209,9 +3240,15 @@ class LDPlatform:
             print(f"Error: AI config {ai_config_key} needs at least 2 variations for guarded rollout")
             return None
         
-        # Use first two variations (excluding disabled)
-        control_var = variations[1]["_id"]
-        test_var = variations[0]["_id"]
+        if control_key and target_key:
+            control_var = self.get_ai_config_targeting_variation_id(ai_config_key, control_key)
+            test_var = self.get_ai_config_targeting_variation_id(ai_config_key, target_key)
+            if not control_var or not test_var:
+                return None
+        else:
+            # Use first two variations (excluding disabled)
+            control_var = variations[1]["_id"]
+            test_var = variations[0]["_id"]
         
         # Calculate stages window based on days
         stages_window = 120000  # 2 minutes default
@@ -3241,7 +3278,7 @@ class LDPlatform:
                 self._build_start_automated_release_instruction(
                     control_var,
                     test_var,
-                    self._default_automated_release_stages(stages_window),
+                    stages or self._default_automated_release_stages(stages_window),
                     release_kind="guarded",
                     metrics=metrics,
                     rollback=rollback,
