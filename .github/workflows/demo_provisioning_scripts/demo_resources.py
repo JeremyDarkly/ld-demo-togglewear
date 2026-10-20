@@ -875,8 +875,8 @@ EXPERIMENTS = [
 PROMPT_SNIPPETS = [
     {'key': 'togglewear-store-policies',
      'name': 'ToggleWear Store Policies',
-     'description': 'Shipping and returns, as the Swag Assistant quotes them and the Accuracy '
-                    'Judge checks them.',
+     'description': 'Shipping and returns, as the Swag Assistant and Personal Stylist quote '
+                    'them and the Accuracy Judge checks them.',
      'text': (
          "ToggleWear store policies:\n"
          "- Shipping is free on every order and arrives in 3 to 5 business days.\n"
@@ -884,7 +884,8 @@ PROMPT_SNIPPETS = [
      'tags': ['policies', 'togglewear', 'shared']},
     {'key': 'togglewear-brand-voice',
      'name': 'ToggleWear Brand Voice',
-     'description': 'How anything that talks to ToggleWear shoppers should sound.',
+     'description': 'How anything that talks to ToggleWear shoppers should sound: the Swag '
+                    'Assistant and the Personal Stylist.',
      'text': (
          "ToggleWear brand voice:\n"
          "- Friendly and upbeat, like a teammate who knows the merch well.\n"
@@ -922,13 +923,44 @@ _SWAG_ASSISTANT_OPENING = (
     "with {{shopper_name}}, whose loyalty tier is {{loyalty_tier}}.\n\n"
 )
 
+# The Personal Stylist's prompt: how to write a note, then the facts it is
+# written from. The facts go in a user message because Bedrock's Claude
+# models refuse a conversation that is only a system message.
+# {{product_facts}} and {{order_history}} are the swag assistant's
+# get-product-details and get-order-status results, filled in by the
+# storefront (pages/api/personal-stylist/index.ts), so the two features
+# describe a product and an order the same way.
+_PERSONAL_STYLIST_MESSAGES = [
+    {'role': 'system',
+     'content': "You are the Personal Stylist for ToggleWear, LaunchDarkly's merch store. You "
+                "write the short note shown on a product page for the shopper looking at it.\n\n"
+                "Write two or three sentences. Recommend a size from the size chart, using a "
+                "size they have ordered before when there is one, and say how it fits. Then "
+                "suggest one thing to wear it with: an item from their orders if one goes with "
+                "it, otherwise something general, such as dark jeans. For a one-size item, skip "
+                "the size and say who it suits instead. Only name ToggleWear products you are "
+                "given, and never make up a measurement, price or perk. Write plain text with no "
+                "markdown, and do not greet the shopper or sign off.\n\n"
+                + _snippet('togglewear-brand-voice') + "\n\n"
+                + _snippet('togglewear-store-policies')},
+    {'role': 'user',
+     'content': "Shopper: {{shopper_name}}, loyalty tier {{loyalty_tier}}\n\n"
+                "The product, as JSON:\n{{product_facts}}\n\n"
+                "Their recent orders, as JSON:\n{{order_history}}\n\n"
+                "Write my stylist note for this product."},
+]
+
 # What the judges are told about the store, so a reply quoting the shipping
-# policy is checked against the same policy the assistant was given.
+# policy is checked against the same policy the assistant was given. One pair
+# of judges scores both AI features, so the Swag Assistant and the Personal
+# Stylist are held to the same rubric.
 _JUDGE_OPENING = (
-    "You evaluate replies from the ToggleWear Swag Assistant, the shopping assistant in "
-    "LaunchDarkly's merch store. The message history shows the conversation and, on lines "
-    "starting \"tool:\", the catalog and account data the assistant's tools returned for "
-    "this reply.\n\n"
+    "You evaluate replies from ToggleWear's AI features in LaunchDarkly's merch store: the "
+    "Swag Assistant, a shopping chat, and the Personal Stylist, a short note on a product "
+    "page about size, fit and what to wear it with. The message history shows what the "
+    "reply was written from: for the chat, the conversation and, on lines starting "
+    "\"tool:\", the catalog and account data its tools returned; for a stylist note, the "
+    "request and, on lines starting \"data:\", the product and order data it was given.\n\n"
 )
 
 # The models, all on Bedrock, through the US cross-region inference profiles
@@ -944,6 +976,8 @@ _SONNET = 'Bedrock.us.anthropic.claude-sonnet-4-6'
 _SONNET_ID = 'us.anthropic.claude-sonnet-4-6'
 _GPT = 'Bedrock.us.openai.gpt-6-luna'
 _GPT_ID = 'us.openai.gpt-6-luna'
+_OPUS = 'Bedrock.us.anthropic.claude-opus-5-5'
+_OPUS_ID = 'us.anthropic.claude-opus-5-5'
 
 # Tools — LDPlatform.create_ai_tool(**spec)
 #
@@ -1008,19 +1042,20 @@ AI_TOOLS = [
 AI_CONFIGS = [
     # ---- The judges ----
     #
-    # Judge-mode configs that score each Swag Assistant reply from 0 to 1.
-    # Ours rather than LaunchDarkly's built-in judges so they run on Bedrock
-    # like the assistant does, and know ToggleWear's policies. The AI SDK
+    # Judge-mode configs that score each Swag Assistant reply and Personal
+    # Stylist note from 0 to 1. Ours rather than LaunchDarkly's built-in
+    # judges so they run on Bedrock like the features do, and know
+    # ToggleWear's policies. The AI SDK
     # hands each one the conversation and the reply, asks for a score and a
     # reason, and records the score on the variation that wrote the reply;
     # the metric keys are LaunchDarkly's own judge metrics, which is what puts
     # the scores on the Monitoring tab.
     {'config': {'config_key': 'togglewear-accuracy-judge',
                 'config_name': 'ToggleWear Accuracy Judge',
-                'description': 'Scores every Swag Assistant reply from 0 to 1 for whether its '
-                               'facts match the catalog data its tools returned and the store\'s '
-                               'policies. Runs on Claude Haiku 4.5; the scores appear on the '
-                               'Swag Assistant\'s Monitoring tab.',
+                'description': 'Scores every Swag Assistant reply and Personal Stylist note from '
+                               '0 to 1 for whether its facts match the catalog and order data it '
+                               'was given and the store\'s policies. Runs on Claude Haiku 4.5; '
+                               'the scores appear on each config\'s Monitoring tab.',
                 'tags': ['ai-config', 'judge', 'togglewear'],
                 'mode': 'judge',
                 'evaluation_metric_key': '$ld:ai:judge:accuracy',
@@ -1046,9 +1081,11 @@ AI_CONFIGS = [
      'fallthrough': 'accuracy-judge'},
     {'config': {'config_key': 'togglewear-relevance-judge',
                 'config_name': 'ToggleWear Relevance Judge',
-                'description': 'Scores every Swag Assistant reply from 0 to 1 for how directly it '
-                               'answers what the shopper asked. Runs on Claude Haiku 4.5; the '
-                               'scores appear on the Swag Assistant\'s Monitoring tab.',
+                'description': 'Scores every Swag Assistant reply and Personal Stylist note from '
+                               '0 to 1 for how directly it serves the shopper: answering what '
+                               'they asked, or helping them decide on the product. Runs on '
+                               'Claude Haiku 4.5; the scores appear on each config\'s Monitoring '
+                               'tab.',
                 'tags': ['ai-config', 'judge', 'togglewear'],
                 'mode': 'judge',
                 'evaluation_metric_key': '$ld:ai:judge:relevance',
@@ -1062,7 +1099,8 @@ AI_CONFIGS = [
           'messages': [{'role': 'system', 'content': (
               _JUDGE_OPENING
               + "Score how directly the response answers the shopper's latest message, given "
-                "the conversation before it.\n\n"
+                "the conversation before it. For a stylist note, score how well it helps this "
+                "shopper decide on this product: a size, the fit and what to wear it with.\n\n"
                 "1.0: answers exactly what was asked, with nothing the shopper has to dig past.\n"
                 "0.7: answers it, with some padding or a detail that was not asked for.\n"
                 "0.4: only partly answers it, or answers a different question.\n"
@@ -1140,4 +1178,51 @@ AI_CONFIGS = [
                 [{'contextKind': 'user', 'attribute': 'segmentMatch', 'op': 'segmentMatch',
                   'negate': False, 'values': ['gold-members', 'platinum-members']}]]],
      'fallthrough': 'standard'},
+
+    # ---- The Personal Stylist ----
+    #
+    # The note on every product page (pages/api/personal-stylist). Nobody
+    # asks it anything: the prompt is filled in with the product and the
+    # shopper's orders, and one call writes the note. Its two variations are
+    # the same prompt on two models, which is a model upgrade, and a model
+    # upgrade is what a guarded rollout is for. Everyone starts on Sonnet; an
+    # SE starts the rollout to Opus on the default rule, with the judges,
+    # completion errors and completion time as its metrics, and the
+    # Personal Stylist generators in the Cmd+K panel supply the traffic.
+    {'config': {'config_key': 'personal-stylist',
+                'config_name': 'Personal Stylist',
+                'description': 'The "Your stylist\'s take" note on every product page: a size, how '
+                               'it fits and what to wear it with, written for the shopper looking '
+                               'at it from the product and their past orders. Two variations, '
+                               'the same prompt on Claude Sonnet 4.6 (everyone today) and Claude '
+                               'Opus 5.5 (the upgrade). Demo it: start a guarded rollout to '
+                               'Claude Opus 5.5 on the default rule, with the Accuracy and '
+                               'Relevance judges, Completion error count and Completion time as '
+                               'metrics and automatic rollback on, then start the Personal '
+                               'Stylist generator in the Cmd+K panel. The healthy one walks the '
+                               'rollout to 100%; the failing one has Opus\'s judge scores slip '
+                               'until LaunchDarkly rolls it back. The model under each note says '
+                               'which one wrote it.',
+                'tags': ['ai-config', 'personal-stylist', 'togglewear']},
+     'variations': [
+         {'ai_config_version_key': 'claude-sonnet-4-6',
+          'ai_model_config_key': _SONNET,
+          'ai_config_version_name': 'Claude Sonnet 4.6',
+          'description': 'What every shopper gets today.',
+          # No temperature on either model, so the rollout compares the
+          # models alone: Bedrock refuses a request that sends Opus 5.5 one.
+          'model': {'modelName': _SONNET_ID,
+                    'parameters': {'maxTokens': 400}},
+          'messages': _PERSONAL_STYLIST_MESSAGES},
+         {'ai_config_version_key': 'claude-opus-5-5',
+          'ai_model_config_key': _OPUS,
+          'ai_config_version_name': 'Claude Opus 5.5',
+          'description': 'The upgrade, released with a guarded rollout.',
+          'model': {'modelName': _OPUS_ID,
+                    'parameters': {'maxTokens': 400}},
+          'messages': _PERSONAL_STYLIST_MESSAGES}],
+     'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0},
+                {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0}],
+     'environment': 'production',
+     'fallthrough': 'claude-sonnet-4-6'},
 ]
