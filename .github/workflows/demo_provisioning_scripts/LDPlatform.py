@@ -985,14 +985,18 @@ class LDPlatform:
     # Create Custom Model Configuration
     ##################################################
     
-    def create_custom_model_config(self, model_key, model_name, provider="LD", cost_per_input_token=0.8, cost_per_output_token=6.0, params=None, custom_params=None, tags=None):
+    def create_custom_model_config(self, model_key, model_name, provider="LD", cost_per_input_token=0.8, cost_per_output_token=6.0, params=None, custom_params=None, tags=None, model_id=None):
         """
-        Create a custom model configuration for AI agents
+        Create a custom model configuration for AI agents.
+
+        model_id is the model name handed to the provider, and defaults to the
+        key. It needs to differ when the provider's name for the model has a
+        character a key cannot, such as the colon in a Bedrock model id.
         """
         payload = {
             "name": model_name,
             "key": model_key,
-            "id": model_key,
+            "id": model_id or model_key,
             "icon": "🤖",
             "provider": provider,
             "params": params or {},
