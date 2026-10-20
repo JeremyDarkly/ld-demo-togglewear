@@ -14,7 +14,13 @@ Two guarded release scenarios, one per flag:
                                   and then sharply, until LaunchDarkly detects
                                   the regression and rolls the flag back.
 
-Both loops poll the flag and exit once its measured rollout is over, whether
+And one on an AI Config:
+
+    Personal Stylist           -> Claude Opus 5.5's notes score better with
+                                  the judges than Sonnet 4.6's, so the rollout
+                                  advances to 100% untouched.
+
+Each loop polls its flag and exits once its measured rollout is over, whether
 that happened by completing or by being rolled back.
 
 And the four experiments, 08 to 11, which need visitors rather than a
@@ -30,8 +36,7 @@ without the telemetry beside them.
 
 The ToggleBank, Investment, Galaxy Marketplace and public-sector generators
 that used to live here were removed with the rest of those resources; they
-are in git history and in ld-core-demo.  AI Config generators come back with
-the capability that needs them.
+are in git history and in ld-core-demo.
 """
 
 import contextlib
@@ -87,6 +92,14 @@ ORDER_LATENCY_KEY = "order-pipeline-latency"
 ORDER_ERROR_KEY = "order-pipeline-error-rate"
 ORDERS_PROCESSED_KEY = "orders-processed"
 ORDER_SERVICE_NAME = "togglewear-order-pipeline"
+
+# The Personal Stylist, the healthy AI Config scenario
+STYLIST_CONFIG_KEY = "personal-stylist"
+STYLIST_OPUS = "claude-opus-5-5"
+STYLIST_JUDGES = (
+    ("togglewear-accuracy-judge", "$ld:ai:judge:accuracy", 0.88),
+    ("togglewear-relevance-judge", "$ld:ai:judge:relevance", 0.85),
+)
 
 # Every failure is reported.  An earlier version sampled 30% of them, on the
 # assumption that the run would be long enough for that to still be hundreds
@@ -867,6 +880,94 @@ def referral_offer_experiment_generator(client):
     _run_visitors(client, "11 Referral Offer", visit)
 
 
+# --------------------------------- Personal Stylist, healthy AI Config
+
+def personal_stylist_healthy_generator(client, stop_event):
+    """Claude Opus 5.5 writes better stylist notes than Sonnet 4.6.
+
+    The AI Config is a flag underneath, so each note is a plain evaluation
+    for a made-up shopper, and the guarded rollout decides which model they
+    get. What a real note records is then tracked by hand, with the event
+    names and data the Node AI SDK's tracker sends from
+    pages/api/personal-stylist, because the Python AI SDK is unpinned and its
+    API moves between versions. No model is called.
+
+    The numbers are the Cmd+K panel's "Succeeds" generator's
+    (lib/generator/scenarios.ts): the same duration and error rate on both
+    models, Opus's judge scores a few points higher, and Opus billing about
+    four times the output tokens. So the rollout finds no regression and
+    walks to 100%.
+    """
+    if not client.is_initialized():
+        logging.error("LaunchDarkly client is not initialized.")
+        return
+
+    if not _wait_for_rollout(STYLIST_CONFIG_KEY, "Personal Stylist"):
+        return
+
+    logging.info("Personal Stylist generator running.")
+    disabled = {"_ldMeta": {"enabled": False}}
+    status_check_counter = 0
+    notes = 0
+
+    while True:
+        if status_check_counter >= 100:
+            details = get_flag_details(STYLIST_CONFIG_KEY)
+            if not details or not is_measured_rollout(details):
+                logging.info(f"Personal Stylist rollout finished after {notes} notes.")
+                stop_event.set()
+                break
+            status_check_counter = 0
+
+        try:
+            ctx = generate_shopper_context()
+            value = client.variation(STYLIST_CONFIG_KEY, ctx, disabled)
+            status_check_counter += 1
+            meta = value.get("_ldMeta", {})
+            if not meta.get("enabled"):
+                time.sleep(0.05)
+                continue
+
+            data = {
+                "runId": str(uuid.uuid4()),
+                "configKey": STYLIST_CONFIG_KEY,
+                "variationKey": meta.get("variationKey", ""),
+                "version": meta.get("version", 1),
+                "modelName": value.get("model", {}).get("name", ""),
+                "providerName": value.get("provider", {}).get("name", ""),
+                "modelVersion": meta.get("modelVersion"),
+                "modelKey": meta.get("modelKey"),
+            }
+            on_opus = data["variationKey"] == STYLIST_OPUS
+            lift = 0.05 if on_opus else 0.0
+
+            duration = int(min(4500, max(1200, random.gauss(2600, 450))))
+            client.track("$ld:ai:duration:total", ctx, data, duration)
+            if random.random() < 0.01:
+                client.track("$ld:ai:generation:error", ctx, data, 1)
+            else:
+                client.track("$ld:ai:generation:success", ctx, data, 1)
+                tokens_in = random.randint(820, 980)
+                tokens_out = random.randint(320, 420) if on_opus else random.randint(60, 110)
+                client.track("$ld:ai:tokens:input", ctx, data, tokens_in)
+                client.track("$ld:ai:tokens:output", ctx, data, tokens_out)
+                client.track("$ld:ai:tokens:total", ctx, data, tokens_in + tokens_out)
+                for judge_key, metric_key, mean in STYLIST_JUDGES:
+                    score = min(1.0, max(0.0, random.gauss(mean + lift, 0.06)))
+                    client.track(metric_key, ctx, {**data, "judgeConfigKey": judge_key}, score)
+                if random.random() < 0.1:
+                    down = random.random() < 0.15 - lift
+                    kind = "negative" if down else "positive"
+                    client.track(f"$ld:ai:feedback:user:{kind}", ctx, data, 1)
+            notes += 1
+            time.sleep(0.05)
+        except Exception as e:
+            logging.error(f"Error generating Personal Stylist metrics: {e}")
+            continue
+
+    logging.info("Personal Stylist generator finished.")
+
+
 def experiments_generator(client):
     """The four experiments one after another, on their own thread."""
     if not client.is_initialized():
@@ -927,6 +1028,9 @@ def generate_results(project_key, api_key):
         target=inventory_service_healthy_generator, args=(client, inventory_stop))
     order_thread = threading.Thread(
         target=order_pipeline_failed_generator, args=(client, order_stop))
+    stylist_stop = threading.Event()
+    stylist_thread = threading.Thread(
+        target=personal_stylist_healthy_generator, args=(client, stylist_stop))
     # Alongside the guarded releases rather than before them, which would hold
     # their traffic back while their rollout stages ran on regardless.
     experiments_thread = threading.Thread(
@@ -934,11 +1038,13 @@ def generate_results(project_key, api_key):
 
     inventory_thread.start()
     order_thread.start()
+    stylist_thread.start()
     experiments_thread.start()
 
     logging.info("Guarded release generators running.")
     logging.info("  06 Live Inventory Service should reach 100% in about 10 minutes.")
     logging.info("  07 Order Pipeline v2 should be rolled back around minute 5 to 7.")
+    logging.info("  Personal Stylist should reach Claude Opus 5.5 at 100% in about 10 minutes.")
 
     # Safety cap. The healthy scenario is the slower of the two at about ten
     # minutes, so this has to comfortably exceed that or provisioning would
@@ -947,9 +1053,10 @@ def generate_results(project_key, api_key):
 
     inventory_thread.join(timeout=MAX_GENERATOR_WAIT)
     order_thread.join(timeout=MAX_GENERATOR_WAIT)
+    stylist_thread.join(timeout=MAX_GENERATOR_WAIT)
     experiments_thread.join(timeout=MAX_GENERATOR_WAIT)
 
-    threads = (inventory_thread, order_thread, experiments_thread)
+    threads = (inventory_thread, order_thread, stylist_thread, experiments_thread)
     still_running = [t for t in threads if t.is_alive()]
     if still_running:
         logging.warning(
