@@ -43,10 +43,11 @@ export function getAiClient(): Promise<LDAIClient | null> {
 // The judges attached to the variation that answered, run the way the AI
 // SDK's managed model runs them: each judge is its own AI Config, its score
 // is recorded on this reply's tracker, and nothing waits for them — the
-// shopper has their answer before the judges have read it.
+// shopper has their answer before the judges have read it. Any config with
+// judges attached will do, which includes the Order Review's agents.
 export async function judge(
   aiClient: LDAIClient,
-  config: LDAICompletionConfig,
+  config: Pick<LDAICompletionConfig, "judgeConfiguration">,
   context: LDContext,
   tracker: LDAIConfigTracker,
   input: string,
