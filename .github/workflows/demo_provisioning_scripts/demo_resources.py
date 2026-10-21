@@ -216,6 +216,36 @@ METRICS = [
      'success_criteria': 'LowerThanBaseline',
      'unit_aggregation_type': 'sum',
      'tags': ['adaptive-trigger', 'recommendations', 'togglewear']},
+
+    # ---- The Order Review's judges ----
+    #
+    # The scores the Order Decision agent's two judges record. LaunchDarkly
+    # makes the metrics for its own judge keys, accuracy and relevance, but
+    # not for a judge with a key of its own, so these are made here, the same
+    # shape as LaunchDarkly's: the average score per shopper, higher is better.
+    {'metric_key': 'order-review-decision-policy',
+     'metric_name': 'Order Review Decision Policy',
+     'event_key': '$ld:ai:judge:decision-policy',
+     'metric_description': 'The Decision Policy judge\'s score for each Order Review decision, '
+                           'from 0 to 1: whether it is the decision the risk points call for.',
+     'numeric': True,
+     'unit': 'score',
+     'success_criteria': 'HigherThanBaseline',
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'judge', 'order-review', 'togglewear']},
+    {'metric_key': 'order-review-shopper-message',
+     'metric_name': 'Order Review Shopper Message',
+     'event_key': '$ld:ai:judge:shopper-message',
+     'metric_description': 'The Shopper Message judge\'s score for each Order Review decision\'s '
+                           'message to the shopper, from 0 to 1: clear, honest about what happens '
+                           'next and free of the review\'s workings.',
+     'numeric': True,
+     'unit': 'score',
+     'success_criteria': 'HigherThanBaseline',
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'judge', 'order-review', 'togglewear']},
 ]
 
 # Metric groups — funnels, passed to LDPlatform.create_metric_group(**spec)
@@ -963,6 +993,15 @@ _JUDGE_OPENING = (
     "request and, on lines starting \"data:\", the product and order data it was given.\n\n"
 )
 
+_ORDER_JUDGE_OPENING = (
+    "You evaluate decisions from ToggleWear's Order Review, a team of AI agents that checks "
+    "every order placed in LaunchDarkly's merch store before it is charged. The message "
+    "history is what the Order Decision agent was handed: the case summary, and the findings "
+    "of the payment risk, shipping and account history specialists with any risk points they "
+    "found. The response is the decision it recorded, the total points it gave, and the "
+    "summary the shopper sees at checkout.\n\n"
+)
+
 # The models, all on Bedrock, through the US cross-region inference profiles
 # (the us. prefix) that Bedrock requires for them. Each is LaunchDarkly's own
 # built-in model config for that profile, which carries Bedrock's US price, so
@@ -1144,6 +1183,82 @@ AI_CONFIGS = [
      'environment': 'production',
      'fallthrough': 'relevance-judge'},
 
+    # The Order Review's Order Decision agent's two judges, run from
+    # pages/api/order-review on every decision, after the shopper has their
+    # answer. Each is handed what the agent was handed, the specialists'
+    # findings, and the decision it recorded.
+    {'config': {'config_key': 'togglewear-decision-policy-judge',
+                'config_name': 'ToggleWear Decision Policy Judge',
+                'description': 'Scores each Order Review decision from 0 to 1 for whether it is '
+                               'the one the risk points call for: decline at 70 or more, hold for '
+                               'review at 40 or more, approve under 40. Runs on Claude Sonnet 4.6; '
+                               'the scores appear on the Order Decision agent\'s Monitoring tab.',
+                'tags': ['ai-config', 'judge', 'order-review', 'togglewear'],
+                'mode': 'judge',
+                'evaluation_metric_key': '$ld:ai:judge:decision-policy',
+                'is_inverted': False},
+     'variations': [
+         # Sonnet rather than Haiku like the other judges: the AI SDK has a
+         # judge give its score before its reasoning, and Haiku scores a
+         # mismatched decision 1.0 before working out that it does not match.
+         {'ai_config_version_key': 'decision-policy-judge',
+          'ai_model_config_key': _SONNET,
+          'ai_config_version_name': 'Claude Sonnet 4.6',
+          'model': {'modelName': _SONNET_ID,
+                    'parameters': {'maxTokens': 500, 'temperature': 0.0}},
+          'messages': [{'role': 'system', 'content': (
+              _ORDER_JUDGE_OPENING
+              + "Score whether the decision in the response is the one the risk points call "
+                "for. Work it out in this order before scoring:\n"
+                "1. Take the order's total risk points from the last line of the message "
+                "history, which the specialists' tools found.\n"
+                "2. Find the decision those points call for: 70 points or more is \"decline\", "
+                "40 or more is \"review\", under 40 is \"approve\". Nothing else about the order "
+                "changes it.\n"
+                "3. Compare that with the \"decision\" field in the response, word for word. "
+                "\"review\" is not \"decline\", and \"decline\" is not \"review\".\n\n"
+                "1.0: the decision field is the decision the points call for, and its score is "
+                "their total.\n"
+                "0.7: the decision field is right, but its score is not the total.\n"
+                "0.0: the decision field is not the decision the points call for, whatever its "
+                "score or summary says.\n\n"
+                "In your explanation, give the total, the decision it calls for and the decision "
+                "in the response, in one or two sentences.")}]}],
+     'environment': 'production',
+     'fallthrough': 'decision-policy-judge'},
+    {'config': {'config_key': 'togglewear-shopper-message-judge',
+                'config_name': 'ToggleWear Shopper Message Judge',
+                'description': 'Scores each Order Review decision\'s message to the shopper from 0 '
+                               'to 1 for being clear, honest about what happens to their order and '
+                               'free of the review\'s workings. Runs on Claude Haiku 4.5; the '
+                               'scores appear on the Order Decision agent\'s Monitoring tab.',
+                'tags': ['ai-config', 'judge', 'order-review', 'togglewear'],
+                'mode': 'judge',
+                'evaluation_metric_key': '$ld:ai:judge:shopper-message',
+                'is_inverted': False},
+     'variations': [
+         {'ai_config_version_key': 'shopper-message-judge',
+          'ai_model_config_key': _HAIKU,
+          'ai_config_version_name': 'Claude Haiku 4.5',
+          'model': {'modelName': _HAIKU_ID,
+                    'parameters': {'maxTokens': 500, 'temperature': 0.0}},
+          'messages': [{'role': 'system', 'content': (
+              _ORDER_JUDGE_OPENING
+              + "Score only the summary, the message the shopper sees at checkout. It should "
+                "say plainly what happens to their order next, match the decision, say what "
+                "caught a held or declined order in everyday words, and for a held or declined "
+                "order make clear they have not been charged. It should not mention risk "
+                "points, thresholds, scores or the agents.\n\n"
+                "1.0: all of that, in one or two friendly sentences.\n"
+                "0.7: right, but vague about what happens next or longer than it needs to be.\n"
+                "0.4: it mentions points, thresholds or agents, or leaves out that a held or "
+                "declined order was not charged.\n"
+                "0.0: it contradicts the decision, or would mislead the shopper about their "
+                "order.\n\n"
+                "Explain your score in one or two sentences.")}]}],
+     'environment': 'production',
+     'fallthrough': 'shopper-message-judge'},
+
     # ---- The Swag Assistant ----
     #
     # Two variations that differ in a way a demo can see from across the
@@ -1306,7 +1421,7 @@ _AGENT_MODELS = {_HAIKU: ('claude-haiku-4-5', 'Claude Haiku 4.5', _HAIKU_ID),
 
 # Temperature 0 because the same order should get the same review every time
 # it is placed in a demo.
-def _agent(key, name, description, model, max_tokens, instructions, tools=()):
+def _agent(key, name, description, model, max_tokens, instructions, tools=(), judges=()):
     variation_key, variation_name, model_id = _AGENT_MODELS[model]
     return {'config': {'config_key': key,
                        'config_name': name,
@@ -1322,6 +1437,7 @@ def _agent(key, name, description, model, max_tokens, instructions, tools=()):
                            'parameters': {'maxTokens': max_tokens, 'temperature': 0}},
                  'instructions': instructions}],
             'tools': list(tools),
+            'judges': [{'judgeConfigKey': j, 'samplingRate': 1.0} for j in judges],
             'environment': 'production',
             'fallthrough': variation_key}
 
@@ -1379,9 +1495,11 @@ AGENT_CONFIGS = [
            tools=['get-account-history']),
     _agent('fraud-decision-agent', 'Order Decision',
            'Weighs the three specialists\' findings and approves, holds or declines the order, '
-           'with the explanation the shopper sees at checkout. Demo it: lower the review '
-           'threshold in these instructions from 40 to 30 and an ordinary order with any signal '
-           'at all starts getting held, with no deploy.',
+           'with the explanation the shopper sees at checkout. Two judges score every decision, '
+           'Decision Policy for making the call the points call for and Shopper Message for the '
+           'explanation, on its Monitoring tab. Demo it: lower the review threshold in these '
+           'instructions from 40 to 30 and an ordinary order with any signal at all starts '
+           'getting held, with no deploy.',
            _SONNET, 400,
            _ORDER_REVIEW_OPENING
            + "You make the call on each order once the three specialists have reported. Add "
@@ -1400,7 +1518,8 @@ AGENT_CONFIGS = [
              "say what happens to their order next, and for a held or declined order what "
              "caught it, in plain words, without naming the agents or the points. Nobody is "
              "charged for an order that is held or declined.\n\n"
-             + _snippet('togglewear-brand-voice')),
+             + _snippet('togglewear-brand-voice'),
+           judges=['togglewear-decision-policy-judge', 'togglewear-shopper-message-judge']),
     _agent('case-note-agent', 'Case Note',
            'The last Order Review agent, which only runs when an order is held or declined. '
            'Writes the note a person on the review team picks the order up from.',
