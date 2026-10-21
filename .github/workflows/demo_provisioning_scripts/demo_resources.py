@@ -1554,3 +1554,101 @@ AGENT_GRAPHS = [
                ['account-to-decision', 'account-history-agent', 'fraud-decision-agent'],
                ['decision-to-case-note', 'fraud-decision-agent', 'case-note-agent']]},
 ]
+
+
+# ---- Datasets and playgrounds ----
+#
+# Datasets — LDPlatform.upload_dataset, from the files in datasets/. JSONL,
+# one row per line: the input, the expected output it is scored against and
+# metadata, and for the configs with {{placeholders}}, the variables that
+# fill them. The rows are what each config is really given in the store:
+# the Order Decision and Case Note inputs were captured from live reviews,
+# and the Personal Stylist and Swag Assistant data is what the storefront's
+# tools return (lib/swagAssistantTools.ts). If the catalog, the accounts or
+# the agents' instructions change, these go stale.
+DATASETS = [
+    {'name': 'Order Decision', 'file': 'order_decision.jsonl'},
+    {'name': 'Case Note', 'file': 'case_note.jsonl'},
+    {'name': 'Personal Stylist', 'file': 'personal_stylist.jsonl'},
+    {'name': 'Swag Assistant', 'file': 'swag_assistant.jsonl'},
+]
+
+# A playground runs its models from LaunchDarkly rather than from the store,
+# and LaunchDarkly can only reach Bedrock with AWS keys of its own, so each
+# of our Bedrock models runs on the same model from LaunchDarkly's Anthropic
+# or OpenAI connection. Bedrock model config: provider, model, name.
+_PLAYGROUND_MODELS = {
+    _HAIKU: ('Anthropic', 'Anthropic.claude-haiku-4-5-20251001', 'Claude Haiku 4.5'),
+    _SONNET: ('Anthropic', 'Anthropic.claude-sonnet-4-6', 'Claude Sonnet 4.6'),
+    _OPUS: ('Anthropic', 'Anthropic.claude-opus-5-5', 'Claude Opus 5.5'),
+    _GPT: ('OpenAI', 'OpenAI.gpt-6-luna', 'GPT-6 Luna'),
+}
+
+
+# One side of a playground: a config's variation as the store runs it, its
+# prompt and parameters, on model, which defaults to the variation's own.
+# An agent's instructions become the system message, with user as the
+# message after it; a completion config keeps its messages and adds user
+# only if given one.
+def _playground_variant(config_key, variation_key=None, model=None, user=None):
+    spec = next(s for s in AI_CONFIGS + AGENT_CONFIGS if s['config']['config_key'] == config_key)
+    variation = next(v for v in spec['variations']
+                     if variation_key in (None, v['ai_config_version_key']))
+    if 'instructions' in variation:
+        messages = [{'role': 'system', 'content': variation['instructions']},
+                    {'role': 'user', 'content': user or '{{input}}'}]
+    else:
+        messages = variation['messages'] + ([{'role': 'user', 'content': user}] if user else [])
+    model = model or variation['ai_model_config_key']
+    provider, model_key, model_name = _PLAYGROUND_MODELS[model]
+    parameters = variation['model']['parameters']
+    max_tokens = parameters.get('maxTokens')
+    # From Anthropic, Opus 5.5 thinks before it writes, which spends tokens
+    # Bedrock's does not, and at 400 a note can run out before its first word.
+    if model == _OPUS and max_tokens:
+        max_tokens = max(max_tokens, 1500)
+    return {'name': f"{spec['config']['config_name']} · {model_name}",
+            'provider': provider,
+            'model': model_key,
+            'messages': messages,
+            'parameters': {**({'max_tokens': max_tokens} if max_tokens else {}),
+                           **({'temperature': parameters['temperature']} if 'temperature' in parameters else {})}}
+
+
+# The store has the Order Decision agent answer as structured output, which
+# a playground cannot ask for, so its playground asks in words.
+_DECISION_USER = ("{{input}}\n\nRecord your decision as a JSON object with decision, score and "
+                  "summary, and nothing else.")
+
+# The Swag Assistant calls its tools in the store; in a playground, which
+# cannot run them, it is handed what they returned for the question, in the
+# form the judges see it.
+_SWAG_USER = ("{{input}}\n\nWhat your tools returned for this question, one call per line:\n"
+              "{{tool_results}}")
+
+# Playgrounds — LDPlatform.create_evaluation for each variant, then
+# create_playground, then a run of every variant over the dataset, so each
+# opens with results. Each row is scored for accuracy against its expected
+# output, by Claude Sonnet 4.6.
+PLAYGROUNDS = [
+    # Could the cheaper model make the call as well?
+    {'name': 'Order Decision: Sonnet 4.6 vs Haiku 4.5',
+     'dataset': 'Order Decision',
+     'variants': [_playground_variant('fraud-decision-agent', user=_DECISION_USER),
+                  _playground_variant('fraud-decision-agent', model=_HAIKU, user=_DECISION_USER)]},
+    # Would a stronger model write a more useful note for the review team?
+    {'name': 'Case Note: Haiku 4.5 vs Sonnet 4.6',
+     'dataset': 'Case Note',
+     'variants': [_playground_variant('case-note-agent'),
+                  _playground_variant('case-note-agent', model=_SONNET)]},
+    # The guarded rollout's two models, side by side on the same notes.
+    {'name': 'Personal Stylist: Sonnet 4.6 vs Opus 5.5',
+     'dataset': 'Personal Stylist',
+     'variants': [_playground_variant('personal-stylist', 'claude-sonnet-4-6'),
+                  _playground_variant('personal-stylist', 'claude-opus-5-5')]},
+    # The two variations shoppers get, Standard and Member Concierge.
+    {'name': 'Swag Assistant: Standard vs Member Concierge',
+     'dataset': 'Swag Assistant',
+     'variants': [_playground_variant('swag-assistant', 'standard', user=_SWAG_USER),
+                  _playground_variant('swag-assistant', 'member-concierge', user=_SWAG_USER)]},
+]

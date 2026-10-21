@@ -11,6 +11,7 @@ A resource that does not fit its table's shape can name a method here with
 import LDPlatform
 import json
 import os
+import re
 from dotenv import load_dotenv
 import subprocess
 import time
@@ -33,6 +34,8 @@ from demo_resources import (
     AI_CONFIGS,
     AGENT_CONFIGS,
     AGENT_GRAPHS,
+    DATASETS,
+    PLAYGROUNDS,
 )
 
 
@@ -78,6 +81,7 @@ class DemoBuilder:
         self.create_ai_configs()
         # After the agents, since a graph's nodes have to exist.
         self.create_agent_graphs()
+        self.create_playgrounds()
         # After the flags, which each experiment takes over, and before the
         # results, so the generated traffic lands in a running iteration.
         self.create_and_run_experiments()
@@ -273,6 +277,55 @@ class DemoBuilder:
                 root_config_key=spec["root"],
             )
             print(f"  Agent graph created: {spec['graph_name']}")
+        print("Done")
+
+    # Uploads the datasets, then makes each playground: an evaluation per
+    # variant, the playground holding them, and a run of each over its
+    # dataset, which LaunchDarkly finishes in the background.
+    def create_playgrounds(self):
+        if not self.ai_config_created:
+            print("Error: AI Configs not created")
+            return
+        print("Uploading datasets...")
+        datasets_dir = os.path.join(os.path.dirname(__file__), "datasets")
+        dataset_ids = {}
+        for spec in DATASETS:
+            with open(os.path.join(datasets_dir, spec["file"]), encoding="utf-8") as f:
+                dataset_ids[spec["name"]] = self.ldproject.upload_dataset(spec["name"], f.read(), spec["file"])
+
+        print("Creating playgrounds...")
+        snippets = {s["key"]: s["text"] for s in PROMPT_SNIPPETS}
+        for spec in PLAYGROUNDS:
+            dataset_id = dataset_ids.get(spec["dataset"])
+            evaluation_ids = []
+            for variant in spec["variants"]:
+                text = " ".join(m["content"] for m in variant["messages"])
+                evaluation_ids.append(self.ldproject.create_evaluation(
+                    name=variant["name"],
+                    generation_provider=variant["provider"],
+                    generation_model=variant["model"],
+                    messages=variant["messages"],
+                    # Accuracy rather than likeness, which marks a right answer
+                    # down for being longer or shorter than the expected one.
+                    # Without the option, accuracy ignores the row's expected
+                    # output and judges from the input alone.
+                    criteria=[{"criterionType": "accuracy", "kind": "deepeval",
+                               "options": {"expected_output": "{{expected_output}}"}}],
+                    evaluation_provider="Anthropic",
+                    evaluation_model="Anthropic.claude-sonnet-4-6",
+                    variables={name: "" for name in re.findall(r"\{\{(\w+)\}\}", text)},
+                    parameters=variant["parameters"],
+                    prompt_snippets={key: snippets[key]
+                                     for key in re.findall(r"\{\{snippet\.([\w-]+)#\d+\}\}", text)},
+                ))
+            if None in evaluation_ids:
+                print(f"  Error: playground {spec['name']} not created")
+                continue
+            playground_id = self.ldproject.create_playground(spec["name"], evaluation_ids)
+            if playground_id and dataset_id:
+                for evaluation_id in evaluation_ids:
+                    self.ldproject.start_evaluation_run(evaluation_id, playground_id, dataset_id)
+            print(f"  Playground created: {spec['name']}")
         print("Done")
 
     # An AI Config's guarded rollout, started at build time for
