@@ -1,5 +1,6 @@
 import requests
 import json
+import re
 import time
 import uuid
 
@@ -709,18 +710,20 @@ class LDPlatform:
     ##################################################
 
     def upload_dataset(self, dataset_name, csv_content, filename=None):
-        """Upload a CSV dataset for Playground offline evaluations.
+        """Upload a CSV or JSONL dataset for Playground offline evaluations.
 
         Two-step flow:
           1. POST to /internal/projects/{key}/datasets to create the record
              and obtain a pre-signed S3 upload URL.
-          2. PUT the raw CSV bytes to that URL.
+          2. PUT the raw file bytes to that URL.
 
         Requires account_id, user_id, project_internal_id and X-Ld-* headers.
 
         Args:
             dataset_name: Human-readable name shown in the Datasets tab.
-            csv_content: The CSV file content as a string.
+            csv_content: The file content as a string. A .jsonl filename
+                makes it JSONL, one row per line, which unlike CSV can give
+                each row its own variables for the prompt's {{placeholders}}.
             filename: Optional filename (defaults to dataset_name + '.csv').
 
         Returns:
@@ -745,8 +748,9 @@ class LDPlatform:
 
         payload = {
             "name": dataset_name,
+            "key": re.sub(r"[^a-z0-9]+", "-", dataset_name.lower()).strip("-"),
             "filename": filename,
-            "format": "csv",
+            "format": "jsonl" if filename.endswith(".jsonl") else "csv",
             "size_bytes": len(csv_bytes),
         }
 
@@ -781,6 +785,19 @@ class LDPlatform:
 
         if upload_resp.status_code in (200, 204):
             print(f"Uploaded dataset: {dataset_name} ({len(csv_bytes)} bytes, {csv_content.count(chr(10))} rows)")
+            # LaunchDarkly reads the file in the background, and refuses to
+            # run an evaluation over the dataset until it is ready.
+            for _ in range(30):
+                status = self.getrequest(
+                    "GET",
+                    f"https://app.launchdarkly.com/internal/projects/{self.project_key}/datasets/{dataset_id}",
+                    headers=headers,
+                ).json().get("status")
+                if status == "ready":
+                    break
+                time.sleep(2)
+            else:
+                print(f"Warning: dataset '{dataset_name}' is not ready yet ({status})")
             return dataset_id
         else:
             print(f"Error uploading CSV to S3 for '{dataset_name}': {upload_resp.status_code}")
@@ -792,7 +809,11 @@ class LDPlatform:
 
     def create_evaluation(self, name, generation_provider, generation_model,
                           messages=None, criteria=None, evaluation_provider=None,
-                          evaluation_model=None, variables=None, parameters=None):
+                          evaluation_model=None, variables=None, parameters=None,
+                          prompt_snippets=None):
+        # prompt_snippets: {snippet key: text} for the {{snippet.key#1}}
+        # references in messages, which the evaluation does not look up
+        # in the Library itself.
         if not self.account_id or not self.user_id or not self.project_internal_id:
             print(f"Error: Missing required IDs for evaluation creation")
             return None
@@ -822,6 +843,8 @@ class LDPlatform:
             payload["variables"] = variables
         if parameters is not None:
             payload["parameters"] = parameters
+        if prompt_snippets is not None:
+            payload["promptSnippets"] = prompt_snippets
 
         response = self.getrequest(
             "POST",
@@ -879,6 +902,31 @@ class LDPlatform:
         data = response.json()
         playground_id = data.get("id")
         return playground_id
+
+    ##################################################
+    # Run an Evaluation over a Dataset (in a Playground)
+    ##################################################
+
+    # Starts the run and returns its ID; LaunchDarkly runs every row in the
+    # background, so the results appear in the playground a little later.
+    def start_evaluation_run(self, evaluation_id, playground_id, dataset_id):
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": self.api_key,
+            "X-Ld-Accountid": self.account_id,
+            "X-Ld-Mbrid": self.user_id,
+            "X-Ld-Prjid": self.project_internal_id,
+        }
+        response = self.getrequest(
+            "POST",
+            f"https://app.launchdarkly.com/internal/projects/{self.project_key}/evaluations/{evaluation_id}/runs",
+            json={"playgroundId": playground_id, "datasetId": dataset_id, "rowSelectionMode": "all"},
+            headers=headers,
+        )
+        if response.status_code not in (200, 201):
+            print(f"Error starting evaluation run: {response.status_code} {response.text[:300]}")
+            return None
+        return response.json().get("id")
 
     ##################################################
     # Create AI Agent
