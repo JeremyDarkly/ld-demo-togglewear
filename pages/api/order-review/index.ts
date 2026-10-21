@@ -20,7 +20,7 @@ import {
   type AIMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
-import { getAiClient } from "@/lib/aiServer";
+import { getAiClient, judge } from "@/lib/aiServer";
 import {
   assessOrder,
   isBlockedZip,
@@ -211,6 +211,7 @@ async function runGraph(
   send: (event: OrderReviewEvent) => void,
   answer: (assessment: FraudAssessment) => void,
   span: { setAttribute: (key: string, value: string | number | boolean) => void },
+  report: (err: unknown) => void,
 ): Promise<boolean> {
   const graph = await aiClient.agentGraph(ORDER_REVIEW_GRAPH_KEY, context);
   if (!graph.enabled) {
@@ -230,9 +231,13 @@ async function runGraph(
   const run = async (
     key: string,
     input: string,
-    { show = (text: string) => text, answerSchema }: {
+    { show = (text: string) => text, answerSchema, judgeInput }: {
       show?: (text: string) => string;
       answerSchema?: Record<string, unknown>;
+      // What the judges attached to the agent's variation are shown as the
+      // agent's input when they score its answer, without anything waiting
+      // on them. No judging without it.
+      judgeInput?: string;
     } = {},
   ) => {
     const node = graph.getNode(key);
@@ -260,6 +265,9 @@ async function runGraph(
       }
       path.push(key);
       addUsage(tokens, result.metrics.tokens);
+      if (judgeInput !== undefined) {
+        judge(aiClient, config, context, tracker, judgeInput, result.text).catch(report);
+      }
       send({
         type: "step",
         step: { ...step, status: "done", text: show(result.text), ms: Date.now() - at },
@@ -299,11 +307,15 @@ async function runGraph(
 
     const decider = graph.getChildNodes(specialists[0].getKey())[0];
     if (!decider) throw new Error("The specialists hand to no decision agent");
-    const verdictText = await run(
-      decider.getKey(),
-      `Order ${order.ref}.\n\nCase summary from Order Intake:\n${summary}\n\n${reports}`,
-      { show: (text) => parseDecision(text)?.summary ?? text, answerSchema: DECISION_SCHEMA },
-    );
+    const decisionInput = `Order ${order.ref}.\n\nCase summary from Order Intake:\n${summary}\n\n${reports}`;
+    const verdictText = await run(decider.getKey(), decisionInput, {
+      show: (text) => parseDecision(text)?.summary ?? text,
+      answerSchema: DECISION_SCHEMA,
+      // With the total the tools found, so the Decision Policy judge can
+      // check the decision against it rather than adding the points up
+      // itself, which it does after it has already scored.
+      judgeInput: `${decisionInput}\n\nRisk points the specialists' tools found: ${riskScore(tools.signals)}.`,
+    });
     for (const node of specialists) {
       graphTracker.trackHandoffSuccess(node.getKey(), decider.getKey());
     }
@@ -406,7 +418,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let timer: NodeJS.Timeout | undefined;
     try {
       const ran = await Promise.race([
-        runGraph(aiClient, context, order, send, answer, span),
+        runGraph(aiClient, context, order, send, answer, span, (err) =>
+          LDObserve.recordError(err as Error, secureSessionId, requestId, attributes),
+        ),
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error("The order review timed out")), REVIEW_TIMEOUT_MS);
         }),
