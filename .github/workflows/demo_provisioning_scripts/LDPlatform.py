@@ -1402,6 +1402,7 @@ class LDPlatform:
         analysisConfig={"bayesianThreshold": "95"},
         flagConfigVersion=None,
         treatment_values=None,
+        rule_index=None,
     ):
         """treatment_values limits the experiment to the variations with those
         values, in that order, the first being the control. A flag whose rules
@@ -1412,9 +1413,19 @@ class LDPlatform:
         which every rule and toggle before this has moved on. Left as None it
         is read from the flag rather than counted by hand, which is how
         core-demo's hard-coded 2s went stale the moment a rule was added.
+
+        rule_index runs the experiment on that targeting rule, counting from
+        0, instead of the default rule, so only the contexts the rule matches
+        are in it. An AI Config is a flag underneath, with the same key, so
+        flag_key can name one.
         """
         if flagConfigVersion is None:
             flagConfigVersion = self.get_flag_env_version(flag_key, exp_env) or 1
+        rule_id = "fallthrough"
+        if rule_index is not None:
+            rule_id = self.get_flag_rule_id(flag_key, exp_env, rule_index)
+            if rule_id is None:
+                return
         treatments = self.get_treatments(
             flag_key, custom_treatment_names, treatment_values
         )
@@ -1430,7 +1441,7 @@ class LDPlatform:
                 "treatments": treatments,
                 "flags": {
                     flag_key: {
-                        "ruleId": "fallthrough",
+                        "ruleId": rule_id,
                         "flagConfigVersion": flagConfigVersion,
                     },
                 },
@@ -2004,6 +2015,31 @@ class LDPlatform:
             print(f"Error reading version of {flag_key} in {env_key}")
             return None
         return env.get("version", env.get("_version"))
+
+    def get_flag_rule_id(self, flag_key, env_key, index):
+        """The ID of the flag's targeting rule at index in env_key, which is
+        what an experiment names its rule by."""
+        res = self.getrequest(
+            "GET",
+            "https://app.launchdarkly.com/api/v2/flags/"
+            + self.project_key
+            + "/"
+            + flag_key
+            + "?env="
+            + env_key,
+            headers={
+                "Authorization": self.api_key,
+                "Content-Type": "application/json",
+            },
+        )
+        if res.status_code != 200:
+            print(f"Error getting rules of {flag_key}: HTTP {res.status_code}")
+            return None
+        try:
+            return json.loads(res.text)["environments"][env_key]["rules"][index]["_id"]
+        except (json.JSONDecodeError, KeyError, IndexError):
+            print(f"Error: {flag_key} has no rule {index} in {env_key}")
+            return None
 
     #########################################################
     # Get the flag variation IDs with values, returns a list
