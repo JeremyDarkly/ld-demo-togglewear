@@ -22,7 +22,17 @@ import {
   type FeedbackKind,
   type LiveVariation,
   type SwagAssistantReply,
+  type SwagAssistantRequest,
 } from "@/lib/swagAssistant";
+
+// randomUUID is missing outside a secure context, such as a demo opened by
+// its IP address over plain HTTP.
+function newConversationId() {
+  const id =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `swag-chat-${id}`;
+}
 
 // The parts of the AI Config's flag value the badge needs. The browser gets
 // the whole value, prompt included, but only reads which variation it is.
@@ -100,6 +110,8 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
   // Bumped by reset, so a reply still in flight from the conversation that
   // was just thrown away does not land in the new one.
   const conversationRef = useRef(0);
+  // The chat's id in LaunchDarkly's conversation view, new with each reset.
+  const conversationIdRef = useRef(newConversationId());
 
   const live = liveVariationFrom(useFlags()[SWAG_ASSISTANT_KEY]);
   const liveLabel = live ? describe(live) : null;
@@ -161,7 +173,10 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
             "Content-Type": "application/json",
             ...(client ? apiHeaders(client) : {}),
           },
-          body: JSON.stringify({ messages: history }),
+          body: JSON.stringify({
+            messages: history,
+            conversationId: conversationIdRef.current,
+          } satisfies SwagAssistantRequest),
         });
         if (!res.ok) throw new Error(`Swag assistant answered ${res.status}`);
         const body = (await res.json()) as SwagAssistantReply;
@@ -223,6 +238,7 @@ export function SwagAssistantProvider({ children }: { children: ReactNode }) {
   // message is also what makes the panel offer its suggested prompts again.
   const reset = useCallback(() => {
     conversationRef.current += 1;
+    conversationIdRef.current = newConversationId();
     setPending(false);
     setMessages([greetingFor(persona)]);
   }, [persona]);

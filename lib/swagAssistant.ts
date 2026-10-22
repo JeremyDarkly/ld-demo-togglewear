@@ -80,6 +80,9 @@ export type ChatMessage = {
 // ending with the shopper's new message.
 export type SwagAssistantRequest = {
   messages: { role: ChatMessage["role"]; text: string }[];
+  // The same for every question in one chat, so LaunchDarkly shows the
+  // chat as one conversation.
+  conversationId?: string;
 };
 
 // Products travel as slugs and are looked up again in the browser, so a

@@ -21,6 +21,7 @@ import {
 } from "@langchain/core/messages";
 import { getAiClient, judge, rememberReply } from "@/lib/aiServer";
 import { contextFromRequest } from "@/lib/ldServer";
+import { startAgentRun, type AgentRun } from "@/lib/llmTrace";
 import { productBySlug } from "@/lib/products";
 import { TIER_LABELS, isGuest, shopperById } from "@/lib/shopper";
 import {
@@ -123,7 +124,9 @@ type Conversation = {
 async function converse(
   config: LDAICompletionConfig,
   history: BaseMessage[],
+  question: string,
   tools: SwagAssistantTools,
+  agentRun: AgentRun,
 ): Promise<Conversation> {
   const llm = await createLangChainModel(config);
   const definitions = (config.model?.parameters?.tools as unknown[]) ?? [];
@@ -141,7 +144,14 @@ async function converse(
   const toolTranscript: string[] = [];
 
   for (let round = 0; ; round += 1) {
-    const response = (await model.invoke(messages)) as AIMessage;
+    const response = await agentRun.modelCall(
+      config.model?.name ?? "",
+      round === 0 ? [question] : [],
+      async () => {
+        const response = (await model.invoke(messages)) as AIMessage;
+        return { response, usage: getAIUsageFromResponse(response) };
+      },
+    );
     addUsage(tokens, getAIUsageFromResponse(response));
     messages.push(response);
 
@@ -158,10 +168,12 @@ async function converse(
     for (const call of calls) {
       toolCalls.push(call.name);
       const tool = toolsByName.get(call.name);
-      const output = tool
-        ? await tool.invoke(call.args)
-        : `No tool named ${call.name}`;
-      const text = typeof output === "string" ? output : JSON.stringify(output);
+      const text = await agentRun.tool(call, async () => {
+        const output = tool
+          ? await tool.invoke(call.args)
+          : `No tool named ${call.name}`;
+        return typeof output === "string" ? output : JSON.stringify(output);
+      });
       toolTranscript.push(`${call.name}(${JSON.stringify(call.args)}) -> ${text}`);
       messages.push(new ToolMessage({ content: text, tool_call_id: call.id ?? "" }));
     }
@@ -197,6 +209,14 @@ function ordersNamed(text: string, seenOrders: Set<string>) {
     .sort((a, b) => a.at - b.at)
     .slice(0, MAX_CARDS)
     .map((o) => o.ref);
+}
+
+// The chat's id from the panel, which makes the whole chat one conversation
+// in LaunchDarkly; a reply without one is a conversation of its own.
+function conversationIdFrom(value: unknown): string {
+  return typeof value === "string" && /^[\w-]{8,80}$/.test(value)
+    ? value
+    : `swag-chat-${randomUUID()}`;
 }
 
 function isTurn(value: unknown): value is Turn {
@@ -266,13 +286,22 @@ export default async function handler(
     };
     span.setAttributes(attributes);
 
+    const agentRun = startAgentRun(
+      span,
+      conversationIdFrom(req.body?.conversationId),
+      "Swag Assistant",
+      (config.messages ?? []).filter((m) => m.role === "system").map((m) => m.content).join("\n\n"),
+      question.text,
+    );
+
     let result: Conversation;
     try {
       result = await tracker.trackMetricsOf(
         (r: Conversation) => r.metrics,
-        () => converse(config, toHistory(turns), tools),
+        () => converse(config, toHistory(turns), question.text, tools, agentRun),
       );
     } catch (err) {
+      agentRun.fail(err);
       LDObserve.recordError(err as Error, secureSessionId, requestId, attributes, { span });
       res.status(502).json({ error: "The swag assistant could not answer" });
       return;
@@ -284,10 +313,12 @@ export default async function handler(
     });
 
     if (!result.metrics.success) {
+      agentRun.fail(new Error("The swag assistant returned an empty reply"));
       LDObserve.recordLog("Swag assistant returned an empty reply", "warn", secureSessionId, requestId, attributes);
       res.status(502).json({ error: "The swag assistant could not answer" });
       return;
     }
+    agentRun.finish(result.content, true);
 
     const replyId = randomUUID();
     rememberReply(replyId, tracker.resumptionToken);
@@ -305,8 +336,11 @@ export default async function handler(
       .map((t) => `${t.role}: ${t.text}`)
       .concat(result.toolTranscript.map((t) => `tool: ${t}`))
       .join("\n");
-    judge(aiClient, config, context, tracker, transcript, result.content).catch((err) =>
-      LDObserve.recordError(err as Error, secureSessionId, requestId, attributes),
-    );
+    judge(aiClient, config, context, tracker, transcript, result.content)
+      .then(agentRun.scored)
+      .catch((err) => {
+        agentRun.scored();
+        LDObserve.recordError(err as Error, secureSessionId, requestId, attributes);
+      });
   });
 }
