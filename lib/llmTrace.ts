@@ -21,11 +21,16 @@ import type { AIMessage } from "@langchain/core/messages";
 // carries the conversation id, the only thing LaunchDarkly groups on: a
 // chat is one conversation, and so is an order's whole review.
 //
+// The observability plugin registers its tracer through its own bundled
+// copy of the API, at 1.9.0, when the LaunchDarkly client starts. Either
+// way of missing it gets a tracer that records nothing, without an error:
+// a newer minor version of @opentelemetry/api refuses the registration,
+// which is why package.json keeps it on 1.9, and a tracer taken before the
+// client starts never picks it up, which is why it is taken for each run.
+//
 // The spans hold only generative AI attributes. LaunchDarkly files a span
 // with HTTP attributes as an HTTP span, which drops it from the LLM views,
 // so these are children of the route's span rather than that span itself.
-
-const tracer = trace.getTracer("togglewear-ai");
 
 // What OpenTelemetry calls Bedrock, which with the model id is what
 // LaunchDarkly prices a call from, using the model configs' token costs.
@@ -102,6 +107,7 @@ export function startAgentRun(
   system: string,
   input: string,
 ): AgentRun {
+  const tracer = trace.getTracer("togglewear-ai");
   const base = { "gen_ai.conversation.id": conversationId };
   const parentContext = trace.setSpan(context.active(), parent);
   const run = tracer.startSpan(
