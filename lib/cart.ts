@@ -81,6 +81,25 @@ export function validatePromo(
 export const GIFT_OFFER = "free-sticker-pack";
 export const GIFT_MIN_ITEMS = 2;
 
+// The product the gift is. It goes in the item lists as a line of its own
+// but never into the cart's stored lines, so it cannot be edited, counted
+// towards its own minimum, or outlive the offer or code that earned it.
+export const GIFT_SLUG = "sticker-pack";
+
+// "Any 2 items" counts quantity, so two of the same tee qualifies. The
+// STICKERS code gives the same pack with no minimum.
+export function earnsFreeGift(
+  lines: ResolvedLine[],
+  promo?: string | null,
+  offer?: unknown
+) {
+  const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+  return (
+    (offer === GIFT_OFFER && itemCount >= GIFT_MIN_ITEMS) ||
+    promo === STICKERS_CODE
+  );
+}
+
 export function cartTotals(
   lines: ResolvedLine[],
   variant: PricingVariant,
@@ -92,14 +111,8 @@ export function cartTotals(
     (sum, line) => sum + line.product.priceUsd * line.quantity,
     0
   );
-  const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
-
-  // Free, so it adds a line and no money. "Any 2 items" counts quantity,
-  // so two of the same tee qualifies. The STICKERS code gives the same pack
-  // with no minimum.
-  const freeGift =
-    (offer === GIFT_OFFER && itemCount >= GIFT_MIN_ITEMS) ||
-    promo === STICKERS_CODE;
+  // Free, so it adds a line and no money.
+  const freeGift = earnsFreeGift(lines, promo, offer);
 
   // Member pricing wins outright and the code is ignored, which is the same
   // rule validatePromo enforces at the field — it is repeated here so a
