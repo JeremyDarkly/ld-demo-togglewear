@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { LDObserve } from "@launchdarkly/observability-node";
 import type {
@@ -8,6 +9,7 @@ import type {
   ToolRegistry,
 } from "@launchdarkly/server-sdk-ai";
 import type { LDContext } from "@launchdarkly/node-server-sdk";
+import type { Span } from "@opentelemetry/api";
 import {
   buildStructuredTools,
   createLangChainModel,
@@ -29,6 +31,7 @@ import {
   type FraudDecision,
 } from "@/lib/fraudAgent";
 import { contextFromRequest } from "@/lib/ldServer";
+import { startAgentRun, type AgentRun as TracedRun } from "@/lib/llmTrace";
 import {
   ORDER_REVIEW_AGENTS,
   ORDER_REVIEW_GRAPH_KEY,
@@ -129,8 +132,10 @@ async function runAgent(
   config: LDAIAgentConfig,
   input: string,
   registry: ToolRegistry,
+  agentRun: TracedRun,
   answerSchema?: Record<string, unknown>,
 ): Promise<AgentRun> {
+  const modelName = config.model?.name ?? "";
   const llm = await createLangChainModel(config);
   const definitions = (config.model?.parameters?.tools as unknown[]) ?? [];
   const lcTools = buildStructuredTools(definitions, registry);
@@ -144,11 +149,23 @@ async function runAgent(
   const toolCalls: string[] = [];
 
   if (answerSchema) {
-    const { raw, parsed } = await llm
-      .withStructuredOutput(answerSchema, { name: "record_decision", includeRaw: true })
-      .invoke(messages);
-    addUsage(tokens, getAIUsageFromResponse(raw as AIMessage));
-    const text = parsed ? JSON.stringify(parsed) : textOf(raw as AIMessage);
+    let parsed: unknown;
+    const raw = await agentRun.modelCall(modelName, [input], async () => {
+      const result = await llm
+        .withStructuredOutput(answerSchema, { name: "record_decision", includeRaw: true })
+        .invoke(messages);
+      parsed = result.parsed;
+      const response = result.raw as AIMessage;
+      return {
+        response,
+        usage: getAIUsageFromResponse(response),
+        // The decision it filled in rather than a call to a tool that never
+        // runs, since record_decision is only the shape of the answer.
+        output: parsed ? JSON.stringify(parsed) : undefined,
+      };
+    });
+    addUsage(tokens, getAIUsageFromResponse(raw));
+    const text = parsed ? JSON.stringify(parsed) : textOf(raw);
     return { text, metrics: { success: Boolean(parsed), tokens, toolCalls } };
   }
 
@@ -159,7 +176,14 @@ async function runAgent(
       lcTools.length && llm.bindTools
         ? llm.bindTools(lcTools, round === 0 ? { tool_choice: "any" } : {})
         : llm;
-    const response = (await model.invoke(messages)) as AIMessage;
+    const response = await agentRun.modelCall(
+      modelName,
+      round === 0 ? [input] : [],
+      async () => {
+        const response = (await model.invoke(messages)) as AIMessage;
+        return { response, usage: getAIUsageFromResponse(response) };
+      },
+    );
     addUsage(tokens, getAIUsageFromResponse(response));
     messages.push(response);
 
@@ -172,8 +196,10 @@ async function runAgent(
     for (const call of calls) {
       toolCalls.push(call.name);
       const tool = toolsByName.get(call.name);
-      const output = tool ? await tool.invoke(call.args) : `No tool named ${call.name}`;
-      const text = typeof output === "string" ? output : JSON.stringify(output);
+      const text = await agentRun.tool(call, async () => {
+        const output = tool ? await tool.invoke(call.args) : `No tool named ${call.name}`;
+        return typeof output === "string" ? output : JSON.stringify(output);
+      });
       messages.push(new ToolMessage({ content: text, tool_call_id: call.id ?? "" }));
     }
   }
@@ -210,7 +236,7 @@ async function runGraph(
   order: OrderReviewRequest,
   send: (event: OrderReviewEvent) => void,
   answer: (assessment: FraudAssessment) => void,
-  span: { setAttribute: (key: string, value: string | number | boolean) => void },
+  span: Span,
   report: (err: unknown) => void,
 ): Promise<boolean> {
   const graph = await aiClient.agentGraph(ORDER_REVIEW_GRAPH_KEY, context);
@@ -224,6 +250,10 @@ async function runGraph(
   const started = Date.now();
   const path: string[] = [];
   const tokens: LDTokenUsage = { total: 0, input: 0, output: 0 };
+  // The whole review is one conversation in LaunchDarkly, found by the
+  // order's number. Order numbers are random and only unique within a
+  // session (lib/fraudAgent.ts), so the id adds a few characters of its own.
+  const conversationId = `${order.ref}-${randomUUID().slice(0, 8)}`;
 
   // Runs one node, records it on its own tracker, and streams it starting
   // and finishing. show turns what the agent wrote into what the panel
@@ -252,11 +282,12 @@ async function runGraph(
     };
     send({ type: "step", step });
 
+    const agentRun = startAgentRun(span, conversationId, nameOf(key), config.instructions ?? "", input);
     const at = Date.now();
     try {
       const result = await tracker.trackMetricsOf(
         (r: AgentRun) => r.metrics,
-        () => runAgent(config, input, tools.registry, answerSchema),
+        () => runAgent(config, input, tools.registry, agentRun, answerSchema),
       );
       // The start of what it did say, so the error in Observability shows
       // what went wrong rather than only that something did.
@@ -265,8 +296,14 @@ async function runGraph(
       }
       path.push(key);
       addUsage(tokens, result.metrics.tokens);
+      agentRun.finish(result.text, judgeInput !== undefined);
       if (judgeInput !== undefined) {
-        judge(aiClient, config, context, tracker, judgeInput, result.text).catch(report);
+        judge(aiClient, config, context, tracker, judgeInput, result.text)
+          .then(agentRun.scored)
+          .catch((err) => {
+            agentRun.scored();
+            report(err);
+          });
       }
       send({
         type: "step",
@@ -274,6 +311,7 @@ async function runGraph(
       });
       return result.text;
     } catch (err) {
+      agentRun.fail(err);
       send({ type: "step", step: { ...step, status: "failed", ms: Date.now() - at } });
       throw err;
     }
