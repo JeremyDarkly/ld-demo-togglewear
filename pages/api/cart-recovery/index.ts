@@ -17,6 +17,7 @@ import {
   type Offer,
 } from "@/lib/cartRecovery";
 import { contextFromRequest } from "@/lib/ldServer";
+import { COMEBACK_CODE, STICKERS_CODE, WELCOME_CODE } from "@/lib/products";
 import { startAgentRun } from "@/lib/llmTrace";
 import { TIER_LABELS, isGuest, shopperById } from "@/lib/shopper";
 
@@ -38,6 +39,18 @@ import { TIER_LABELS, isGuest, shopperById } from "@/lib/shopper";
 // Long enough for one sentence about a cart. A longer answer is a model
 // ignoring its instructions, and the bar falls back to its own line.
 const MAX_MESSAGE_LENGTH = 100;
+
+// The offer is the store's to word, so a line that makes one of its own —
+// a gift, a saving, a price or a code — is a line the cart may not honour,
+// and is refused like any other the instructions rule out. The codes are
+// matched as written in capitals, so "welcome back" is still a fine line.
+const OFFER_WORDS =
+  /\b(free|gifts?|discounts?|coupons?|promos?|codes?|deals?|sale|savings?|save|percent)\b|[$%]/i;
+const CODES = [STICKERS_CODE, COMEBACK_CODE, WELCOME_CODE];
+
+function makesAnOffer(message: string) {
+  return OFFER_WORDS.test(message) || CODES.some((code) => message.includes(code));
+}
 
 // A line is written once per shopper, cart and variation, then kept: every
 // page draws its own bar, and moving between pages should neither cost a
@@ -195,7 +208,10 @@ export default async function handler(
             offer: offer ?? "none",
             metrics: {
               success:
-                Boolean(offer) && message.length > 0 && message.length <= MAX_MESSAGE_LENGTH,
+                Boolean(offer) &&
+                message.length > 0 &&
+                message.length <= MAX_MESSAGE_LENGTH &&
+                !makesAnOffer(message),
               tokens: getAIUsageFromResponse(raw),
             },
           };
