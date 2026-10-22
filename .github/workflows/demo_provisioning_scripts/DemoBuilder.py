@@ -132,6 +132,11 @@ class DemoBuilder:
         
         env_file = os.getenv('GITHUB_ENV')
         if env_file:
+            # The repo is public, and so are its Actions logs, which print a
+            # step's env. Masked before the keys reach GITHUB_ENV, so every
+            # later step shows *** in their place.
+            for key in (self.sdk_key, self.client_id):
+                print(f"::add-mask::{key}", flush=True)
             try:
                 with open(env_file, "a") as f:
                     f.write(f"LD_SDK_KEY={self.sdk_key}\n")
