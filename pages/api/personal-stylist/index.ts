@@ -10,6 +10,7 @@ import {
 import type { AIMessage } from "@langchain/core/messages";
 import { getAiClient, judge, rememberReply } from "@/lib/aiServer";
 import { contextFromRequest } from "@/lib/ldServer";
+import { startAgentRun } from "@/lib/llmTrace";
 import {
   PERSONAL_STYLIST_KEY,
   type StylistNote,
@@ -136,15 +137,30 @@ export default async function handler(
       return;
     }
 
+    // Each note is a conversation of one turn: the prompt filled in for
+    // this shopper and product, and the note.
+    const messages = config.messages ?? [];
+    const asked = messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n\n");
+    const agentRun = startAgentRun(
+      span,
+      `stylist-note-${randomUUID()}`,
+      "Personal Stylist",
+      messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n"),
+      asked,
+    );
+
     let written: Written;
     try {
       written = await tracker.trackMetricsOf(
         (w: Written) => w.metrics,
         async () => {
           const model = await createLangChainModel(config);
-          const response = (await model.invoke(
-            convertMessagesToLangChain(config.messages ?? []),
-          )) as AIMessage;
+          const response = await agentRun.modelCall(modelName, [asked], async () => {
+            const response = (await model.invoke(
+              convertMessagesToLangChain(messages),
+            )) as AIMessage;
+            return { response, usage: getAIUsageFromResponse(response) };
+          });
           const content = textOf(response);
           return {
             content,
@@ -156,17 +172,20 @@ export default async function handler(
         },
       );
     } catch (err) {
+      agentRun.fail(err);
       LDObserve.recordError(err as Error, secureSessionId, requestId, attributes, { span });
       res.status(502).json({ error: "The stylist could not write a note" });
       return;
     }
 
     if (!written.metrics.success) {
+      agentRun.fail(new Error("The personal stylist returned an empty note"));
       LDObserve.recordLog("Personal stylist returned an empty note", "warn", secureSessionId, requestId, attributes);
       res.status(502).json({ error: "The stylist could not write a note" });
       return;
     }
 
+    agentRun.finish(written.content, true);
     const note: StylistNote = {
       text: written.content,
       replyId: randomUUID(),
@@ -183,8 +202,11 @@ export default async function handler(
       `data: product ${productFacts}`,
       `data: orders ${orders}`,
     ].join("\n");
-    judge(aiClient, config, context, tracker, input, written.content).catch((err) =>
-      LDObserve.recordError(err as Error, secureSessionId, requestId, attributes),
-    );
+    judge(aiClient, config, context, tracker, input, written.content)
+      .then(agentRun.scored)
+      .catch((err) => {
+        agentRun.scored();
+        LDObserve.recordError(err as Error, secureSessionId, requestId, attributes);
+      });
   });
 }
