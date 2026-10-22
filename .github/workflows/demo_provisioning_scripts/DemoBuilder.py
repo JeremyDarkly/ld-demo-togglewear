@@ -129,14 +129,16 @@ class DemoBuilder:
         
         print("Creating template environment", end="...")
         self.ldproject.create_environment("template-env", "Template")
+        print("Done")
         
         env_file = os.getenv('GITHUB_ENV')
         if env_file:
             # The repo is public, and so are its Actions logs, which print a
             # step's env. Masked before the keys reach GITHUB_ENV, so every
-            # later step shows *** in their place.
+            # later step shows *** in their place. GitHub only reads a
+            # command at the start of a line, hence the leading newline.
             for key in (self.sdk_key, self.client_id):
-                print(f"::add-mask::{key}", flush=True)
+                print(f"\n::add-mask::{key}", flush=True)
             try:
                 with open(env_file, "a") as f:
                     f.write(f"LD_SDK_KEY={self.sdk_key}\n")
