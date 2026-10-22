@@ -4,6 +4,7 @@ import {
   COMEBACK_DISCOUNT,
   LOYALTY_DISCOUNT,
   productBySlug,
+  STICKERS_CODE,
   WELCOME_CODE,
   WELCOME_DISCOUNT,
   type PricingVariant,
@@ -66,6 +67,7 @@ export function validatePromo(
   variant: PricingVariant
 ): PromoRejection | null {
   const normalised = code.trim().toUpperCase();
+  if (normalised === STICKERS_CODE) return null;
   if (normalised !== WELCOME_CODE && normalised !== COMEBACK_CODE) {
     return "unknown";
   }
@@ -93,8 +95,11 @@ export function cartTotals(
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   // Free, so it adds a line and no money. "Any 2 items" counts quantity,
-  // so two of the same tee qualifies.
-  const freeGift = offer === GIFT_OFFER && itemCount >= GIFT_MIN_ITEMS;
+  // so two of the same tee qualifies. The STICKERS code gives the same pack
+  // with no minimum.
+  const freeGift =
+    (offer === GIFT_OFFER && itemCount >= GIFT_MIN_ITEMS) ||
+    promo === STICKERS_CODE;
 
   // Member pricing wins outright and the code is ignored, which is the same
   // rule validatePromo enforces at the field — it is repeated here so a
@@ -102,11 +107,11 @@ export function cartTotals(
   const discountKind: CartTotals["discountKind"] =
     variant === "loyaltyGold"
       ? "loyalty"
-      : promo && !validatePromo(promo, variant)
-        ? promo === COMEBACK_CODE
-          ? "comeback"
-          : "welcome"
-        : "none";
+      : promo === COMEBACK_CODE && !validatePromo(promo, variant)
+        ? "comeback"
+        : promo === WELCOME_CODE && !validatePromo(promo, variant)
+          ? "welcome"
+          : "none";
 
   // The loyalty rate is the same 15% the product pages apply, so a member
   // sees one rate across the whole site rather than a per-item saving that

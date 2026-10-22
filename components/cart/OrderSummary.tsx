@@ -4,7 +4,7 @@ import { useFlags } from "launchdarkly-react-client-sdk";
 
 import { useCart } from "./CartProvider";
 import SummaryLines from "./SummaryLines";
-import { type PricingVariant } from "@/lib/products";
+import { STICKERS_CODE, type PricingVariant } from "@/lib/products";
 import {
   cartTotals,
   resolveLines,
@@ -71,7 +71,8 @@ export default function OrderSummary({
 
         {promo &&
         (totals.discountKind === "welcome" ||
-          totals.discountKind === "comeback") ? (
+          totals.discountKind === "comeback" ||
+          promo === STICKERS_CODE) ? (
           // The applied state replaces the field rather than sitting under
           // it, since there is nothing left to type. Remove is a word, not a
           // cross, for the same reason the search field's clear is.

@@ -408,6 +408,11 @@ export const WELCOME_DISCOUNT = 0.1;
 export const COMEBACK_CODE = "COMEBACK";
 export const COMEBACK_DISCOUNT = 0.1;
 
+// The Cart Recovery agent's cheaper incentive: a free sticker pack with the
+// order rather than money off it. Members can use it too, since a gift does
+// not compete with their pricing the way a second discount would.
+export const STICKERS_CODE = "STICKERS";
+
 export function memberPriceUsd(priceUsd: number) {
   return Math.round(priceUsd * (1 - LOYALTY_DISCOUNT));
 }
