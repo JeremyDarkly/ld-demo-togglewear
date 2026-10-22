@@ -5,8 +5,8 @@ import { useCart } from "@/components/cart/CartProvider";
 import SummaryLines from "@/components/cart/SummaryLines";
 import FraudReview from "./FraudReview";
 import OrderReviewSteps, { type OrderReviewProgress } from "./OrderReviewSteps";
-import { formatPrice, type PricingVariant } from "@/lib/products";
-import { cartTotals, resolveLines } from "@/lib/cart";
+import { formatPrice, productBySlug, type PricingVariant } from "@/lib/products";
+import { cartTotals, GIFT_SLUG, resolveLines } from "@/lib/cart";
 import type { FraudAssessment } from "@/lib/fraudAgent";
 
 // Figma "summary-panel" (75:1471). Same panel as the cart's, with the item
@@ -32,6 +32,7 @@ export default function CheckoutSummary({
   const { announcementOffer } = useFlags();
   const resolved = resolveLines(lines);
   const totals = cartTotals(resolved, variant, promo, announcementOffer);
+  const gift = totals.freeGift ? productBySlug(GIFT_SLUG) : undefined;
 
   return (
     <section className="flex flex-col gap-6 rounded-[2px] border border-grays-hairline bg-grays-white p-8">
@@ -69,6 +70,31 @@ export default function CheckoutSummary({
             </p>
           </div>
         ))}
+
+        {gift && (
+          <div className="flex items-center gap-4">
+            <div className="relative h-16 w-[50px] shrink-0 overflow-hidden rounded-[2px] bg-grays-hairline">
+              <Image
+                src={gift.image}
+                alt={gift.name}
+                fill
+                sizes="50px"
+                className="object-contain"
+              />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <p className="truncate font-sohne text-small font-medium text-grays-ld-black">
+                {gift.name}
+              </p>
+              <p className="font-sohne text-xsmall text-grays-04">
+                Free gift • Qty: 1
+              </p>
+            </div>
+            <p className="shrink-0 font-sohne text-small font-medium text-accent-purple">
+              FREE
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="h-px w-full bg-grays-hairline" />
