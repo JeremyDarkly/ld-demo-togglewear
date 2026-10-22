@@ -101,6 +101,9 @@ STYLIST_JUDGES = (
     ("togglewear-relevance-judge", "$ld:ai:judge:relevance", 0.85),
 )
 
+# Cart Recovery, the AI Config experiment
+CART_RECOVERY_CONFIG_KEY = "cart-recovery-agent"
+
 # Every failure is reported.  An earlier version sampled 30% of them, on the
 # assumption that the run would be long enough for that to still be hundreds
 # of records; in practice the rollout is rolled back within minutes of the
@@ -771,8 +774,8 @@ def _order_total(low=50, high=110):
     return round(random.uniform(low, high), 2)
 
 
-def _run_visitors(client, label, visit):
-    for i in range(EXPERIMENT_VISITORS):
+def _run_visitors(client, label, visit, visitors=EXPERIMENT_VISITORS):
+    for i in range(visitors):
         try:
             visit()
         except Exception as e:
@@ -784,7 +787,7 @@ def _run_visitors(client, label, visit):
         # event queue stays well inside its capacity alongside the guarded
         # release threads sharing the client.
         time.sleep(0.005)
-    logging.info(f"{label}: {EXPERIMENT_VISITORS} visitors generated.")
+    logging.info(f"{label}: {visitors} visitors generated.")
 
 
 def announcement_offer_experiment_generator(client):
@@ -880,6 +883,83 @@ def referral_offer_experiment_generator(client):
     _run_visitors(client, "11 Referral Offer", visit)
 
 
+def generate_returning_cart_context():
+    """A signed-in shopper back at a cart they left, the only kind the Cart
+    Recovery agent writes for: returningCart is what its experiment's rule
+    matches, and members are left out because flag 08 gives them their
+    member message instead of the reminder."""
+    builder = Context.builder(f"shopper-{uuid.uuid4()}")
+    builder.set("role", random.choices(["shopper", "beta"], weights=[95, 5])[0])
+    builder.set("tier", "none")
+    builder.set("returningCart", True)
+    builder.set("cartItemCount", random.randint(1, 4))
+    builder.set("device", random.choices(
+        ["Mobile", "Desktop", "Tablet"], weights=[58, 36, 6])[0])
+    builder.set("location", random.choice([
+        "America/New_York", "America/Chicago", "America/Los_Angeles",
+        "Europe/London", "Europe/Berlin",
+    ]))
+    return builder.build()
+
+
+def cart_recovery_experiment_generator(client):
+    """The Cart Recovery Offer experiment, on the agent's four variations.
+
+    Like the Personal Stylist's generator, each line is an evaluation of the
+    AI Config and the events pages/api/cart-recovery's tracker sends, tracked
+    by hand; no model is called. Then the shopper does or does not come back
+    to checkout. The agent's pick brings back as many orders as 10% off,
+    but only gives the discount to the large carts that need it, so it comes
+    out ahead on revenue, for a few more tokens a line. Twice the visitors
+    of the other experiments, since four arms split them.
+    """
+    # (odds of ordering, share of the cart's value paid, input and output
+    # token ranges)
+    arms = {
+        "reminder-only":   (0.18, 1.00, (430, 470), (30, 45)),
+        "sticker-pack":    (0.23, 1.00, (440, 480), (30, 45)),
+        "ten-percent-off": (0.28, 0.90, (440, 480), (30, 45)),
+        "agent-choice":    (0.28, 0.98, (530, 590), (45, 70)),
+    }
+    disabled = {"_ldMeta": {"enabled": False}}
+
+    def visit():
+        ctx = generate_returning_cart_context()
+        value = client.variation(CART_RECOVERY_CONFIG_KEY, ctx, disabled)
+        meta = value.get("_ldMeta", {})
+        if not meta.get("enabled"):
+            return
+        variation = meta.get("variationKey", "")
+        order_rate, paid, (in_low, in_high), (out_low, out_high) = arms.get(
+            variation, arms["reminder-only"])
+        data = {
+            "runId": str(uuid.uuid4()),
+            "configKey": CART_RECOVERY_CONFIG_KEY,
+            "variationKey": variation,
+            "version": meta.get("version", 1),
+            "modelName": value.get("model", {}).get("name", ""),
+            "providerName": value.get("provider", {}).get("name", ""),
+            "modelVersion": meta.get("modelVersion"),
+            "modelKey": meta.get("modelKey"),
+        }
+        client.track("$ld:ai:duration:total", ctx, data,
+                     int(min(2500, max(600, random.gauss(1200, 250)))))
+        client.track("$ld:ai:generation:success", ctx, data, 1)
+        tokens_in = random.randint(in_low, in_high)
+        tokens_out = random.randint(out_low, out_high)
+        client.track("$ld:ai:tokens:input", ctx, data, tokens_in)
+        client.track("$ld:ai:tokens:output", ctx, data, tokens_out)
+        client.track("$ld:ai:tokens:total", ctx, data, tokens_in + tokens_out)
+        score = min(1.0, max(0.0, random.gauss(0.9, 0.06)))
+        client.track("$ld:ai:judge:accuracy", ctx,
+                     {**data, "judgeConfigKey": "togglewear-accuracy-judge"}, score)
+        if random.random() < order_rate:
+            client.track(ORDER_PLACED_KEY, ctx, None,
+                         round(_order_total(60, 140) * paid, 2))
+
+    _run_visitors(client, "Cart Recovery Offer", visit, EXPERIMENT_VISITORS * 2)
+
+
 # --------------------------------- Personal Stylist, healthy AI Config
 
 def personal_stylist_healthy_generator(client, stop_event):
@@ -969,7 +1049,7 @@ def personal_stylist_healthy_generator(client, stop_event):
 
 
 def experiments_generator(client):
-    """The four experiments one after another, on their own thread."""
+    """The five experiments one after another, on their own thread."""
     if not client.is_initialized():
         logging.error("LaunchDarkly client is not initialized.")
         return
@@ -977,6 +1057,7 @@ def experiments_generator(client):
     upsell_picks_experiment_generator(client)
     express_checkout_experiment_generator(client)
     referral_offer_experiment_generator(client)
+    cart_recovery_experiment_generator(client)
     client.flush()
 
 
