@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useFlags } from "launchdarkly-react-client-sdk";
+import { useCartRecovery } from "@/components/cart/useCartRecovery";
 import {
   COMEBACK_CODE,
   COMEBACK_DISCOUNT,
@@ -73,10 +74,17 @@ const BY_FLAG_VALUE: Record<string, BarVariant> = {
   "member-message": "loyaltyGold",
 };
 
+// Shown while the Cart Recovery agent writes its line: Jen's opening, without
+// the code, since which offer comes with the line is the agent's to say.
+const RECOVERY_WAITING = "Good taste doesn't ship itself!";
+
 // Which bar to show is flag 08's call. Members get theirs by segment, a
 // signed-in shopper who came back to a cart gets the reminder, and guests are
 // the experiment. The persona passed in is only the fallback for the frame
 // before flags load, or a project without the flag.
+//
+// The reminder's words are the Cart Recovery agent's (useCartRecovery), and
+// the line above is only its stand-in when the agent is off or fails.
 export default function AnnouncementBar({
   persona = "default",
 }: {
@@ -86,38 +94,41 @@ export default function AnnouncementBar({
   const shown =
     (typeof announcementOffer === "string" && BY_FLAG_VALUE[announcementOffer]) ||
     persona;
-  const { surface, message } = VARIANTS[shown];
+  const recovery = useCartRecovery(shown === "cartAbandon");
+  const { surface, message: own } = VARIANTS[shown];
+  const message =
+    shown !== "cartAbandon" || recovery.status === "none"
+      ? own
+      : recovery.status === "ready"
+        ? recovery.text
+        : RECOVERY_WAITING;
 
   // The colour eases from one bar to the next, and the message is keyed on
-  // the variant so a new one remounts and fades in over it.
+  // its text so a new one remounts and fades in over it.
   return (
     <div
       className={`flex w-full items-center justify-center px-6 py-[10px] transition-colors duration-500 ease-out motion-reduce:transition-none ${surface}`}
       data-persona={shown}
     >
-      <BannerMessage key={shown} shown={shown} message={message} />
+      <BannerMessage key={message} message={message} />
     </div>
   );
 }
 
-// The last bar shown, kept outside the component because every page mounts
-// its own header: without it, each navigation would look like a change and
-// replay the fade. Null until the first bar, so a fresh load does not fade.
-let lastShown: BarVariant | null = null;
+// The last message shown, kept outside the component because every page
+// mounts its own header: without it, each navigation would look like a
+// change and replay the fade. Null until the first bar, so a fresh load does
+// not fade.
+let lastShown: string | null = null;
 
 // Fades only when the bar really changed — the cart emptying, someone signing
-// in — which is the moment a demo wants the audience to notice.
-function BannerMessage({
-  shown,
-  message,
-}: {
-  shown: BarVariant;
-  message: string;
-}) {
-  const [changed] = useState(() => lastShown !== null && lastShown !== shown);
+// in, the agent's line arriving — which is the moment a demo wants the
+// audience to notice.
+function BannerMessage({ message }: { message: string }) {
+  const [changed] = useState(() => lastShown !== null && lastShown !== message);
   useEffect(() => {
-    lastShown = shown;
-  }, [shown]);
+    lastShown = message;
+  }, [message]);
 
   return (
     <p
