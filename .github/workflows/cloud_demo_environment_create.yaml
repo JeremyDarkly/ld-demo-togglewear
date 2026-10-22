@@ -118,6 +118,19 @@ jobs:
           echo AWS_REGION=us-east-1 >> ./.env.production
           echo AWS_DEFAULT_REGION=us-east-1 >> ./.env.production
 
+      # Before the build rather than just before the deploy: EKS takes a few
+      # seconds to apply a new association, and a pod started before then
+      # comes up with no AWS credentials, so every Bedrock call fails.
+      - name: Create EKS Pod Identity Association
+        run: |
+          echo "Creating Pod Identity Association for namespace: ${{ env.DEMO_NAMESPACE }}"
+          aws eks create-pod-identity-association \
+            --cluster-name ld-core-demo-eks \
+            --namespace ${{ env.DEMO_NAMESPACE }} \
+            --service-account ld-demo-togglewear-sa \
+            --role-arn ${{ env.EKS_POD_IDENTITY_ROLE_ARN }} \
+            --region us-east-1 || echo "Pod Identity Association may already exist, continuing..."
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
@@ -148,16 +161,6 @@ jobs:
         uses: kodermax/kubectl-aws-eks@master
         with:
           args: create namespace ${{ env.DEMO_NAMESPACE }}
-
-      - name: Create EKS Pod Identity Association
-        run: |
-          echo "Creating Pod Identity Association for namespace: ${{ env.DEMO_NAMESPACE }}"
-          aws eks create-pod-identity-association \
-            --cluster-name ld-core-demo-eks \
-            --namespace ${{ env.DEMO_NAMESPACE }} \
-            --service-account ld-demo-togglewear-sa \
-            --role-arn ${{ env.EKS_POD_IDENTITY_ROLE_ARN }} \
-            --region us-east-1 || echo "Pod Identity Association may already exist, continuing..."
 
       - name: Applying deploy file to Kubernetes
         uses: kodermax/kubectl-aws-eks@master
