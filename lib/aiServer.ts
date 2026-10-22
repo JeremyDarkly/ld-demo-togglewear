@@ -4,6 +4,7 @@ import {
   type LDAIClient,
   type LDAICompletionConfig,
   type LDAIConfigTracker,
+  type LDJudgeResult,
 } from "@launchdarkly/server-sdk-ai";
 // LangChain loads its Bedrock model with import() on a package name held in
 // a variable, which the build cannot follow, so the standalone server would
@@ -44,7 +45,8 @@ export function getAiClient(): Promise<LDAIClient | null> {
 // SDK's managed model runs them: each judge is its own AI Config, its score
 // is recorded on this reply's tracker, and nothing waits for them — the
 // shopper has their answer before the judges have read it. Any config with
-// judges attached will do, which includes the Order Review's agents.
+// judges attached will do, which includes the Order Review's agents. Resolves
+// to the judges' results, for the conversation's trace (lib/llmTrace.ts).
 export async function judge(
   aiClient: LDAIClient,
   config: Pick<LDAICompletionConfig, "judgeConfiguration">,
@@ -52,9 +54,9 @@ export async function judge(
   tracker: LDAIConfigTracker,
   input: string,
   output: string,
-) {
+): Promise<LDJudgeResult[]> {
   const attached = config.judgeConfiguration?.judges ?? [];
-  await Promise.all(
+  const results = await Promise.all(
     attached.map(async ({ key, samplingRate }) => {
       const judge = await aiClient.createJudge(
         key,
@@ -66,8 +68,10 @@ export async function judge(
       );
       const result = await judge?.evaluate(input, output);
       if (result?.sampled) tracker.trackJudgeResult(result);
+      return result;
     }),
   );
+  return results.filter((r): r is LDJudgeResult => Boolean(r));
 }
 
 // Thumbs up and down arrive in a later request than the reply they rate, and
