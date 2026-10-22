@@ -877,6 +877,29 @@ EXPERIMENTS = [
                     'primary_key': 'referral-link-copied',
                     'attributes': ['device', 'location']},
      'start_iteration': True},
+    # On an AI Config rather than a flag: the Cart Recovery agent's four
+    # offers, on its returningCart rule (rule 0). Revenue decides it, since
+    # 10% off can win the most orders and still bring in less. Orders, the
+    # Accuracy judge's score and tokens, as the cost of each line, are there
+    # to say why. The judge and token metrics are LaunchDarkly's own, made
+    # with the project's first AI Config. The control is the first variation,
+    # Reminder Only.
+    {'requires': 'ai_config_created',
+     'toggle_flag': None,
+     'metrics': [['order-revenue', False], ['order-placed', False],
+                 ['ld_autogen__ai-judge-accuracy', False],
+                 ['ld_autogen__ai-total-tokens', False]],
+     'experiment': {'exp_key': 'cart-recovery-offer',
+                    'exp_name': '(Bayesian) AI Config Experiment: Cart Recovery Offer',
+                    'exp_env': 'production',
+                    'flag_key': 'cart-recovery-agent',
+                    'rule_index': 0,
+                    'hypothesis': 'Letting the Cart Recovery agent choose the offer for each cart '
+                                  'will win back more revenue than a reminder alone or the same '
+                                  'offer for everyone.',
+                    'primary_key': 'order-revenue',
+                    'attributes': ['device', 'location']},
+     'start_iteration': True},
 ]
 
 # ==========================================================================
@@ -986,11 +1009,27 @@ _PERSONAL_STYLIST_MESSAGES = [
 # Stylist are held to the same rubric.
 _JUDGE_OPENING = (
     "You evaluate replies from ToggleWear's AI features in LaunchDarkly's merch store: the "
-    "Swag Assistant, a shopping chat, and the Personal Stylist, a short note on a product "
-    "page about size, fit and what to wear it with. The message history shows what the "
-    "reply was written from: for the chat, the conversation and, on lines starting "
-    "\"tool:\", the catalog and account data its tools returned; for a stylist note, the "
-    "request and, on lines starting \"data:\", the product and order data it was given.\n\n"
+    "Swag Assistant, a shopping chat; the Personal Stylist, a short note on a product "
+    "page about size, fit and what to wear it with; and Cart Recovery, a one-line reminder "
+    "in the bar across the top of the store for a shopper who came back to a cart they "
+    "left. The message history shows what the reply was written from: for the chat, the "
+    "conversation and, on lines starting \"tool:\", the catalog and account data its tools "
+    "returned; for a stylist note or a cart reminder, the request and, on lines starting "
+    "\"data:\", the product, order, cart or offer data it was given.\n\n"
+)
+
+# Shared by all four Cart Recovery variations, so the experiment's arms
+# write alike and differ only in the offer. The storefront hands the agent
+# the shopper, the cart and the offers its variation allows.
+_CART_RECOVERY_OPENING = (
+    "You are the Cart Recovery agent for ToggleWear, LaunchDarkly's merch store. A "
+    "signed-in shopper has come back with items still in the cart they left on an earlier "
+    "visit, and you write the one line shown in the bar across the top of every page to "
+    "welcome them back to it.\n\n"
+    "Write one sentence of at most 80 characters that names something in their cart, using "
+    "the product's name as given. Never mention a discount, code, price or gift yourself: "
+    "the store adds any offer after your line, so yours has to read well on its own and "
+    "with one after it. Plain text, with no emojis.\n\n"
 )
 
 _ORDER_JUDGE_OPENING = (
@@ -1125,10 +1164,11 @@ AI_CONFIGS = [
     # the scores on the Monitoring tab.
     {'config': {'config_key': 'togglewear-accuracy-judge',
                 'config_name': 'ToggleWear Accuracy Judge',
-                'description': 'Scores every Swag Assistant reply and Personal Stylist note from '
-                               '0 to 1 for whether its facts match the catalog and order data it '
-                               'was given and the store\'s policies. Runs on Claude Haiku 4.5; '
-                               'the scores appear on each config\'s Monitoring tab.',
+                'description': 'Scores every Swag Assistant reply, Personal Stylist note and '
+                               'Cart Recovery reminder from 0 to 1 for whether its facts match '
+                               'the catalog, order and cart data it was given and the store\'s '
+                               'policies. Runs on Claude Haiku 4.5; the scores appear on each '
+                               'config\'s Monitoring tab.',
                 'tags': ['ai-config', 'judge', 'togglewear'],
                 'mode': 'judge',
                 'evaluation_metric_key': '$ld:ai:judge:accuracy',
@@ -1391,6 +1431,78 @@ AI_CONFIGS = [
                                     {'allocation': 10000, 'durationMillis': 150000},
                                     {'allocation': 25000, 'durationMillis': 150000},
                                     {'allocation': 50000, 'durationMillis': 150000}]}},
+
+    # ---- Cart Recovery ----
+    #
+    # The line in the announcement bar for a signed-in shopper who came back
+    # to a cart they left (pages/api/cart-recovery). Flag 08's cart reminder
+    # rule decides who that is; this agent decides what they are told. Its
+    # four variations are the arms of the Cart Recovery Offer experiment
+    # below, so they share the model and the writing instructions and differ
+    # only in the offer: none, a free sticker pack, 10% off, or the agent's
+    # own pick of the three. Each one's custom "offers" is what the
+    # storefront lets it attach, and the offer's wording and code are the
+    # storefront's, so no arm can promise what the cart does not give.
+    #
+    # The experiment runs on the returningCart rule rather than the default
+    # one, which is everyone the bar ever asks about, said where it can be
+    # seen. Members never reach it: flag 08 gives them their member message.
+    {'config': {'config_key': 'cart-recovery-agent',
+                'config_name': 'Cart Recovery',
+                'description': 'Writes the reminder in the bar across the top of the store for '
+                               'a signed-in shopper who came back to a cart they left, which '
+                               'flag 08\'s cart reminder rule decides. Four variations test what '
+                               'wins the cart back: a reminder alone, a free sticker pack, 10% '
+                               'off, or the agent choosing from the cart and the shopper\'s '
+                               'history. They run as the Cart Recovery Offer experiment, on order '
+                               'revenue. Demo it: sign in as Megan Caldwell or Chris Donovan, '
+                               'choose Refill in the account menu, and the bar shows their line. '
+                               'To show a particular arm, target the shopper to it here.',
+                'mode': 'agent',
+                'tags': ['ai-config', 'agent', 'experiment', 'togglewear']},
+     'variations': [
+         {'ai_config_version_key': key,
+          'ai_model_config_key': _HAIKU,
+          'ai_config_version_name': name,
+          'description': description,
+          'model': {'modelName': _HAIKU_ID,
+                    'parameters': {'maxTokens': 300, 'temperature': 0.7},
+                    'custom': {'offers': offers}},
+          'instructions': _CART_RECOVERY_OPENING + choosing + _snippet('togglewear-brand-voice')}
+         for key, name, description, offers, choosing in [
+             ('reminder-only', 'Reminder Only',
+              'The control: a line about their cart and no incentive.',
+              ['none'],
+              "Record your line with write_reminder, with the offer none.\n\n"),
+             ('sticker-pack', 'Free Sticker Pack',
+              'The line, with a free sticker pack on every reminder.',
+              ['sticker-pack'],
+              "Record your line with write_reminder, with the offer sticker-pack: the store "
+              "adds a free sticker pack after it.\n\n"),
+             ('ten-percent-off', '10% Off',
+              'The line, with 10% off on every reminder.',
+              ['comeback'],
+              "Record your line with write_reminder, with the offer comeback: the store adds "
+              "10% off after it.\n\n"),
+             ('agent-choice', "Agent's Choice",
+              'The line, with whichever offer the agent judges will bring this shopper back '
+              'for the least.',
+              ['none', 'sticker-pack', 'comeback'],
+              "Then choose the offer the store adds after your line, and record both with "
+              "write_reminder. Every offer costs the store, so pick the smallest one likely to "
+              "bring this shopper back to checkout:\n"
+              "- none: a small cart, or a shopper with many past orders who will likely "
+              "return anyway.\n"
+              "- sticker-pack, a free sticker pack: a mid-sized cart, where a small gift tips "
+              "the decision.\n"
+              "- comeback, 10% off: a large cart, roughly $100 or more, where the saving is "
+              "worth having.\n\n")]],
+     'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0}],
+     'environment': 'production',
+     'rules': [['reminder-only',
+                [{'contextKind': 'user', 'attribute': 'returningCart', 'op': 'in',
+                  'negate': False, 'values': [True]}]]],
+     'fallthrough': 'reminder-only'},
 ]
 
 
