@@ -8,7 +8,8 @@ import PaymentSummary from "@/components/confirmation/PaymentSummary";
 import SwagAssistant from "@/components/ui/SwagAssistant";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import { useOrder } from "@/components/checkout/OrderProvider";
-import { resolveLines } from "@/lib/cart";
+import { GIFT_SLUG, resolveLines } from "@/lib/cart";
+import { productBySlug } from "@/lib/products";
 
 // Figma "order-confirmation" (75:1534). The success header sits on white
 // with a hairline under it; everything below it is on Gray 01.
@@ -38,7 +39,10 @@ export default function OrderConfirmationPage() {
                   shipTo={order.shipTo}
                   deliveryBy={order.deliveryBy}
                 />
-                <ShipmentItems lines={resolveLines(order.lines)} />
+                <ShipmentItems
+                  lines={resolveLines(order.lines)}
+                  gift={order.totals.freeGift ? productBySlug(GIFT_SLUG) : undefined}
+                />
               </div>
 
               <div className="flex flex-col gap-6 xl:w-[420px] xl:shrink-0">
