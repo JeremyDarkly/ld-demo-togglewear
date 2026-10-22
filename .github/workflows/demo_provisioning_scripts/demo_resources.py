@@ -1652,3 +1652,60 @@ PLAYGROUNDS = [
      'variants': [_playground_variant('swag-assistant', 'standard', user=_SWAG_USER),
                   _playground_variant('swag-assistant', 'member-concierge', user=_SWAG_USER)]},
 ]
+
+
+# ---- Agent optimizations ----
+#
+# LDPlatform.create_agent_optimization. An optimization runs an agent over a
+# handful of its dataset's rows, has judges score each answer against the
+# row's expected output, and rewrites the instructions or changes the model
+# until every row passes. The optimizer only works on agents, and only these
+# two of ours answer without tools. Each was run once for real, from
+# demo_provisioning_scripts/run_optimization.py on Bedrock, and its results
+# saved to optimizations/<key>.json, which a new environment replays so it
+# opens with a finished run. auto_commit is off, so a run never adds a
+# variation to the agent. Model choices are Bedrock model ids, which is what
+# the optimizer matches model configs on.
+AGENT_OPTIMIZATIONS = [
+    # Sonnet makes every call; could Haiku, with better instructions? Once
+    # every row passes, token optimization tries the cheaper model.
+    {'key': 'order-decision-cost',
+     'ai_config_key': 'fraud-decision-agent',
+     'dataset': 'order_decision.jsonl',
+     'scenarios': ['ordinary-member', 'just-under-value', 'high-value-platinum',
+                   'value-and-quantity', 'blocked-zip-gold', 'blocked-zip-small'],
+     'model_choices': [_SONNET_ID, _HAIKU_ID],
+     'judge_model': _SONNET_ID,
+     'acceptance_statements': [
+         {'statement': 'The decision is the one the risk points call for: 70 points or more '
+                       'is decline, 40 or more is review, and under 40 is approve.',
+          'threshold': 0.85},
+         {'statement': 'The summary tells the shopper in one or two plain sentences what '
+                       'happens to their order, says what caught a held or declined order, '
+                       'and never mentions points, thresholds or agents.',
+          'threshold': 0.75},
+     ],
+     'judges': [{'key': 'togglewear-decision-policy-judge', 'threshold': 0.85},
+                {'key': 'togglewear-shopper-message-judge', 'threshold': 0.7}],
+     'max_attempts': 4,
+     'token_optimization': True},
+    # Haiku writes the note; does it give the review team what it needs?
+    {'key': 'case-note-quality',
+     'ai_config_key': 'case-note-agent',
+     'dataset': 'case_note.jsonl',
+     'scenarios': ['high-value-platinum', 'value-and-quantity', 'blocked-zip-gold',
+                   'blocked-zip-small'],
+     'model_choices': [_HAIKU_ID, _SONNET_ID],
+     'judge_model': _SONNET_ID,
+     'acceptance_statements': [
+         {'statement': 'The note gives the decision, each signal that drove it with its '
+                       'points, what the account history adds, and the one thing the '
+                       'reviewer should check first, in three or four sentences.',
+          'threshold': 0.75},
+         {'statement': 'Every fact in the note comes from the case summary or the '
+                       'specialists\' reports, with nothing assumed or invented.',
+          'threshold': 0.75},
+     ],
+     'judges': [],
+     'max_attempts': 4},
+]

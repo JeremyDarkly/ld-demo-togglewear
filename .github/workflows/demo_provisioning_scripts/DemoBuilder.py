@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 import subprocess
 import time
 import sys
+import uuid
 # Load environment variables from .env file
 load_dotenv()
 
@@ -36,6 +37,7 @@ from demo_resources import (
     AGENT_GRAPHS,
     DATASETS,
     PLAYGROUNDS,
+    AGENT_OPTIMIZATIONS,
 )
 
 
@@ -82,6 +84,7 @@ class DemoBuilder:
         # After the agents, since a graph's nodes have to exist.
         self.create_agent_graphs()
         self.create_playgrounds()
+        self.create_agent_optimizations()
         # After the flags, which each experiment takes over, and before the
         # results, so the generated traffic lands in a running iteration.
         self.create_and_run_experiments()
@@ -326,6 +329,64 @@ class DemoBuilder:
                 for evaluation_id in evaluation_ids:
                     self.ldproject.start_evaluation_run(evaluation_id, playground_id, dataset_id)
             print(f"  Playground created: {spec['name']}")
+        print("Done")
+
+    # Each optimization's rows come from its dataset, and its finished run is
+    # the real one run_optimization.py saved, replayed result by result.
+    def create_agent_optimizations(self):
+        if not self.ai_config_created:
+            print("Error: AI Configs not created")
+            return
+        print("Creating agent optimizations...")
+        here = os.path.dirname(__file__)
+        for spec in AGENT_OPTIMIZATIONS:
+            with open(os.path.join(here, "datasets", spec["dataset"]), encoding="utf-8") as f:
+                rows = {r["metadata"]["scenario"]: r for r in map(json.loads, f)}
+            samples = [rows[s] for s in spec["scenarios"]]
+            created = self.ldproject.create_agent_optimization(
+                key=spec["key"],
+                ai_config_key=spec["ai_config_key"],
+                max_attempts=spec["max_attempts"],
+                judge_model=spec["judge_model"],
+                model_choices=spec["model_choices"],
+                acceptance_statements=spec["acceptance_statements"],
+                judges=spec["judges"],
+                user_input_options=[r["input"] for r in samples],
+                ground_truth_responses=[r["expected_output"] for r in samples],
+                variable_choices=[r.get("variables", {}) for r in samples],
+                token_optimization=spec.get("token_optimization", False),
+                auto_commit=False,
+            )
+            results_file = os.path.join(here, "optimizations", f"{spec['key']}.json")
+            if not created or "version" not in created or not os.path.exists(results_file):
+                continue
+            with open(results_file, encoding="utf-8") as f:
+                events = json.load(f)
+            run_id, result_ids = str(uuid.uuid4()), {}
+            for event in events:
+                payload = event["payload"]
+                # The optimizer's opening result has no user input, which
+                # LaunchDarkly turns away, in the real run too.
+                if event["op"] == "post" and not payload.get("userInput"):
+                    continue
+                if event["op"] == "post":
+                    result_ids[event["ref"]] = self.ldproject.post_agent_optimization_result(
+                        spec["key"], run_id, created["version"], payload["iteration"],
+                        payload["instructions"], payload["userInput"], payload.get("parameters"))
+                elif result_ids.get(event["ref"]):
+                    self.ldproject.patch_agent_optimization_result(
+                        spec["key"], result_ids[event["ref"]],
+                        status=payload.get("status"),
+                        activity=payload.get("activity"),
+                        completion_response=payload.get("completionResponse"),
+                        variation=payload.get("variation"),
+                        scores=payload.get("scores"),
+                        generation_tokens=payload.get("generationTokens"),
+                        evaluation_tokens=payload.get("evaluationTokens"),
+                        generation_latency=payload.get("generationLatency"),
+                        evaluation_latencies=payload.get("evaluationLatencies"),
+                    )
+            print(f"  Optimization run replayed: {spec['key']}")
         print("Done")
 
     # An AI Config's guarded rollout, started at build time for
