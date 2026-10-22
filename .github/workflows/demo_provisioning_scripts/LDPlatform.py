@@ -3657,7 +3657,9 @@ mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
                                    model_choices=None, acceptance_statements=None,
                                    judges=None, user_input_options=None,
                                    ground_truth_responses=None, metric_key=None,
-                                   token_limit=None, variable_choices=None):
+                                   token_limit=None, variable_choices=None,
+                                   latency_optimization=None, token_optimization=None,
+                                   auto_commit=None):
         """Create an agent optimization config via POST /api/v2/projects/{projectKey}/agent-optimizations."""
         headers = {
             "Content-Type": "application/json",
@@ -3687,6 +3689,12 @@ mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
             payload["tokenLimit"] = token_limit
         if variable_choices is not None:
             payload["variableChoices"] = variable_choices
+        if latency_optimization is not None:
+            payload["latencyOptimization"] = latency_optimization
+        if token_optimization is not None:
+            payload["tokenOptimization"] = token_optimization
+        if auto_commit is not None:
+            payload["autoCommit"] = auto_commit
 
         response = self.getrequest(
             "POST",
