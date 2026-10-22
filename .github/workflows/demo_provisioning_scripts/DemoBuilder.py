@@ -390,9 +390,9 @@ class DemoBuilder:
         print("Done")
 
     # An AI Config's guarded rollout, started at build time for
-    # results_generator.py to walk to 100%. Its metrics are the ones
-    # LaunchDarkly generates itself for AI Configs, which it makes along with
-    # a project's first AI Config, so they are waited for rather than assumed.
+    # results_generator.py to walk to 100%. Its metrics are the AI ones in the
+    # METRICS table, which create_metrics has made by now; they are checked
+    # for rather than assumed, so a missing one says which.
     def start_ai_config_guarded_rollout(self, key, env, rollout):
         missing = list(rollout["metrics"])
         for _ in range(12):

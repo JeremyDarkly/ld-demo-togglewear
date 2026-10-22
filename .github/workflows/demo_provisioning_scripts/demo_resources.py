@@ -246,6 +246,62 @@ METRICS = [
      'unit_aggregation_type': 'average',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'judge', 'order-review', 'togglewear']},
+
+    # ---- AI Configs: the Personal Stylist's guarded rollout and the Cart
+    # Recovery experiment ----
+    #
+    # On the events the AI SDK's tracker sends, so the store's real judge
+    # scores, tokens and errors land in them as well as the generator's.
+    # LaunchDarkly makes metrics like these by itself, but only once the AI
+    # SDK has sent the project events, which a project being built has never
+    # done, so a rollout or experiment waiting on those could not start. The
+    # same shape as LaunchDarkly's: per shopper, and a shopper with no score
+    # or tokens is left out rather than counted as 0.
+    {'metric_key': 'ai-judge-accuracy',
+     'metric_name': 'AI Judge Accuracy',
+     'event_key': '$ld:ai:judge:accuracy',
+     'metric_description': 'The Accuracy judge\'s score, from 0 to 1, for each Swag Assistant '
+                           'reply, Personal Stylist note and Cart Recovery reminder it reads.',
+     'numeric': True,
+     'unit': 'score',
+     'success_criteria': 'HigherThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'judge', 'togglewear']},
+    {'metric_key': 'ai-judge-relevance',
+     'metric_name': 'AI Judge Relevance',
+     'event_key': '$ld:ai:judge:relevance',
+     'metric_description': 'The Relevance judge\'s score, from 0 to 1, for each Swag Assistant '
+                           'reply and Personal Stylist note it reads.',
+     'numeric': True,
+     'unit': 'score',
+     'success_criteria': 'HigherThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'judge', 'togglewear']},
+    {'metric_key': 'ai-completion-errors',
+     'metric_name': 'AI Completion Errors',
+     'event_key': '$ld:ai:generation:error',
+     'metric_description': 'Model calls from an AI Config that failed, counted per shopper.',
+     'numeric': False,
+     'unit': '',
+     'success_criteria': 'LowerThanBaseline',
+     'unit_aggregation_type': 'sum',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
+    {'metric_key': 'ai-total-tokens',
+     'metric_name': 'AI Total Tokens',
+     'event_key': '$ld:ai:tokens:total',
+     'metric_description': 'Input and output tokens per model call, the cost of each reply.',
+     'numeric': True,
+     'unit': 'tokens',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
 ]
 
 # Metric groups — funnels, passed to LDPlatform.create_metric_group(**spec)
@@ -881,14 +937,12 @@ EXPERIMENTS = [
     # offers, on its returningCart rule (rule 0). Revenue decides it, since
     # 10% off can win the most orders and still bring in less. Orders, the
     # Accuracy judge's score and tokens, as the cost of each line, are there
-    # to say why. The judge and token metrics are LaunchDarkly's own, made
-    # with the project's first AI Config. The control is the first variation,
-    # Reminder Only.
+    # to say why. The control is the first variation, Reminder Only.
     {'requires': 'ai_config_created',
      'toggle_flag': None,
      'metrics': [['order-revenue', False], ['order-placed', False],
-                 ['ld_autogen__ai-judge-accuracy', False],
-                 ['ld_autogen__ai-total-tokens', False]],
+                 ['ai-judge-accuracy', False],
+                 ['ai-total-tokens', False]],
      'experiment': {'exp_key': 'cart-recovery-offer',
                     'exp_name': '(Bayesian) AI Config Experiment: Cart Recovery Offer',
                     'exp_env': 'production',
@@ -1388,8 +1442,9 @@ AI_CONFIGS = [
                                'Opus 5.5 (the upgrade). The build already ran a guarded rollout '
                                'from Sonnet to Opus, finished at 100%, to show as it is. To run '
                                'one live: set the default rule back to Claude Sonnet 4.6, start '
-                               'a guarded rollout to Claude Opus 5.5 with Accuracy, Relevance and '
-                               'Completion error count as metrics and automatic rollback on, '
+                               'a guarded rollout to Claude Opus 5.5 with AI Judge Accuracy, AI '
+                               'Judge Relevance and AI Completion Errors as metrics and automatic '
+                               'rollback on, '
                                'then start a Personal Stylist generator in the Cmd+K panel. The '
                                'Succeeds one walks the rollout to 100%; the Rolls back one has '
                                'Opus\'s judge scores slip until LaunchDarkly rolls it back. The '
@@ -1424,9 +1479,9 @@ AI_CONFIGS = [
      # user, and a guarded rollout's metrics have to share a context kind.
      'guarded_rollout': {'control': 'claude-sonnet-4-6',
                          'target': 'claude-opus-5-5',
-                         'metrics': ['ld_autogen__ai-judge-accuracy',
-                                     'ld_autogen__ai-judge-relevance',
-                                     'ld_autogen__ai-completion-error'],
+                         'metrics': ['ai-judge-accuracy',
+                                     'ai-judge-relevance',
+                                     'ai-completion-errors'],
                          'stages': [{'allocation': 5000, 'durationMillis': 150000},
                                     {'allocation': 10000, 'durationMillis': 150000},
                                     {'allocation': 25000, 'durationMillis': 150000},
