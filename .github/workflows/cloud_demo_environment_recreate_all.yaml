@@ -1,4 +1,4 @@
-name: Cloud Demo Environment Recreate All
+name: Rebuild All Demo Environments
 
 run-name: Recreate All Environments (excluding ${{ github.event.inputs.exclude || 'none' }})
 

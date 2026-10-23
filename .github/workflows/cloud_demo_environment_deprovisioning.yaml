@@ -1,4 +1,4 @@
-name: Cloud Demo Environment De-Provisioning
+name: Delete Demo Environment
 run-name: Delete Environment for ${{ github.event.inputs.name }}
 
 on:

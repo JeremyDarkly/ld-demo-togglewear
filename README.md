@@ -32,11 +32,11 @@ Environments are created and managed by GitHub Actions workflows, all started by
 
 | Workflow | What it does |
 |---|---|
-| **Core Demo Project Provisioning** (`cloud_demo_environment_create.yaml`) | Builds a new environment: a LaunchDarkly project, a container image and a pod, and a DNS record. |
-| **Cloud Demo Environment Recreate** (`cloud_demo_environment_recreate.yaml`) | Deletes your environment and builds it again from the current code. Use it to pick up changes or to reset a demo that has drifted. |
-| **Cloud Demo Environment De-Provisioning** (`cloud_demo_environment_deprovisioning.yaml`) | Deletes your environment: the LaunchDarkly project, the Kubernetes namespace and the DNS record. |
-| **Cloud Demo Environment Recreate All** (`cloud_demo_environment_recreate_all.yaml`) | Starts a Recreate for every ToggleWear environment on the cluster, skipping any usernames you list. Has a dry run that only lists them. |
-| **Manually Add Code References to LaunchDarkly Project** (`ld-add-code-references.yaml`) | Scans this repo and sends flag code references to your project. |
+| **Create Demo Environment** (`cloud_demo_environment_create.yaml`) | Builds a new environment: a LaunchDarkly project, a container image and a pod, and a DNS record. |
+| **Rebuild Demo Environment (Delete + Create)** (`cloud_demo_environment_recreate.yaml`) | Deletes your environment and builds it again from the current code. Use it to pick up changes or to reset a demo that has drifted. |
+| **Delete Demo Environment** (`cloud_demo_environment_deprovisioning.yaml`) | Deletes your environment: the LaunchDarkly project, the Kubernetes namespace and the DNS record. |
+| **Rebuild All Demo Environments** (`cloud_demo_environment_recreate_all.yaml`) | Starts a Rebuild for every ToggleWear environment on the cluster, skipping any usernames you list. Has a dry run that only lists them. |
+| **Add Code References** (`ld-add-code-references.yaml`) | Scans this repo and sends flag code references to your project. |
 
 A build takes around fifteen minutes, ten of which are the generators filling in experiment and rollout results (see [How provisioning works](#how-provisioning-works)). When it finishes:
 
@@ -203,7 +203,7 @@ Most demos leave something changed. To put a flag back:
 | 14 Recommendation Engine | Default rule on Personalized Picks (an adaptive trigger doesn't switch it back) |
 | Personal Stylist | Default rule on whichever model you want to start from |
 
-If an environment has drifted too far, run the **Recreate** workflow.
+If an environment has drifted too far, run the **Rebuild** workflow.
 
 ## Running locally
 
@@ -260,7 +260,7 @@ python DemoBuilder.py
 
 ## How provisioning works
 
-The create and recreate workflows do the same work:
+The Create and Rebuild workflows do the same work:
 
 1. **Build the LaunchDarkly project.** `DemoBuilder.py` creates everything in `demo_resources.py`, in this order:
    1. The project.
@@ -282,7 +282,7 @@ The create and recreate workflows do the same work:
 5. **Deploy** `deploy_files/deploy.yaml` into the `<name>-togglewear` namespace on the shared `ld-core-demo-eks` cluster: a deployment, a service and an ingress with a TLS certificate. `update_k8s_deploy_file.py` fills in the namespace, host and image.
 6. **Point DNS** at the cluster's ingress with a Route 53 CNAME for `<name>-togglewear.launchdarklydemos.com`.
 
-The create and recreate workflows also report their progress to the demo portal's records Lambda, under the user key `<name>-togglewear`. The deprovisioning workflow reports to a webhook instead, when it is given one.
+The Create and Rebuild workflows also report their progress to the demo portal's records Lambda, under the user key `<name>-togglewear`. The Delete workflow reports to a webhook instead, when it is given one.
 
 ## Repository layout
 
@@ -332,7 +332,7 @@ The create and recreate workflows also report their progress to the demo portal'
 
 ## Making changes
 
-**All LaunchDarkly resources come from `demo_resources.py`.** Nothing should be created by hand in a project, because the next Recreate won't have it. The tables there say which `LDPlatform` method each one is passed to.
+**All LaunchDarkly resources come from `demo_resources.py`.** Nothing should be created by hand in a project, because the next Rebuild won't have it. The tables there say which `LDPlatform` method each one is passed to.
 
 **Adding or changing a flag.**
 
@@ -367,7 +367,7 @@ The create and recreate workflows also report their progress to the demo portal'
 - The two optimizations.
 - The table in this README.
 
-**Deploying a change.** Push to `main`, then run **Recreate** for your environment. The workflows build from the branch they are run on.
+**Deploying a change.** Push to `main`, then run **Rebuild** for your environment. The workflows build from the branch they are run on.
 
 ## Troubleshooting
 
@@ -375,7 +375,7 @@ The create and recreate workflows also report their progress to the demo portal'
 
 **The Swag Assistant gives scripted replies.** The Swag Assistant AI Config is switched off, or the server can't reach LaunchDarkly. Check the config, then the server's `LD_SDK_KEY`.
 
-**The AI features say they couldn't answer.** The server can't call Bedrock, which almost always means it has no AWS credentials. On a laptop, check that your AWS CLI profile is signed in. In a new demo environment, the pod probably started before EKS applied its Pod Identity association; run Recreate.
+**The AI features say they couldn't answer.** The server can't call Bedrock, which almost always means it has no AWS credentials. On a laptop, check that your AWS CLI profile is signed in. In a new demo environment, the pod probably started before EKS applied its Pod Identity association; run Rebuild.
 
 **`run_optimization.py` says the agent "has no instructions configured".** The SDK key in `.env` isn't valid for the project, so the SDK can't read the agent. Copy the production SDK key from the project's settings.
 
@@ -388,5 +388,5 @@ The create and recreate workflows also report their progress to the demo portal'
 This repository and its Actions logs are **public**.
 
 - Never put a key, token, webhook URL or account ID in code, in a workflow's `echo`, or in a workflow expression that ends up in a printed script.
-- Secrets from GitHub are masked automatically. Anything else a workflow generates or receives as an input has to be masked with `::add-mask::` before it is used. The deprovisioning workflow's webhook steps show how.
+- Secrets from GitHub are masked automatically. Anything else a workflow generates or receives as an input has to be masked with `::add-mask::` before it is used. The Delete workflow's webhook steps show how.
 - `.env`, `.env.local` and `.env.production` are git-ignored. Keep them that way.

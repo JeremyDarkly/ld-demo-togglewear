@@ -1,4 +1,4 @@
-name: Core Demo Project Provisioning
+name: Create Demo Environment
 run-name: Demo Environment for ${{ github.event.inputs.name }}
 
 on:

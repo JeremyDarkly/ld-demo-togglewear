@@ -1,4 +1,4 @@
-name: Manually Add Code References to LaunchDarkly Project
+name: Add Code References
 
 on:
   workflow_dispatch:
