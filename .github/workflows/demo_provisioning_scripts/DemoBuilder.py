@@ -222,6 +222,7 @@ class DemoBuilder:
         print("Creating prompt snippets...")
         for spec in PROMPT_SNIPPETS:
             self.ldproject.create_snippet(**spec)
+        print("Done")
 
         print("Creating AI tools...")
         # A variation attaches a tool at a version, which is whatever the
@@ -233,6 +234,7 @@ class DemoBuilder:
                 tool_versions[spec["tool_key"]] = json.loads(response.text).get("version", 1)
             except (json.JSONDecodeError, AttributeError):
                 tool_versions[spec["tool_key"]] = 1
+        print("Done")
 
         print("Creating AI Configs...")
         for spec in AI_CONFIGS + AGENT_CONFIGS:
@@ -265,9 +267,11 @@ class DemoBuilder:
             # availability, so the browser cannot see one until it is asked for.
             if spec.get("client_side"):
                 self.ldproject.update_flag_client_side_availability(key)
+            judges = len(spec.get("judges", []))
+            print(f"  AI Config created: {spec['config']['config_name']}"
+                  + (f" ({judges} judge{'s' if judges > 1 else ''} on each variation)" if judges else ""))
             if spec.get("guarded_rollout"):
                 self.start_ai_config_guarded_rollout(key, env, spec["guarded_rollout"])
-            print(f"  AI Config created: {spec['config']['config_name']}")
         print("Done")
         self.ai_config_created = True
 
@@ -301,6 +305,7 @@ class DemoBuilder:
         for spec in DATASETS:
             with open(os.path.join(datasets_dir, spec["file"]), encoding="utf-8") as f:
                 dataset_ids[spec["name"]] = self.ldproject.upload_dataset(spec["name"], f.read(), spec["file"])
+        print("Done")
 
         print("Creating playgrounds...")
         snippets = {s["key"]: s["text"] for s in PROMPT_SNIPPETS}
@@ -364,7 +369,10 @@ class DemoBuilder:
                 auto_commit=False,
             )
             results_file = os.path.join(here, "optimizations", f"{spec['key']}.json")
-            if not created or "version" not in created or not os.path.exists(results_file):
+            if not created or "version" not in created:
+                continue
+            if not os.path.exists(results_file):
+                print(f"  Agent optimization created: {spec['key']}")
                 continue
             with open(results_file, encoding="utf-8") as f:
                 events = json.load(f)
@@ -392,7 +400,7 @@ class DemoBuilder:
                         generation_latency=payload.get("generationLatency"),
                         evaluation_latencies=payload.get("evaluationLatencies"),
                     )
-            print(f"  Optimization run replayed: {spec['key']}")
+            print(f"  Agent optimization created: {spec['key']} (run replayed)")
         print("Done")
 
     # An AI Config's guarded rollout, started at build time for
@@ -407,7 +415,7 @@ class DemoBuilder:
                 break
             time.sleep(5)
         if missing:
-            print(f"  Error: no guarded rollout on {key}, metrics not found: {', '.join(missing)}")
+            print(f"    Error: no guarded rollout on {key}, metrics not found: {', '.join(missing)}")
             return
         res = self.ldproject.add_ai_agent_guarded_rollout(
             key,
@@ -419,30 +427,30 @@ class DemoBuilder:
             stages=rollout["stages"],
         )
         if res is not None and res.status_code < 300:
-            print(f"  Guarded rollout started on {key}: {rollout['control']} to {rollout['target']}")
+            print(f"    Guarded rollout started: {rollout['control']} to {rollout['target']}")
 
     # Create and run all the experiments (definitions live in the EXPERIMENTS table above)
     def create_and_run_experiments(self):
+        print("Creating experiments...")
         for spec in EXPERIMENTS:
             if "custom" in spec:
                 getattr(self, spec["custom"])()
                 continue
             self.run_experiment(spec)
+        print("Done")
 
     def run_experiment(self, spec):
         if not getattr(self, spec["requires"]):
-            print(f"Error: prerequisite '{spec['requires']}' not met")
+            print(f"  Error: prerequisite '{spec['requires']}' not met")
             return
         exp = spec["experiment"]
-        print("Creating experiment: ")
+        print(f"  {exp['exp_name']}")
         if spec["toggle_flag"]:
             self.ldproject.toggle_flag(*spec["toggle_flag"])
-        print(f" - {exp['exp_name']}")
         metrics = [self.ldproject.exp_metric(key, is_group) for key, is_group in spec["metrics"]]
         self.ldproject.create_experiment(metrics=metrics, **exp)
         if spec["start_iteration"]:
             self.ldproject.start_exp_iteration(exp["exp_key"], exp["exp_env"])
-        print("Done creating experiment")
         self.experiment_created = True
 
 

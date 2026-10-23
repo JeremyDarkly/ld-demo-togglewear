@@ -551,9 +551,9 @@ class LDPlatform:
             try:
                 data = json.loads(response.text)
                 if "message" in data:
-                    print(f"Error creating AI tool {tool_key}: {data['message']}")
+                    print(f"  Error creating AI tool {tool_key}: {data['message']}")
                 else:
-                    print(f"Created AI tool: {tool_key}")
+                    print(f"  AI tool created: {tool_key}")
             except json.JSONDecodeError:
                 pass
         return response
@@ -696,13 +696,9 @@ class LDPlatform:
             try:
                 data = json.loads(response.text)
                 if "message" in data:
-                    print(f"Error attaching judges to {ai_config_key}/{variation_key}: {data['message']}")
-                else:
-                    print(f"Attached {len(judges)} judge(s) to {ai_config_key}/{variation_key}: {', '.join(judge_keys)}")
+                    print(f"  Error attaching judges {', '.join(judge_keys)} to {ai_config_key}/{variation_key}: {data['message']}")
             except json.JSONDecodeError:
                 pass
-        else:
-            print(f"Attached {len(judges)} judge(s) to {ai_config_key}/{variation_key}: {', '.join(judge_keys)}")
         return response
 
     ##################################################
@@ -784,7 +780,7 @@ class LDPlatform:
         )
 
         if upload_resp.status_code in (200, 204):
-            print(f"Uploaded dataset: {dataset_name} ({len(csv_bytes)} bytes, {csv_content.count(chr(10))} rows)")
+            print(f"  Dataset uploaded: {dataset_name} ({csv_content.count(chr(10))} rows)")
             # LaunchDarkly reads the file in the background, and refuses to
             # run an evaluation over the dataset until it is ready.
             for _ in range(30):
@@ -797,10 +793,10 @@ class LDPlatform:
                     break
                 time.sleep(2)
             else:
-                print(f"Warning: dataset '{dataset_name}' is not ready yet ({status})")
+                print(f"  Warning: dataset '{dataset_name}' is not ready yet ({status})")
             return dataset_id
         else:
-            print(f"Error uploading CSV to S3 for '{dataset_name}': {upload_resp.status_code}")
+            print(f"  Error uploading CSV to S3 for '{dataset_name}': {upload_resp.status_code}")
             return None
 
     ##################################################
@@ -3741,13 +3737,12 @@ mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
 
         if response.status_code in (200, 201):
             data = response.json()
-            print(f"Created agent optimization: {key}")
             return data
         elif response.status_code == 409:
-            print(f"Agent optimization '{key}' already exists, skipping")
+            print(f"  Agent optimization '{key}' already exists, skipping")
             return {"key": key}
         else:
-            print(f"Error creating agent optimization '{key}': {response.status_code} {response.text[:300]}")
+            print(f"  Error creating agent optimization '{key}': {response.status_code} {response.text[:300]}")
             return None
 
     def post_agent_optimization_result(self, optimization_key, run_id, version, iteration, instructions, user_input, parameters=None):
@@ -3859,12 +3854,11 @@ mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
 
         if response.status_code in (200, 201):
             data = json.loads(response.text)
-            version = data.get("version", 1)
-            print(f"Created snippet: {name} (key: {key}, version: {version})")
+            print(f"  Snippet created: {name}")
             return data
         elif response.status_code == 409:
-            print(f"Snippet '{key}' already exists, skipping")
+            print(f"  Snippet '{key}' already exists, skipping")
             return {"key": key, "version": 1}
         else:
-            print(f"Error creating snippet '{key}': {response.status_code} {response.text[:300]}")
+            print(f"  Error creating snippet '{key}': {response.status_code} {response.text[:300]}")
             return None
