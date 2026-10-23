@@ -1,4 +1,3 @@
-import type { AnnouncementPersona } from "@/components/layout/AnnouncementBar";
 import type { PricingVariant } from "./products";
 
 // The labels a ToggleWear shopper carries, modelled on core-demo's user
@@ -204,13 +203,4 @@ export function isMember(person: Person): boolean {
 // them full price would be wrong by thirty and look like a bug on screen.
 export function variantFor(tier: LoyaltyTier): PricingVariant {
   return tier === "none" ? "default" : "loyaltyGold";
-}
-
-// The throwaway piece. Jen designed two variants of the hero and the item
-// block, default and Loyalty Gold, so the persona buttons stand in for the
-// tier LaunchDarkly will eventually hand us. Cart Abandoner and New Customer
-// are behaviours rather than entitlements, so neither earns a tier — they
-// keep their own announcement bar and shop at list price.
-export function tierForPersona(persona: AnnouncementPersona): LoyaltyTier {
-  return persona === "loyaltyGold" ? "gold" : "none";
 }
