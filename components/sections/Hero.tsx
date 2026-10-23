@@ -45,18 +45,19 @@ const VARIANTS: Record<LoyaltyTier, Variant> = {
   // pricing, which both exist, and deliberately not free shipping or a
   // headline discount rate, which do not yet.
   //
-  // The art is a placeholder cropped from her black tee product shot (Figma
-  // 47:2613) rather than one of the two existing heroes, because reusing the
-  // gold panel here would leave the top tier looking identical to the middle
-  // one, which is the one thing this variant exists to disprove. The export
-  // is 930px wide against her 1400px heroes, so it is slightly softer.
+  // The art is cropped from her VR Headset product shot (Figma 242:1301), the
+  // Limited Run piece, so the top tier leads with the most exclusive item in
+  // the store rather than reusing the gold panel, which would leave it looking
+  // identical to the middle tier. The source photo is about 850px wide, so it
+  // is upscaled to match her 1400px heroes and slightly softer; the wordmark
+  // is a vector layer and stays sharp.
   platinum: {
     eyebrow: "Platinum access.",
     headline: "The whole drop, before anyone.",
     body: "Platinum members see every new release before it reaches anyone else, with member pricing across the entire range.",
     cta: "Shop the drop",
     href: categoryHref("new"),
-    image: "/images/hero-platinum-tee.png",
+    image: "/images/hero-platinum-vr.png",
   },
 };
 
