@@ -124,6 +124,10 @@ logging.basicConfig(
 # make urllib3 discard and reopen connections, which is harmless churn but
 # floods the log with "Connection pool is full" warnings.
 logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+# The SDK's startup chatter and a line for every observability upload, every
+# few seconds for the whole run; warnings and errors from either still show.
+logging.getLogger("ldclient").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 # -------------------------------------------------------- observability
