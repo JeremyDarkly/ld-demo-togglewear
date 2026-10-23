@@ -33,15 +33,19 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ inputs.webhook_url != '' && inputs.webhook_id != '' }}
     steps:
+      # The webhook URL is read from the event file and masked, never put in an
+      # expression: GitHub fills expressions into the script it prints to this
+      # public log, and inputs are not masked the way secrets are.
       - name: Notify Workflow Started
         run: |
+          WEBHOOK_URL=$(jq -r '.inputs.webhook_url' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::$WEBHOOK_URL"
           echo "Notifying webhook of delete workflow start..."
-          echo "Webhook URL: ${{ inputs.webhook_url }}"
           echo "Webhook ID: ${{ inputs.webhook_id }}"
           echo "Run ID: ${{ github.run_id }}"
           echo "Environment: ${{ inputs.name }}"
           
-          curl -X POST "${{ inputs.webhook_url }}" \
+          curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -H "User-Agent: GitHub-Actions" \
             -d '{
@@ -141,10 +145,12 @@ jobs:
     steps:
       - name: Notify Workflow Completed
         run: |
+          WEBHOOK_URL=$(jq -r '.inputs.webhook_url' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::$WEBHOOK_URL"
           echo "Notifying webhook of delete workflow completion..."
           
           # Determine the conclusion based on the previous job
-          if [ "${{ needs.delete-environment.result }}" == "success" ]; then
+          if [ "${{ needs.delete-demo-environment.result }}" == "success" ]; then
             CONCLUSION="success"
             STATUS="completed"
           else
@@ -152,7 +158,7 @@ jobs:
             STATUS="completed"
           fi
           
-          curl -X POST "${{ inputs.webhook_url }}" \
+          curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -H "User-Agent: GitHub-Actions" \
             -d '{
