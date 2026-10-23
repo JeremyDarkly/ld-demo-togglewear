@@ -49,6 +49,9 @@ function summary(product: Product, member: boolean) {
 // a model asks things like "warm hoodie for winter", and nothing in the
 // catalogue says "winter". Products are ranked by how many words they match
 // instead, across the long copy and features as well as the name.
+//
+// Whole words, singular or plural, rather than substrings: "hat" is inside
+// "that" and "what", which turned a search for hats into the whole catalogue.
 function matches(product: Product, terms: string[]) {
   const text = [
     product.name,
@@ -59,9 +62,12 @@ function matches(product: Product, terms: string[]) {
   ]
     .join(" ")
     .toLowerCase();
-  return terms.filter((term) => text.includes(term)).length;
+  return terms.filter((term) => new RegExp(`\\b${term}(e?s)?\\b`).test(text)).length;
 }
 
+// Only ranked searches are cut short. A browse with no words in it, of one
+// category or of everything, returns all of it, which is what the tool's
+// description in LaunchDarkly promises the model.
 const MAX_RESULTS = 6;
 
 // "2026-03-17T12:00:00" as "Mar 17, 2026". The midday time in the data is
@@ -97,26 +103,36 @@ export function swagAssistantTools(context: LDContext): SwagAssistantTools {
       max_price_usd?: number;
       new_only?: boolean;
     }) => {
+      // Singular, so "speakers" finds the Bluetooth Speaker; matches() adds
+      // the plural back.
       const terms = (args.query ?? "")
         .toLowerCase()
         .split(/\W+/)
-        .filter((term) => term.length > 2);
+        .filter((term) => term.length > 2)
+        .map((term) => (term.length > 3 ? term.replace(/s$/, "") : term));
 
-      const results = catalogue
-        .filter(
-          (p) =>
-            (!args.category ||
-              filterLabel(p.category).toLowerCase() ===
-                args.category.toLowerCase()) &&
-            (args.max_price_usd === undefined ||
-              p.priceUsd <= args.max_price_usd) &&
-            (!args.new_only || p.isNew),
-        )
-        .map((p) => ({ product: p, score: terms.length ? matches(p, terms) : 1 }))
-        .filter((r) => r.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, MAX_RESULTS)
-        .map((r) => r.product);
+      const search = (category?: string) =>
+        catalogue
+          .filter(
+            (p) =>
+              (!category ||
+                filterLabel(p.category).toLowerCase() === category.toLowerCase()) &&
+              (args.max_price_usd === undefined ||
+                p.priceUsd <= args.max_price_usd) &&
+              (!args.new_only || p.isNew),
+          )
+          .map((p) => ({ product: p, score: terms.length ? matches(p, terms) : 1 }))
+          .filter((r) => r.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, terms.length ? MAX_RESULTS : undefined)
+          .map((r) => r.product);
+
+      // Where a product belongs is a judgement call — a model will look for
+      // headphones under Accessories — so a search that finds nothing in the
+      // category it was given looks across the catalogue before saying
+      // there is nothing.
+      let results = search(args.category);
+      if (!results.length && args.category && terms.length) results = search();
 
       results.forEach((p) => seenSlugs.add(p.slug));
       return { results: results.map((p) => summary(p, member)) };
