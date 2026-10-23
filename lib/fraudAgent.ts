@@ -11,7 +11,8 @@
 // on its own:
 //
 //   approve  — the prefilled form, untouched
-//   review   — push the cart over $250, or raise any line to quantity 5
+//   review   — push the cart over $800, such as the drone and the VR
+//              headset together, or raise any line to quantity 5
 //   decline  — change the ZIP to 99999, or do both of the review levers at
 //              once, since two soft signals together clear the hard bar
 
@@ -47,8 +48,9 @@ const REVIEW_AT = 40;
 const DECLINE_AT = 70;
 const SOFT_SIGNAL_POINTS = 45;
 
-// The value above which an order is worth a second look.
-const HIGH_VALUE_USD = 250;
+// The value above which an order is worth a second look. High enough that
+// any one tech item goes through on its own, since the drone alone is $599.
+const HIGH_VALUE_USD = 800;
 
 // The quantity that reads as resale rather than a personal order.
 const BULK_QUANTITY = 5;
