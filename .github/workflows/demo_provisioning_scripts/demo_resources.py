@@ -1106,8 +1106,8 @@ _HAIKU = 'Bedrock.us.anthropic.claude-haiku-4-5-20251001-v1-0-f23b6a28'
 _HAIKU_ID = 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
 _SONNET = 'Bedrock.us.anthropic.claude-sonnet-4-6'
 _SONNET_ID = 'us.anthropic.claude-sonnet-4-6'
-_GPT = 'Bedrock.us.openai.gpt-6-luna'
-_GPT_ID = 'us.openai.gpt-6-luna'
+_NOVA = 'Bedrock.us.amazon.nova-2-lite-v1-0-6a503f7e'
+_NOVA_ID = 'us.amazon.nova-2-lite-v1:0'
 _OPUS = 'Bedrock.us.anthropic.claude-opus-5-5'
 _OPUS_ID = 'us.anthropic.claude-opus-5-5'
 
@@ -1356,7 +1356,7 @@ AI_CONFIGS = [
     # ---- The Swag Assistant ----
     #
     # Two variations that differ in a way a demo can see from across the
-    # room: a small, fast OpenAI model giving short answers, and a stronger
+    # room: a small, fast Amazon model giving short answers, and a stronger
     # Claude model giving the kind of answer a good store concierge would.
     # Members get the second, matched on the same Gold and Platinum segments
     # the rest of the store targets, so switching shopper in the account menu
@@ -1364,7 +1364,7 @@ AI_CONFIGS = [
     {'config': {'config_key': 'swag-assistant',
                 'config_name': 'Swag Assistant',
                 'description': 'The chat assistant in the storefront (the button at the bottom '
-                               'right). Everyone gets Standard (OpenAI GPT-6 Luna, one to three '
+                               'right). Everyone gets Standard (Amazon Nova 2 Lite, one to three '
                                'sentences); Gold and Platinum members get Member Concierge '
                                '(Claude Sonnet 4.6, fuller answers that compare options and '
                                'explain fit). Both run on Bedrock, call four tools against the '
@@ -1375,18 +1375,18 @@ AI_CONFIGS = [
                                'per variation on the Monitoring tab. Demo it: open the chat as '
                                'Alex Rivera (Gold), ask "Help me pick a hoodie", then change the '
                                'Gold and Platinum rule to Standard here — the chat header switches '
-                               'to GPT-6 Luna within a second. Switch the config off and the '
+                               'to Nova 2 Lite within a second. Switch the config off and the '
                                'assistant falls back to scripted replies.',
                 'tags': ['ai-config', 'swag-assistant', 'togglewear']},
      'variations': [
          {'ai_config_version_key': 'standard',
-          'ai_model_config_key': _GPT,
+          'ai_model_config_key': _NOVA,
           'ai_config_version_name': 'Standard',
-          'description': 'OpenAI GPT-6 Luna with a short, to-the-point prompt. Everyone\'s '
-                         'default.',
-          # No temperature: Bedrock refuses the whole request if a GPT-6
-          # model is sent one.
-          'model': {'modelName': _GPT_ID,
+          'description': 'Amazon Nova 2 Lite with a short, to-the-point prompt. '
+                         'Everyone\'s default.',
+          # No temperature: its playground runs it on GPT-6 Luna, which
+          # refuses one.
+          'model': {'modelName': _NOVA_ID,
                     'parameters': {'maxTokens': 300}},
           'messages': [{'role': 'system', 'content': (
               _SWAG_ASSISTANT_OPENING
@@ -1744,11 +1744,15 @@ DATASETS = [
 # and LaunchDarkly can only reach Bedrock with AWS keys of its own, so each
 # of our Bedrock models runs on the same model from LaunchDarkly's Anthropic
 # or OpenAI connection. Bedrock model config: provider, model, name.
+#
+# LaunchDarkly has no connection to Amazon, so Nova 2 Lite runs as the
+# OpenAI model of its size and speed. The playground still compares the
+# Standard prompt with the Member Concierge one, which is its point.
 _PLAYGROUND_MODELS = {
     _HAIKU: ('Anthropic', 'Anthropic.claude-haiku-4-5-20251001', 'Claude Haiku 4.5'),
     _SONNET: ('Anthropic', 'Anthropic.claude-sonnet-4-6', 'Claude Sonnet 4.6'),
     _OPUS: ('Anthropic', 'Anthropic.claude-opus-5-5', 'Claude Opus 5.5'),
-    _GPT: ('OpenAI', 'OpenAI.gpt-6-luna', 'GPT-6 Luna'),
+    _NOVA: ('OpenAI', 'OpenAI.gpt-6-luna', 'GPT-6 Luna'),
 }
 
 
