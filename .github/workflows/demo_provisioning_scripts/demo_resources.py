@@ -465,7 +465,8 @@ FLAGS = [
     # product page, written against v1, was never told, so one release
     # causes five different errors, each with its own place in the store:
     #
-    #   1. one-size items (both hats, every accessory) -> the page crashes:
+    #   1. one-size items (both hats, every accessory and tech item) -> the
+    #      page crashes:
     #      v2 sends sizes: null, a TypeError in ProductDetails
     #   2. Checkerboard Socks -> slow, then "taking too long to load": v2's
     #      sizing service times out, a SizingServiceTimeoutError on the server
@@ -1128,7 +1129,7 @@ AI_TOOLS = [
                     'query': {'type': 'string',
                               'description': 'Words describing what the shopper wants, such as '
                                              '"warm hoodie" or "gift for a coworker".'},
-                    'category': {'type': 'string', 'enum': ['Apparel', 'Accessories'],
+                    'category': {'type': 'string', 'enum': ['Apparel', 'Accessories', 'Tech'],
                                  'description': 'Only products in this category.'},
                     'max_price_usd': {'type': 'number',
                                       'description': 'Only products at or under this price.'},
@@ -1571,7 +1572,7 @@ AI_CONFIGS = [
 # the note for the review team, only for an order that was not approved.
 #
 # The specialists' tools apply fixed rules (lib/orderReviewTools.ts), so the
-# levers at checkout always land: a total over $250 or five of one item is
+# levers at checkout always land: a total over $800 or five of one item is
 # held, ZIP 99999 is declined. What the models own is reading the facts and
 # saying what they mean, and the Decision agent's thresholds, which are in its
 # instructions so an SE can change them here and watch an ordinary order get
@@ -1628,8 +1629,8 @@ AGENT_CONFIGS = [
            tools=['get-order-details']),
     _agent('payment-risk-agent', 'Payment Risk',
            'Order Review specialist. Checks the order\'s value and quantities with '
-           'check-payment-risk. Demo it: put more than $250 in the cart, or five of one item, '
-           'and this is the agent that flags it.',
+           'check-payment-risk. Demo it: put more than $800 in the cart, such as the Camera '
+           'Drone and the VR Headset, or five of one item, and this is the agent that flags it.',
            _HAIKU, 200,
            _ORDER_REVIEW_OPENING
            + "You are the payment risk specialist. Call check-payment-risk and report what it "
