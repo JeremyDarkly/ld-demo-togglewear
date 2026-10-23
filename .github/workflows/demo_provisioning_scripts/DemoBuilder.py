@@ -143,7 +143,6 @@ class DemoBuilder:
                 with open(env_file, "a") as f:
                     f.write(f"LD_SDK_KEY={self.sdk_key}\n")
                     f.write(f"LD_CLIENT_KEY={self.client_id}\n")
-                    f.write(f"Projected_Created={self.project_created}\n")   
             except IOError as e:
                 print(f"Unable to write to environment file: {e}")
         else:
