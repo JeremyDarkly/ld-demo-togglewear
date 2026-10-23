@@ -1,15 +1,6 @@
-import { useEffect, useState } from "react";
-
 // Specimen page for the design tokens ported out of Jen's Figma variables.
 // Not part of the demo itself; it exists to catch drift between the Figma
 // variable set and tailwind.config.js.
-type FlagResponse = {
-  flagKey: string;
-  value: unknown;
-  source: string;
-  reason?: string;
-};
-
 const COLORS = [
   { token: "Base/Lime", className: "bg-base-lime", hex: "#DDFF46" },
   { token: "Base/Blue", className: "bg-base-blue", hex: "#405BFF" },
@@ -35,16 +26,6 @@ const TYPE = [
 ];
 
 export default function Tokens() {
-  const [flag, setFlag] = useState<FlagResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/hello-flag")
-      .then((res) => res.json())
-      .then(setFlag)
-      .catch((err) => setError(err.message));
-  }, []);
-
   return (
     <main className="mx-auto max-w-5xl px-6 py-16 md:px-8">
       <header className="mb-16">
@@ -80,23 +61,6 @@ export default function Tokens() {
               <p className={className}>Swag that&apos;s built for the team</p>
             </div>
           ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-6 font-sora text-h3 font-semibold">
-          Server-side flag check
-        </h2>
-        <div className="rounded-[10px] border border-grays-02 bg-grays-01 p-4">
-          {error && <p className="font-sohne text-small text-base-blue">{error}</p>}
-          {!error && !flag && (
-            <p className="font-sohne text-small text-grays-03">Checking…</p>
-          )}
-          {flag && (
-            <pre className="overflow-x-auto font-sohne-mono text-xsmall-mono text-grays-04">
-              {JSON.stringify(flag, null, 2)}
-            </pre>
-          )}
         </div>
       </section>
     </main>
