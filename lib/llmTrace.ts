@@ -7,6 +7,7 @@ import {
 } from "@opentelemetry/api";
 import type { LDJudgeResult, LDTokenUsage } from "@launchdarkly/server-sdk-ai";
 import type { AIMessage } from "@langchain/core/messages";
+import { textOf } from "@/lib/aiServer";
 
 // The spans that make an agent's run readable as a conversation under
 // Monitor > Traces > Conversations in LaunchDarkly, following its
@@ -50,25 +51,12 @@ const text = (role: Message["role"], content: string): Message => ({
   parts: [{ type: "text", content }],
 });
 
-function textOf(message: AIMessage): string {
-  if (typeof message.content === "string") return message.content;
-  return message.content
-    .map((block) =>
-      typeof block === "string"
-        ? block
-        : block.type === "text" && typeof block.text === "string"
-          ? block.text
-          : "",
-    )
-    .join("");
-}
-
 // A model's reply as LaunchDarkly reads it: its text, then each tool it
 // asked for, with the call id its tool span carries, which is what puts the
 // tool after the message that asked for it.
 function replyMessage(response: AIMessage): Message {
   const parts: Part[] = [];
-  const said = textOf(response).trim();
+  const said = textOf(response);
   if (said) parts.push({ type: "text", content: said });
   for (const call of response.tool_calls ?? []) {
     parts.push({

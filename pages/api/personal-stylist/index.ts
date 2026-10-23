@@ -8,7 +8,7 @@ import {
   getAIUsageFromResponse,
 } from "@launchdarkly/server-sdk-ai-langchain";
 import type { AIMessage } from "@langchain/core/messages";
-import { getAiClient, judge, rememberReply } from "@/lib/aiServer";
+import { getAiClient, judge, rememberReply, textOf } from "@/lib/aiServer";
 import { contextFromRequest } from "@/lib/ldServer";
 import { startAgentRun } from "@/lib/llmTrace";
 import {
@@ -52,20 +52,6 @@ function remember(key: string, note: StylistNote) {
     const oldest = notes.keys().next().value;
     if (oldest !== undefined) notes.delete(oldest);
   }
-}
-
-function textOf(message: AIMessage): string {
-  if (typeof message.content === "string") return message.content.trim();
-  return message.content
-    .map((block) =>
-      typeof block === "string"
-        ? block
-        : block.type === "text" && typeof block.text === "string"
-          ? block.text
-          : "",
-    )
-    .join("")
-    .trim();
 }
 
 type Written = { content: string; metrics: LDAIMetrics };

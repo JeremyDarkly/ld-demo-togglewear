@@ -19,7 +19,7 @@ import {
   ToolMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
-import { getAiClient, judge, rememberReply } from "@/lib/aiServer";
+import { addUsage, getAiClient, judge, rememberReply, textOf } from "@/lib/aiServer";
 import { contextFromRequest } from "@/lib/ldServer";
 import { startAgentRun, type AgentRun } from "@/lib/llmTrace";
 import { productBySlug } from "@/lib/products";
@@ -87,29 +87,6 @@ function toHistory(turns: Turn[]): BaseMessage[] {
   return merged.map((t) =>
     t.role === "user" ? new HumanMessage(t.text) : new AIMessage(t.text),
   );
-}
-
-// A reply with a tool call in it comes back as content blocks rather than a
-// plain string; the text blocks are the part meant for the shopper.
-function textOf(message: AIMessage): string {
-  if (typeof message.content === "string") return message.content.trim();
-  return message.content
-    .map((block) =>
-      typeof block === "string"
-        ? block
-        : block.type === "text" && typeof block.text === "string"
-          ? block.text
-          : "",
-    )
-    .join("")
-    .trim();
-}
-
-function addUsage(total: LDTokenUsage, usage?: LDTokenUsage) {
-  if (!usage) return;
-  total.total += usage.total;
-  total.input += usage.input;
-  total.output += usage.output;
 }
 
 type Conversation = {

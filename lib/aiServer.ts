@@ -5,7 +5,9 @@ import {
   type LDAICompletionConfig,
   type LDAIConfigTracker,
   type LDJudgeResult,
+  type LDTokenUsage,
 } from "@launchdarkly/server-sdk-ai";
+import type { AIMessage } from "@langchain/core/messages";
 // LangChain loads its Bedrock model with import() on a package name held in
 // a variable, which the build cannot follow, so the standalone server would
 // ship without it and every model build would fail in production. Importing
@@ -103,4 +105,27 @@ export function takeReply(replyId: string): string | undefined {
   const token = replies.get(replyId);
   replies.delete(replyId);
   return token;
+}
+
+// A reply with a tool call in it comes back as content blocks rather than a
+// plain string; the text blocks are the agent's answer.
+export function textOf(message: AIMessage): string {
+  if (typeof message.content === "string") return message.content.trim();
+  return message.content
+    .map((block) =>
+      typeof block === "string"
+        ? block
+        : block.type === "text" && typeof block.text === "string"
+          ? block.text
+          : "",
+    )
+    .join("")
+    .trim();
+}
+
+export function addUsage(total: LDTokenUsage, usage?: LDTokenUsage) {
+  if (!usage) return;
+  total.total += usage.total;
+  total.input += usage.input;
+  total.output += usage.output;
 }

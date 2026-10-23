@@ -22,7 +22,7 @@ import {
   type AIMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
-import { getAiClient, judge } from "@/lib/aiServer";
+import { addUsage, getAiClient, judge, textOf } from "@/lib/aiServer";
 import {
   assessOrder,
   isBlockedZip,
@@ -81,29 +81,6 @@ const DECISIONS: FraudDecision[] = ["approve", "review", "decline"];
 
 const nameOf = (key: string) =>
   ORDER_REVIEW_AGENTS.find((agent) => agent.key === key)?.name ?? key;
-
-// A reply with a tool call in it comes back as content blocks rather than a
-// plain string; the text blocks are the agent's answer.
-function textOf(message: AIMessage): string {
-  if (typeof message.content === "string") return message.content.trim();
-  return message.content
-    .map((block) =>
-      typeof block === "string"
-        ? block
-        : block.type === "text" && typeof block.text === "string"
-          ? block.text
-          : "",
-    )
-    .join("")
-    .trim();
-}
-
-function addUsage(total: LDTokenUsage, usage?: LDTokenUsage) {
-  if (!usage) return;
-  total.total += usage.total;
-  total.input += usage.input;
-  total.output += usage.output;
-}
 
 type AgentRun = { text: string; metrics: LDAIMetrics };
 
