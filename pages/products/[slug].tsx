@@ -14,8 +14,8 @@ import { EVENTS, useTrack } from "@/lib/events";
 import { useLiveProduct } from "@/lib/catalog";
 import {
   ALL_PRODUCTS,
-  BEST_SELLERS,
   productBySlug,
+  productsFor,
   type Product,
 } from "@/lib/products";
 
@@ -40,8 +40,7 @@ export default function ProductPage({ product }: { product: Product }) {
   // engine is a backend scenario the generator plays out in LaunchDarkly, not
   // something this row shows. Recommendations are everything except what you
   // are already looking at, and a member's include the members-only drop.
-  const pool = variant === "loyaltyGold" ? ALL_PRODUCTS : BEST_SELLERS;
-  const recommended = pool.filter((p) => p.slug !== product.slug);
+  const recommended = productsFor(variant).filter((p) => p.slug !== product.slug);
   const showRecommendations = recommended.length > 0;
 
   // Once per product per visit to the page. The ref, rather than an empty

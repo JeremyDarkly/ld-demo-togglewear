@@ -4,9 +4,9 @@ export type ProductColor = { name: string; hex: string };
 // her designs that names them all — the header shows New Drops, Apparel and
 // Tech, so Accessories appears in one and not the other.
 //
-// Tech is empty until the photography exists. The listing page is built to
-// show an empty category honestly rather than hide the link, because a
-// category a shopper can see in two different menus should not 404.
+// The listing page is built to show an empty category honestly rather than
+// hide the link, because a category a shopper can see in two different menus
+// should not 404.
 export type ProductCategory = "apparel" | "accessories" | "tech";
 
 // Taken from the fills of Jen's swatch SVGs on the two product detail pages.
@@ -358,7 +358,269 @@ export const MEMBERS_ONLY: Product[] = [
   },
 ];
 
-export const ALL_PRODUCTS: Product[] = [...BEST_SELLERS, ...MEMBERS_ONLY];
+// Jen's tech photography, one card each in her "Product images - Tech" frame
+// (160:1311), in the order she laid them out. The power bank and the hub were
+// shot twice, so they get both angles.
+//
+// A list of their own rather than more best sellers, so the homepage keeps
+// the grid she designed and Tech is where they live.
+//
+// Priced like the real thing rather than like swag, which is what the $800
+// review threshold in lib/fraudAgent.ts is set against: any one item goes
+// through, and two of the big three are what gets an order held.
+export const TECH: Product[] = [
+  {
+    slug: "power-bank",
+    name: "Power Bank",
+    priceUsd: 39,
+    description: "10,000mAh, USB-C fast charge",
+    image: "/images/products/power-bank-phone.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: [
+      "/images/products/power-bank-phone.png",
+      "/images/products/power-bank-briefcase.png",
+    ],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Uptime you can carry. A pocket battery in a textured black shell with the mark on the front, small enough to ride on the back of a phone and big enough to fill one twice over.\n\nUSB-C in and out, with 20W fast charging.",
+    features: [
+      "10,000mAh capacity",
+      "20W USB-C fast charging",
+      "Charges two devices at once",
+      "Textured, pocket-sized shell",
+    ],
+  },
+  {
+    slug: "usb-c-hub",
+    name: "USB-C Hub",
+    priceUsd: 49,
+    description: "7-in-1 aluminum, 4K HDMI",
+    image: "/images/products/usb-c-hub-laptop.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: [
+      "/images/products/usb-c-hub-laptop.png",
+      "/images/products/usb-c-hub-marble.png",
+    ],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Every port, behind one connector. A brushed aluminum hub with the wordmark along the top and a braided cable short enough to live in a laptop sleeve.\n\nWorks on macOS, Windows and ChromeOS without a driver.",
+    features: [
+      "4K HDMI at 60Hz",
+      "100W USB-C power passthrough",
+      "Two USB-A 3.0 ports",
+      "SD and microSD card readers",
+    ],
+  },
+  {
+    slug: "vr-headset",
+    name: "VR Headset",
+    priceUsd: 499,
+    description: "Standalone, two motion controllers",
+    image: "/images/products/vr-headset-model.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: ["/images/products/vr-headset-model.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "A preview environment you can stand in. A standalone headset with two tracked controllers and the wordmark across the visor, with no PC or cable to trip over.\n\nAdjustable head strap that fits over most glasses.",
+    features: [
+      "Standalone, no PC required",
+      "Two tracked motion controllers",
+      "128GB of storage",
+      "Adjustable strap, glasses friendly",
+    ],
+  },
+  {
+    slug: "instant-camera",
+    name: "Instant Print Camera",
+    priceUsd: 129,
+    description: "Prints 2x3 photos in seconds",
+    image: "/images/products/instant-camera-hand.png",
+    category: "tech",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/instant-camera-hand.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Snapshots that ship on the spot. A pocket camera in bright yellow with the mark on the lens ring, printing sticky-backed photos straight from the shutter, with no ink and no app.\n\nTen sheets of zero-ink paper in the box.",
+    features: [
+      "Prints 2x3-inch photos in seconds",
+      "Zero-ink, sticky-backed paper",
+      "Built-in selfie mirror",
+      "USB-C rechargeable",
+    ],
+  },
+  {
+    slug: "action-camera",
+    name: "Action Camera",
+    priceUsd: 349,
+    description: "5.3K video, waterproof to 33ft",
+    image: "/images/products/action-camera.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: ["/images/products/action-camera.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Record every release. A rugged camera with a screen on each side and the wordmark on the front, with stabilization that keeps a bike ride or a ski run steady.\n\nWaterproof to 33 feet without a housing.",
+    features: [
+      "5.3K video, 27MP photos",
+      "Front and rear screens",
+      "Built-in stabilization",
+      "Waterproof to 33ft",
+    ],
+  },
+  {
+    slug: "bluetooth-speaker",
+    name: "Bluetooth Speaker",
+    priceUsd: 89,
+    description: "Knit fabric, 12-hour battery",
+    image: "/images/products/speaker.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: ["/images/products/speaker.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Broadcast to the whole room. A compact speaker wrapped in black knit fabric with the mark low on the front and a woven strap to carry it by. Loud enough for a team lunch, small enough for a backpack.\n\nTwelve hours a charge, and fine in the rain.",
+    features: [
+      "360-degree sound",
+      "12-hour battery",
+      "IPX5 water resistant",
+      "Woven carry strap",
+    ],
+  },
+  {
+    slug: "handheld-console",
+    name: "Handheld Console",
+    priceUsd: 399,
+    description: "7-inch OLED, 512GB storage",
+    image: "/images/products/handheld-console.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: ["/images/products/handheld-console.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Play in production. A handheld gaming PC in matte black with the wordmark across the back, a bright OLED screen, and room for the backlog you keep meaning to get to.\n\nCharges over USB-C and docks to a TV.",
+    features: [
+      "7-inch OLED display",
+      "512GB of storage",
+      "Docks to a TV over USB-C",
+      "Matte black shell",
+    ],
+  },
+  {
+    slug: "camera-drone",
+    name: "Camera Drone",
+    priceUsd: 599,
+    description: "4K camera, folds to fit a bag",
+    image: "/images/products/drone.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: ["/images/products/drone.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Ship it to the skies. A folding drone with a stabilized 4K camera, obstacle sensing on every side, and a controller with its own screen, so there is no phone to clip on.\n\nUp to 34 minutes of flight per battery.",
+    features: [
+      "4K camera on a 3-axis gimbal",
+      "Omnidirectional obstacle sensing",
+      "Screen controller included",
+      "Folds to fit a daypack",
+    ],
+  },
+  {
+    slug: "camera-gimbal",
+    name: "Camera Gimbal",
+    priceUsd: 139,
+    description: "3-axis stabilizer, travel case",
+    image: "/images/products/gimbal-case.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: ["/images/products/gimbal-case.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Smooth rollouts, on camera. A three-axis stabilizer that keeps a phone or a compact camera steady through a walk-and-talk, packed in a zip case with the wordmark across the lid.\n\nUp to 12 hours a charge, with a tripod built into the handle.",
+    features: [
+      "3-axis stabilization",
+      "Fits phones and compact cameras",
+      "Tripod built into the handle",
+      "Zip travel case included",
+    ],
+  },
+  {
+    slug: "wireless-headphones",
+    name: "Wireless Headphones",
+    priceUsd: 249,
+    description: "Noise cancelling, 30-hour battery",
+    image: "/images/products/headphones-stand.png",
+    category: "tech",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/headphones-stand.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Focus mode, toggled on. Over-ear headphones with active noise cancelling, memory-foam cushions and the mark on each cup, for open-plan offices and long flights to the offsite.\n\nThirty hours a charge, and they fold flat into a case.",
+    features: [
+      "Active noise cancelling",
+      "30-hour battery",
+      "Memory-foam ear cushions",
+      "Folds flat into a case",
+    ],
+  },
+  {
+    slug: "key-finder-set",
+    name: "Key Finder Set",
+    priceUsd: 69,
+    description: "Four Bluetooth trackers, four colors",
+    image: "/images/products/key-finders.png",
+    category: "tech",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/key-finders.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Know where everything is deployed. Four Bluetooth trackers in lime, blue, pink and cyan, one each for keys, a bag, a bike and whatever goes missing next, with a speaker loud enough to find them under a couch.\n\nAbout a year on each replaceable battery.",
+    features: [
+      "Set of four, one in each color",
+      "Built-in speaker",
+      "Split ring on every tracker",
+      "Replaceable year-long battery",
+    ],
+  },
+  {
+    slug: "wireless-mouse",
+    name: "Wireless Mouse",
+    priceUsd: 59,
+    description: "Lightweight, 70-hour battery",
+    image: "/images/products/mouse.png",
+    category: "tech",
+    badge: "Limited Run",
+    gallery: ["/images/products/mouse.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Point, click, ship. A 60-gram mouse in matte black with the mark on the palm, quiet switches, and a battery that outlasts most sprints.\n\nConnects over Bluetooth or the USB-C receiver in the box.",
+    features: [
+      "60g lightweight shell",
+      "Quiet-click switches",
+      "70-hour battery",
+      "Bluetooth or USB-C receiver",
+    ],
+  },
+];
+
+export const ALL_PRODUCTS: Product[] = [...BEST_SELLERS, ...TECH, ...MEMBERS_ONLY];
 
 export function productBySlug(slug: string) {
   return ALL_PRODUCTS.find((p) => p.slug === slug);
@@ -447,7 +709,7 @@ export const CATEGORIES: { slug: ProductCategory; label: string }[] = [
 ];
 
 // New Drops sits alongside the categories in the header but is not one — it
-// reads isNew, which several products across both categories carry.
+// reads isNew, which several products across the categories carry.
 export type ProductFilter = ProductCategory | "new";
 
 export function filterLabel(filter?: ProductFilter) {
@@ -477,7 +739,7 @@ export function productsFor(
   variant: PricingVariant,
   filter?: ProductFilter,
 ): Product[] {
-  const catalogue = bestSellersFor(variant);
+  const catalogue = [...bestSellersFor(variant), ...TECH];
   if (!filter) return catalogue;
   if (filter === "new") return catalogue.filter((p) => p.isNew);
   return catalogue.filter((p) => p.category === filter);
