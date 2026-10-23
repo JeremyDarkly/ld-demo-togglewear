@@ -26,11 +26,6 @@ env:
   DEMO_NAMESPACE: ${{ github.event.inputs.name }}-togglewear
   LD_PROJECT_KEY: ${{ github.event.inputs.name }}-togglewear
   LD_API_KEY: ${{ secrets.LD_EAP_API_KEY }}
-  BEDROCK_GUARDRAIL_ID: ${{ secrets.BEDROCK_GUARDRAIL_ID }}
-  BEDROCK_KNOWLEDGE_ID: ${{ secrets.BEDROCK_KNOWLEDGE_ID }}
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  WORKFLOW_RECORDS_TABLE: ${{ secrets.WORKFLOW_RECORDS_TABLE }}
-  WORKFLOW_LAMBDA_FUNCTION_ARN: ${{ secrets.WORKFLOW_LAMBDA_FUNCTION_ARN }}
   EKS_POD_IDENTITY_ROLE_ARN: ${{ secrets.EKS_POD_IDENTITY_ROLE_ARN }}
 
 jobs:
@@ -103,18 +98,13 @@ jobs:
           echo "Creating and Setting up LaunchDarkly project for namespace: ${{ env.DEMO_NAMESPACE }}"
           python ./.github/workflows/demo_provisioning_scripts/DemoBuilder.py
 
+      # Only what the app reads. This file is baked into the image, so a key
+      # added here ships with every pod whether the app uses it or not.
       - name: Create .env file for demo pod
         run: |
           touch ./.env.production
           echo NEXT_PUBLIC_LD_CLIENT_KEY=${{ env.LD_CLIENT_KEY }} >> ./.env.production
           echo LD_SDK_KEY=${{ env.LD_SDK_KEY }} >> ./.env.production
-          echo LD_API_KEY=${{ env.LD_API_KEY }} >> ./.env.production
-          echo DESTINATIONENV=production >> ./.env.production
-          echo PROJECT_KEY=${{ env.LD_PROJECT_KEY }} >> ./.env.production
-          echo NEXT_PUBLIC_PROJECT_KEY=${{ env.LD_PROJECT_KEY }} >> ./.env.production
-          echo BEDROCK_GUARDRAIL_ID=${{ env.BEDROCK_GUARDRAIL_ID }} >> ./.env.production
-          echo BEDROCK_KNOWLEDGE_ID=${{ env.BEDROCK_KNOWLEDGE_ID }} >> ./.env.production
-          echo OPENAI_API_KEY=${{ env.OPENAI_API_KEY }} >> ./.env.production
           echo AWS_REGION=us-east-1 >> ./.env.production
           echo AWS_DEFAULT_REGION=us-east-1 >> ./.env.production
 
@@ -147,8 +137,6 @@ jobs:
         run: python ./.github/workflows/update_k8s_deploy_file.py
         env:
           NAMESPACE: ${{ env.DEMO_NAMESPACE }}
-          IS_EXTERNAL: ${{ github.event.inputs.is_external == 'true' && 'true' || (github.event.inputs.is_external == '' && 'false' || 'false') }}
-          URL: ${{ env.DEMO_NAMESPACE }}.launchdarklydemos.com
           IMAGE: ${{ steps.login-ecr.outputs.registry }}/ld-demo-togglewear:${{ env.DEMO_NAMESPACE }}-${{ github.run_id }}
 
       - name: Check Namespace in Kubernetes
