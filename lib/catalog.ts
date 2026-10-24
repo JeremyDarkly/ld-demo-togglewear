@@ -26,11 +26,41 @@ export type LiveProductState = {
   timedOut: boolean;
 };
 
+// Flag 05 is evaluated on the server, so the browser's own SDK never hears it
+// change. /api/catalog-updates passes the change on, and the count below goes
+// up with each one, so a product page already open asks the catalog again
+// and breaks, or recovers, without a reload. One connection for the page,
+// however many hooks are counting.
+let updates: EventSource | null = null;
+const onChange = new Set<() => void>();
+
+function subscribeToCatalogChanges(callback: () => void) {
+  onChange.add(callback);
+  if (!updates) {
+    updates = new EventSource("/api/catalog-updates");
+    updates.addEventListener("change", () => onChange.forEach((notify) => notify()));
+  }
+  return () => {
+    onChange.delete(callback);
+    if (onChange.size === 0) {
+      updates?.close();
+      updates = null;
+    }
+  };
+}
+
+function useCatalogRevision() {
+  const [revision, setRevision] = useState(0);
+  useEffect(() => subscribeToCatalogChanges(() => setRevision((r) => r + 1)), []);
+  return revision;
+}
+
 // Fetches the live part of a product once the LaunchDarkly client is up, so
 // the request can carry the context the server needs to evaluate flag 05 the
-// same way the browser would.
+// same way the browser would, and again whenever flag 05 changes.
 export function useLiveProduct(slug: string): LiveProductState {
   const client = useLDClient();
+  const revision = useCatalogRevision();
   const [state, setState] = useState<LiveProductState>({ live: null, timedOut: false });
 
   useEffect(() => {
@@ -56,7 +86,7 @@ export function useLiveProduct(slug: string): LiveProductState {
     return () => {
       cancelled = true;
     };
-  }, [client, slug]);
+  }, [client, slug, revision]);
 
   return state;
 }
@@ -69,6 +99,7 @@ export function useLiveProduct(slug: string): LiveProductState {
 // that is an HTML error page, and the parse is what throws.
 export function useStockBadge(slug: string): string | undefined {
   const client = useLDClient();
+  const revision = useCatalogRevision();
   const [badge, setBadge] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -91,7 +122,7 @@ export function useStockBadge(slug: string): string | undefined {
     return () => {
       cancelled = true;
     };
-  }, [client, slug]);
+  }, [client, slug, revision]);
 
   return badge;
 }
