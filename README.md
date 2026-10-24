@@ -18,6 +18,7 @@ It replaces ToggleBank (ld-core-demo) as the core demo. Where ToggleBank covers 
   - [AI Configs and agents](#ai-configs-and-agents)
   - [The demo generator (Cmd+K)](#the-demo-generator-cmdk)
   - [Observability](#observability)
+  - [Developer toolbar](#developer-toolbar)
   - [Resetting after a demo](#resetting-after-a-demo)
 - [Running locally](#running-locally)
 - [How provisioning works](#how-provisioning-works)
@@ -68,7 +69,7 @@ The account menu at the top right of the store signs you in as one of four shopp
 | Gold Members | `tier` is `gold` |
 | Platinum Members | `tier` is `platinum` |
 
-The account menu also has **Empty** and **Refill** for the cart, and under **Simulate an incident**, **Payment outage** for flag 12 and **Search model outage** for Smart Search.
+The account menu also has **Empty** and **Refill** for the cart, and under **Simulate an incident**, **Payment outage** for flag 12 and **Search model outage** for Smart Search. Under **Developer tools** it opens LaunchDarkly's [developer toolbar](#developer-toolbar).
 
 ### Flags
 
@@ -200,6 +201,15 @@ The guarded-release generators wait for you to start the rollout in LaunchDarkly
 The browser SDK runs the Observability and Session Replay plugins, and the server SDK runs Observability, so errors, logs, traces and replays from both sides arrive in your project. The AI routes also record each agent run as a conversation under **Monitor > Traces > Conversations**, with a span for every model call and tool call.
 
 Flag 05 is the main Observability story, and flags 07, 12, 13 and 14 and Smart Search all produce real errors as well.
+
+### Developer toolbar
+
+Turn on **LaunchDarkly toolbar** under **Developer tools** in the account menu and LaunchDarkly's [developer toolbar](https://launchdarkly.com/docs/home/getting-started/dev-toolbar) opens in the bottom-left corner. It lists the flags this browser is evaluating, shows its evaluations and custom events as they happen, and can override a flag for this browser only, without changing its targeting in LaunchDarkly. Sign in from the toolbar the first time.
+
+- **To demo:** sign in as Alex, then override flag 01 to on in the toolbar and the Early Access section appears for him, while his targeting in LaunchDarkly still says off. Add something to the cart and the toolbar's Events tab shows the `add-to-cart` event.
+- **Only browser flags:** flag 05, the generator's scenarios and the AI Configs are evaluated on the server, so the toolbar can't override them.
+- **Switching it off clears every override**, straight away. Overrides are also dropped when a new tab opens without the toolbar, so one demo can't leave a hidden override behind for the next.
+- **On a hosted environment** the toolbar only works on domains your LaunchDarkly organization allows. An admin adds the domain (for example `<name>-togglewear.launchdarklydemos.com`) under **Organization settings > Integrations > LaunchDarkly Developer Toolbar**, which can take five minutes to apply. Localhost is allowed by default.
 
 ### Resetting after a demo
 
