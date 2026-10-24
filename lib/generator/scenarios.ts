@@ -373,13 +373,19 @@ const ACCURACY_JUDGE_KEY = "togglewear-accuracy-judge";
 const RELEVANCE_JUDGE_KEY = "togglewear-relevance-judge";
 const ACCURACY_METRIC_KEY = "$ld:ai:judge:accuracy";
 const RELEVANCE_METRIC_KEY = "$ld:ai:judge:relevance";
+const STYLIST_SUGGESTION_KEY = "stylist-suggestion-added";
+// How often a shopper adds what the stylist suggested, its size or its
+// pairing, when the notes are as good as Sonnet's.
+const STYLIST_TAKE_RATE = 0.2;
 
 // Each note is a real evaluation of the Personal Stylist for a made-up
 // shopper, so the guarded rollout decides which model they get, and then
 // everything a real note records goes through the same AI SDK tracker
 // pages/api/personal-stylist uses: duration, success or error, tokens, both
-// judges' scores and the odd thumb. What it does not do is call Bedrock.
-// The scores are invented, which keeps a demo free and its outcome certain.
+// judges' scores and the odd thumb, and then whether the shopper added the
+// stylist's suggestion, as the product page sends it. What it does not do is
+// call Bedrock. The scores are invented, which keeps a demo free and its
+// outcome certain.
 //
 // Both models get the same duration and error rate. A real Opus is slower,
 // and the detector rolls back on a few hundred milliseconds if Completion
@@ -390,7 +396,8 @@ const RELEVANCE_METRIC_KEY = "$ld:ai:judge:relevance";
 // start. Failing: Opus matches Sonnet exactly for four minutes, so there is
 // genuinely nothing to find, then its scores slide over the next four, as
 // if a prompt change had made its notes ramble and get sizes wrong. Errors
-// and duration never move, which is the point: only the judges catch it.
+// and duration never move, which is the point: only the judges, and the
+// shoppers no longer taking its suggestions, catch it.
 const STYLIST_SUSTAIN_END_S = 240;
 const STYLIST_SLIDE_END_S = 480;
 
@@ -450,11 +457,12 @@ function stylistUpgrade(failing: boolean): Scenario {
           tracker.trackError();
         } else {
           tracker.trackSuccess();
-          // Real notes' sizes: Opus writes no more words but bills about
-          // four times the output tokens, which is the cost an SE can point
-          // at beside its better scores.
-          const input = randint(820, 980);
-          const output = onOpus ? randint(320, 420) : randint(60, 110);
+          // Real notes' sizes, catalog included: Opus writes no more words
+          // but counts the same prompt as more tokens and bills about five
+          // times the output tokens for its thinking, which is the cost an
+          // SE can point at beside its better scores.
+          const input = onOpus ? randint(2050, 2450) : randint(1450, 1750);
+          const output = onOpus ? randint(380, 500) : randint(60, 110);
           tracker.trackTokens({ input, output, total: input + output });
           tracker.trackJudgeResult({
             judgeConfigKey: ACCURACY_JUDGE_KEY,
@@ -477,6 +485,11 @@ function stylistUpgrade(failing: boolean): Scenario {
             tracker.trackFeedback({
               kind: down ? LDFeedbackKind.Negative : LDFeedbackKind.Positive,
             });
+          }
+          // A little more often for a healthy Opus, and hardly at all once
+          // a failing one's sizes and pairings have gone wrong.
+          if (Math.random() < clamp(STYLIST_TAKE_RATE + 0.6 * lift, 0.02, 1)) {
+            client.track(STYLIST_SUGGESTION_KEY, ctx, { kind: Math.random() < 0.6 ? "size" : "pairing" });
           }
         }
       }

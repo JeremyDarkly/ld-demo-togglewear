@@ -100,6 +100,10 @@ STYLIST_JUDGES = (
     ("togglewear-accuracy-judge", "$ld:ai:judge:accuracy", 0.88),
     ("togglewear-relevance-judge", "$ld:ai:judge:relevance", 0.85),
 )
+# How often a shopper adds the stylist's suggestion, its size or its pairing,
+# on Sonnet's notes: the same rate as the Cmd+K generator's
+STYLIST_SUGGESTION_KEY = "stylist-suggestion-added"
+STYLIST_TAKE_RATE = 0.2
 
 # Cart Recovery, the AI Config experiment
 CART_RECOVERY_CONFIG_KEY = "cart-recovery-agent"
@@ -978,9 +982,9 @@ def personal_stylist_healthy_generator(client, stop_event):
 
     The numbers are the Cmd+K panel's "Succeeds" generator's
     (lib/generator/scenarios.ts): the same duration and error rate on both
-    models, Opus's judge scores a few points higher, and Opus billing about
-    four times the output tokens. So the rollout finds no regression and
-    walks to 100%.
+    models, Opus's judge scores a few points higher, shoppers adding its
+    suggestions a little more often, and Opus billing about five times the
+    output tokens. So the rollout finds no regression and walks to 100%.
     """
     if not client.is_initialized():
         logging.error("LaunchDarkly client is not initialized.")
@@ -1031,8 +1035,8 @@ def personal_stylist_healthy_generator(client, stop_event):
                 client.track("$ld:ai:generation:error", ctx, data, 1)
             else:
                 client.track("$ld:ai:generation:success", ctx, data, 1)
-                tokens_in = random.randint(820, 980)
-                tokens_out = random.randint(320, 420) if on_opus else random.randint(60, 110)
+                tokens_in = random.randint(2050, 2450) if on_opus else random.randint(1450, 1750)
+                tokens_out = random.randint(380, 500) if on_opus else random.randint(60, 110)
                 client.track("$ld:ai:tokens:input", ctx, data, tokens_in)
                 client.track("$ld:ai:tokens:output", ctx, data, tokens_out)
                 client.track("$ld:ai:tokens:total", ctx, data, tokens_in + tokens_out)
@@ -1043,6 +1047,9 @@ def personal_stylist_healthy_generator(client, stop_event):
                     down = random.random() < 0.15 - lift
                     kind = "negative" if down else "positive"
                     client.track(f"$ld:ai:feedback:user:{kind}", ctx, data, 1)
+                if random.random() < STYLIST_TAKE_RATE + 0.6 * lift:
+                    kind = "size" if random.random() < 0.6 else "pairing"
+                    client.track(STYLIST_SUGGESTION_KEY, ctx, {"kind": kind})
             notes += 1
             time.sleep(0.05)
         except Exception as e:
