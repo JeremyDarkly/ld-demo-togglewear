@@ -115,11 +115,15 @@ Every model call in the store goes through an AI Config, so the model, the promp
 - Shoppers can rate each reply with a thumb, which is recorded as feedback.
 - **To demo:** sign in as Alex, open the chat and ask "Help me pick a hoodie". Then change the Gold and Platinum rule to Standard, and the chat header switches to Nova 2 Lite within a second. Switch the config off and the assistant falls back to scripted replies.
 
-**Personal Stylist** (completion). The "Your stylist's take" note on every product page: a size, the fit and what to wear it with, written for the shopper from the product and their past orders.
+**Personal Stylist** (completion). The "Your stylist's take" card on every product page, written for the shopper from the product, their past orders and the catalog:
 
-- Two variations, the same prompt on Claude Sonnet 4.6 and Claude Opus 5.5. The model under each note says which one wrote it.
-- The build already ran a guarded rollout from Sonnet to Opus to 100%.
-- **To run one live:** set the default rule back to Claude Sonnet 4.6, start a guarded rollout to Claude Opus 5.5 with AI Judge Accuracy, AI Judge Relevance and AI Completion Errors as metrics and automatic rollback on, then start one of the two Personal Stylist generators. One walks the rollout to 100%; the other has Opus's judge scores slip until LaunchDarkly rolls it back, which errors and latency alone would never catch.
+- It picks their size, which the page selects for them ("M is your stylist's pick" under the sizes), unless they have already chosen one.
+- It picks one other product to go with it, shown in the card with an **Add** button. It never suggests something they have already ordered.
+- A short note says how it fits and why the pairing goes with it. The model under the note says which one wrote it.
+- Adding the product in the stylist's size, or adding the pairing, sends **Stylist Suggestion Added**. That metric shows whether shoppers take the advice, which the judges can't measure.
+- Two variations, the same prompt on Claude Sonnet 4.6 and Claude Opus 5.5. The build already ran a guarded rollout from Sonnet to Opus to 100%.
+- **To demo:** sign in as Alex and open the ToggleWear Hoodie. The stylist selects M, the size of Alex's Crewneck, and suggests something to go with it.
+- **To run one live:** set the default rule back to Claude Sonnet 4.6, start a guarded rollout to Claude Opus 5.5 with AI Judge Accuracy, AI Judge Relevance, AI Completion Errors and Stylist Suggestion Added as metrics and automatic rollback on, then start one of the two Personal Stylist generators. One walks the rollout to 100%; the other has Opus's judge scores and shoppers' adds slip until LaunchDarkly rolls it back, which errors and latency alone would never catch.
 
 **Smart Search** (completion). The "Picks for your search" row in the search panel: up to three products that fit what the shopper meant, each with a one-line reason, under the usual word-match results.
 
@@ -180,8 +184,8 @@ Press **Cmd+K** (Ctrl+K off a Mac) on any page to open the demo generator. It pl
 |---|---|---|---|
 | Guarded releases | Live Inventory Service | 06 | The rollout walks to 100% on its own |
 | | Order Pipeline v2 | 07 | Healthy for four minutes, then failing orders trip the automatic rollback |
-| | Personal Stylist on Opus 5.5 (succeeds) | AI | Opus's notes score a little higher, and the rollout reaches 100% |
-| | Personal Stylist on Opus 5.5 (rolls back) | AI | Opus's judge scores slip after four minutes, and LaunchDarkly rolls it back |
+| | Personal Stylist on Opus 5.5 (succeeds) | AI | Opus's notes score a little higher and shoppers add its suggestions a little more often, and the rollout reaches 100% |
+| | Personal Stylist on Opus 5.5 (rolls back) | AI | Opus's judge scores and shoppers' adds slip after four minutes, and LaunchDarkly rolls it back |
 | Experiments | Announcement Banner Offer | 08 | 3,000 guests, about 30 seconds |
 | | Complete Your Look Picks | 09 | 3,000 shoppers, about 30 seconds |
 | | Express Checkout | 10 | 3,000 shoppers through the funnel, about 30 seconds |
