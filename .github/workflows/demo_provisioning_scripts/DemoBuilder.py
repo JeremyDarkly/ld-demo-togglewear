@@ -272,6 +272,13 @@ class DemoBuilder:
                   + (f" ({judges} judge{'s' if judges > 1 else ''} on each variation)" if judges else ""))
             if spec.get("guarded_rollout"):
                 self.start_ai_config_guarded_rollout(key, env, spec["guarded_rollout"])
+            # Last, once the config is on: the trigger switches the default
+            # rule, which has to exist and be serving for that to mean anything.
+            if spec.get("adaptive_trigger"):
+                trigger = dict(spec["adaptive_trigger"])
+                self.ldproject.create_adaptive_trigger(
+                    key, env, trigger.pop("serve"), resource_kind="ai-config", **trigger
+                )
         print("Done")
         self.ai_config_created = True
 

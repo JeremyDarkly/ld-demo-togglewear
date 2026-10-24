@@ -3621,6 +3621,7 @@ mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
         threshold_value,
         threshold_window,
         threshold_cooldown=None,
+        resource_kind="flag",
     ):
         """Create an alert and an adaptive trigger that serves `serve_value` when it fires.
 
@@ -3629,6 +3630,10 @@ mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
         LaunchDarkly custom events are scoped in observability. Mirrors the
         LaunchDarkly UI: if the trigger cannot be created, the alert is
         deleted rather than left behind.
+
+        For an AI Config, `resource_kind` is "ai-config" and `serve_value` is
+        a variation key: an AI Config is a flag underneath, whose variation
+        values are objects that carry their key in _ldMeta.
         """
         headers = {"Authorization": self.api_key, "Content-Type": "application/json"}
         base = f"https://app.launchdarkly.com/api/v2/projects/{self.project_key}/environments/{env_key}"
@@ -3641,7 +3646,10 @@ mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
 
         flag = self._get_flag_json(flag_key) or {}
         variation_id = next(
-            (v["_id"] for v in flag.get("variations", []) if v.get("value") == serve_value),
+            (v["_id"] for v in flag.get("variations", [])
+             if v.get("value") == serve_value
+             or (isinstance(v.get("value"), dict)
+                 and v["value"].get("_ldMeta", {}).get("variationKey") == serve_value)),
             None,
         )
         if variation_id is None:
@@ -3665,7 +3673,7 @@ mutation DeleteAlert($project_id: StringID!, $alert_id: ID!) {
             headers=headers,
             json={
                 "name": alert_name,
-                "resourceKind": "flag",
+                "resourceKind": resource_kind,
                 "resourceKey": flag_key,
                 "triggerSource": {"type": "observabilityAlert", "alertId": int(alert_id)},
                 "task": {"instructions": [{

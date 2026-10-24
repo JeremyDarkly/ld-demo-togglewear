@@ -217,6 +217,24 @@ METRICS = [
      'unit_aggregation_type': 'sum',
      'tags': ['adaptive-trigger', 'recommendations', 'togglewear']},
 
+    # ---- Smart Search: adaptive trigger ----
+    #
+    # What Smart Search's adaptive trigger watches, a running total for the
+    # same reason as flag 14's. Its own event rather than the AI SDK's
+    # generation error, which every AI Config sends, the Personal Stylist's
+    # generators included, so one of those would switch search's model.
+    {'metric_key': 'smart-search-failed',
+     'metric_name': 'Smart Search Failed',
+     'event_key': 'smart-search-failed',
+     'metric_description': 'A Smart Search request whose model call failed. The Smart Search '
+                           'AI Config\'s adaptive trigger switches it to its fallback model '
+                           'when this climbs.',
+     'numeric': True,
+     'unit': 'failures',
+     'success_criteria': 'LowerThanBaseline',
+     'unit_aggregation_type': 'sum',
+     'tags': ['adaptive-trigger', 'ai-config', 'smart-search', 'togglewear']},
+
     # ---- The Order Review's judges ----
     #
     # The scores the Order Decision agent's two judges record. LaunchDarkly
@@ -1111,6 +1129,8 @@ _NOVA = 'Bedrock.us.amazon.nova-2-lite-v1-0-6a503f7e'
 _NOVA_ID = 'us.amazon.nova-2-lite-v1:0'
 _OPUS = 'Bedrock.us.anthropic.claude-opus-5-5'
 _OPUS_ID = 'us.anthropic.claude-opus-5-5'
+_LLAMA = 'Bedrock.us.meta.llama4-maverick-17b-instruct-v1-0-0608c6db'
+_LLAMA_ID = 'us.meta.llama4-maverick-17b-instruct-v1:0'
 
 # Tools — LDPlatform.create_ai_tool(**spec)
 #
@@ -1487,6 +1507,72 @@ AI_CONFIGS = [
                                     {'allocation': 10000, 'durationMillis': 150000},
                                     {'allocation': 25000, 'durationMillis': 150000},
                                     {'allocation': 50000, 'durationMillis': 150000}]}},
+
+    # ---- Smart Search ----
+    #
+    # The "Picks for your search" row in the search panel (pages/api/
+    # smart-search): what the shopper meant, from their catalogue, when the
+    # word match alone would find nothing. Its two variations are two
+    # providers, Meta's Llama as the main model and Claude as the fallback,
+    # which is the shape LaunchDarkly's "prevent downtime with fallbacks"
+    # trigger is for. The search panel's failures send smart-search-failed,
+    # and more than 3 in 5 minutes switches the default rule to Claude.
+    # "Search model outage" in the account menu fails only the Llama calls,
+    # so search recovers on its own once the trigger has switched.
+    #
+    # No judges: one reason per pick is too short to score, and the route
+    # checks every pick against the real catalogue itself.
+    {'config': {'config_key': 'smart-search',
+                'config_name': 'Smart Search',
+                'description': 'The "Picks for your search" row in the store\'s search panel: up '
+                               'to three products that fit what the shopper meant, each with a '
+                               'one-line reason, under the usual word-match results. Two '
+                               'variations on two providers: Llama 4 Maverick (Meta) serves '
+                               'everyone, and Claude Sonnet 4.6 (Anthropic) is the fallback. An '
+                               'adaptive trigger switches the default rule to Claude Sonnet 4.6 '
+                               'when more than 3 searches fail in 5 minutes. Demo it: search '
+                               '"something warm for a rainy conference", then turn on Search '
+                               'model outage under Simulate an incident in the account menu and '
+                               'search four more times. The picks fail, and two to three '
+                               'minutes later the trigger switches the model and the label '
+                               'under the picks reads Claude Sonnet 4.6. Resting state: default rule on '
+                               'Llama 4 Maverick, and Search model outage off. An adaptive '
+                               'trigger does not switch it back by itself.',
+                'tags': ['ai-config', 'smart-search', 'adaptive-trigger', 'togglewear']},
+     'variations': [
+         {'ai_config_version_key': key,
+          'ai_model_config_key': model,
+          'ai_config_version_name': name,
+          'description': description,
+          'model': {'modelName': model_id,
+                    'parameters': {'maxTokens': 300, 'temperature': 0.3}},
+          'messages': [
+              {'role': 'system', 'content': (
+                  "You are the search for ToggleWear, LaunchDarkly's merch store. A shopper typed "
+                  "a search, and the store's word match already shows any exact hits. Your job "
+                  "is the products that fit what they meant.\n\n"
+                  "Choose up to three products from the catalog below, best fit first. For each, "
+                  "write one short reason, under 15 words, using only facts in the catalog. "
+                  "Never mention a price, discount, sale, code or shipping offer. Only choose a "
+                  "product that genuinely fits the search; if none does, return no picks rather "
+                  "than a near miss.\n\n"
+                  'Reply with JSON only, no other text: {"picks": [{"slug": "...", "reason": '
+                  '"..."}]}\n\n'
+                  "Catalog, as JSON:\n{{catalog}}")},
+              {'role': 'user', 'content': "{{query}}"}]}
+         for key, model, model_id, name, description in [
+             ('llama-4-maverick', _LLAMA, _LLAMA_ID, 'Llama 4 Maverick',
+              'Meta\'s model, quick and cheap. Serves everyone.'),
+             ('claude-sonnet-4-6', _SONNET, _SONNET_ID, 'Claude Sonnet 4.6',
+              'The fallback, on another provider. The adaptive trigger switches to it.')]],
+     'environment': 'production',
+     'fallthrough': 'llama-4-maverick',
+     'adaptive_trigger': {'serve': 'claude-sonnet-4-6',
+                          'alert_name': 'Smart Search Failed',
+                          'product_type': 'LDCustomEvents',
+                          'query': 'environment_id={environment_id} key=smart-search-failed',
+                          'threshold_value': 3,
+                          'threshold_window': 300}},
 
     # ---- Cart Recovery ----
     #
