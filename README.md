@@ -209,7 +209,7 @@ Turn on **LaunchDarkly toolbar** under **Developer tools** in the account menu a
 - **To demo:** sign in as Alex, then override flag 01 to on in the toolbar and the Early Access section appears for him, while his targeting in LaunchDarkly still says off. Add something to the cart and the toolbar's Events tab shows the `add-to-cart` event.
 - **Only browser flags:** flag 05, the generator's scenarios and the AI Configs are evaluated on the server, so the toolbar can't override them.
 - **Switching it off clears every override**, straight away. Overrides are also dropped when a new tab opens without the toolbar, so one demo can't leave a hidden override behind for the next.
-- **On a hosted environment** the toolbar only works on domains your LaunchDarkly organization allows. An admin adds the domain (for example `<name>-togglewear.launchdarklydemos.com`) under **Organization settings > Integrations > LaunchDarkly Developer Toolbar**, which can take five minutes to apply. Localhost is allowed by default.
+- **On a hosted environment** it only works once the domain is allowed. An organization admin adds `*.launchdarklydemos.com` once under **Organization settings > Integrations > LaunchDarkly Developer Toolbar** (the "Allowed domains" field), which covers every SE's `<name>-togglewear` site, and it takes up to five minutes to apply ([safe domains](https://launchdarkly.com/docs/home/getting-started/dev-toolbar-using)). Localhost is always allowed. LaunchDarkly's advice to keep it out of production is about real customers seeing it; here it stays off until someone driving the demo switches it on.
 
 ### Resetting after a demo
 

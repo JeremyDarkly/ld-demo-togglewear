@@ -86,12 +86,38 @@ type DeveloperToolbarApi = {
 
 const DeveloperToolbarContext = createContext<DeveloperToolbarApi | null>(null);
 
+// The toolbar's own show and hide, which it puts on window once it is mounted.
+// It saves the hidden state to local storage under this key and reads it back
+// when it mounts.
+type ToolbarControls = { enable: () => void; disable: () => void };
+const HIDDEN_KEY = "ld-toolbar-disabled";
+
+function toolbarControls() {
+  return (window as Window & { ldToolbar?: ToolbarControls }).ldToolbar;
+}
+
 export function DeveloperToolbarProvider({ children }: { children: ReactNode }) {
   const [toolbarOn, setToolbarState] = useState(false);
+  // Mounted the first time it is switched on and never unmounted after that:
+  // version 2.3.1 keeps only one of its stylesheets when it is mounted a
+  // second time on the same page, and comes back see-through with its layout
+  // collapsed. Switching it off hides it instead.
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setToolbarState(toolbarRemembered());
   }, []);
+
+  useEffect(() => {
+    if (!toolbarOn || mounted) return;
+    // Hidden on an earlier page load would otherwise keep it hidden now.
+    try {
+      window.localStorage.removeItem(HIDDEN_KEY);
+    } catch {
+      // Nothing saved to undo.
+    }
+    setMounted(true);
+  }, [toolbarOn, mounted]);
 
   useLaunchDarklyToolbar({
     flagOverridePlugin,
@@ -100,7 +126,7 @@ export function DeveloperToolbarProvider({ children }: { children: ReactNode }) 
     // the ones this storefront is evaluating.
     clientSideId: process.env.NEXT_PUBLIC_LD_CLIENT_KEY,
     position: "bottom-left",
-    enabled: toolbarOn,
+    enabled: mounted,
   });
 
   // Closing it puts every flag back to what LaunchDarkly serves, straight
@@ -108,7 +134,11 @@ export function DeveloperToolbarProvider({ children }: { children: ReactNode }) 
   const setToolbarOn = useCallback((on: boolean) => {
     setToolbarState(on);
     rememberToolbar(on);
-    if (on) return;
+    if (on) {
+      toolbarControls()?.enable();
+      return;
+    }
+    toolbarControls()?.disable();
     if (flagOverridePlugin.getClient()) flagOverridePlugin.clearAllOverrides();
     clearStoredOverrides();
   }, []);
