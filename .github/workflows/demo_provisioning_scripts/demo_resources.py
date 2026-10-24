@@ -309,6 +309,20 @@ METRICS = [
      'unit_aggregation_type': 'sum',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'togglewear']},
+    # Whether the shopper took the Personal Stylist's advice, which no judge
+    # can score: the storefront sends it (lib/events.ts) when the product
+    # goes in the cart in the size the stylist picked, or its pairing does.
+    {'metric_key': 'stylist-suggestion-added',
+     'metric_name': 'Stylist Suggestion Added',
+     'event_key': 'stylist-suggestion-added',
+     'metric_description': 'Added the Personal Stylist\'s suggestion to the cart from a product '
+                           'page: the product in the size it picked, or the product it paired '
+                           'it with.',
+     'numeric': False,
+     'unit': '',
+     'success_criteria': 'HigherThanBaseline',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'personal-stylist', 'togglewear']},
     {'metric_key': 'ai-total-tokens',
      'metric_name': 'AI Total Tokens',
      'event_key': '$ld:ai:tokens:total',
@@ -1055,25 +1069,34 @@ _SWAG_ASSISTANT_OPENING = (
 # {{product_facts}} and {{order_history}} are the swag assistant's
 # get-product-details and get-order-status results, filled in by the
 # storefront (pages/api/personal-stylist/index.ts), so the two features
-# describe a product and an order the same way.
+# describe a product and an order the same way. {{catalog}} is what it may
+# pair the product with (lib/personalStylist.ts). The reply is JSON because
+# the page acts on it: it selects the size and shows the pairing as a card.
 _PERSONAL_STYLIST_MESSAGES = [
     {'role': 'system',
-     'content': "You are the Personal Stylist for ToggleWear, LaunchDarkly's merch store. You "
-                "write the short note shown on a product page for the shopper looking at it.\n\n"
-                "Write two or three sentences. Recommend a size from the size chart, using a "
-                "size they have ordered before when there is one, and say how it fits. Then "
-                "suggest one thing to wear it with: an item from their orders if one goes with "
-                "it, otherwise something general, such as dark jeans. For a one-size item, skip "
-                "the size and say who it suits instead. Only name ToggleWear products you are "
-                "given, and never make up a measurement, price or perk. Write plain text with no "
-                "markdown, and do not greet the shopper or sign off.\n\n"
+     'content': "You are the Personal Stylist for ToggleWear, LaunchDarkly's merch store. For "
+                "the shopper looking at a product page, you pick their size and one other "
+                "product to go with it, and write the short note shown with them. The page "
+                "selects your size for the shopper and shows your pairing as a card they can "
+                "add to their cart.\n\n"
+                "Size: one of the product's sizes, using a size they have ordered before when "
+                "there is one, otherwise the size chart. For a one-size item, use null.\n"
+                "Pairing: the slug of one product from the catalog you are given that goes "
+                "with this one. The catalog already leaves out what they have ordered.\n"
+                "Note: two sentences, under 50 words. First how it fits in that size, or who "
+                "it suits if it is one size; then why the pairing goes with it, naming it as "
+                "the catalog does. Never make up a measurement, price or perk. Plain text with "
+                "no markdown, and do not greet the shopper or sign off.\n\n"
+                'Reply with JSON only, no other text: {"size": "M", "pairing": "<slug>", '
+                '"note": "..."}\n\n'
                 + _snippet('togglewear-brand-voice') + "\n\n"
                 + _snippet('togglewear-store-policies')},
     {'role': 'user',
      'content': "Shopper: {{shopper_name}}, loyalty tier {{loyalty_tier}}\n\n"
                 "The product, as JSON:\n{{product_facts}}\n\n"
                 "Their recent orders, as JSON:\n{{order_history}}\n\n"
-                "Write my stylist note for this product."},
+                "The catalog to pair it from, as JSON:\n{{catalog}}\n\n"
+                "Pick my size and a pairing, and write my stylist note."},
 ]
 
 # What the judges are told about the store, so a reply quoting the shipping
@@ -1082,8 +1105,9 @@ _PERSONAL_STYLIST_MESSAGES = [
 # Stylist are held to the same rubric.
 _JUDGE_OPENING = (
     "You evaluate replies from ToggleWear's AI features in LaunchDarkly's merch store: the "
-    "Swag Assistant, a shopping chat; the Personal Stylist, a short note on a product "
-    "page about size, fit and what to wear it with; and Cart Recovery, a one-line reminder "
+    "Swag Assistant, a shopping chat; the Personal Stylist, which picks a size and one "
+    "other product from the catalog to go with the one on a product page, with a short "
+    "note on both; and Cart Recovery, a one-line reminder "
     "in the bar across the top of the store for a shopper who came back to a cart they "
     "left. The message history shows what the reply was written from: for the chat, the "
     "conversation and, on lines starting \"tool:\", the catalog and account data its tools "
@@ -1288,7 +1312,8 @@ AI_CONFIGS = [
               _JUDGE_OPENING
               + "Score how directly the response answers the shopper's latest message, given "
                 "the conversation before it. For a stylist note, score how well it helps this "
-                "shopper decide on this product: a size, the fit and what to wear it with.\n\n"
+                "shopper decide on this product: a size, the fit and a pairing that goes with "
+                "it.\n\n"
                 "1.0: answers exactly what was asked, with nothing the shopper has to dig past.\n"
                 "0.7: answers it, with some padding or a detail that was not asked for.\n"
                 "0.4: only partly answers it, or answers a different question.\n"
@@ -1456,16 +1481,19 @@ AI_CONFIGS = [
     # back on Sonnet and uses the Personal Stylist generators in Cmd+K.
     {'config': {'config_key': 'personal-stylist',
                 'config_name': 'Personal Stylist',
-                'description': 'The "Your stylist\'s take" note on every product page: a size, how '
-                               'it fits and what to wear it with, written for the shopper looking '
-                               'at it from the product and their past orders. Two variations, '
+                'description': 'The "Your stylist\'s take" card on every product page, for the '
+                               'shopper looking at it: it picks their size, which the page '
+                               'selects, and one other product to go with it, shown as a card to '
+                               'add, with a short note on both, from the product, their past '
+                               'orders and the catalog. Adding either one sends Stylist '
+                               'Suggestion Added, a guarded rollout metric. Two variations, '
                                'the same prompt on Claude Sonnet 4.6 (everyone today) and Claude '
                                'Opus 5.5 (the upgrade). The build already ran a guarded rollout '
                                'from Sonnet to Opus, finished at 100%, to show as it is. To run '
                                'one live: set the default rule back to Claude Sonnet 4.6, start '
                                'a guarded rollout to Claude Opus 5.5 with AI Judge Accuracy, AI '
-                               'Judge Relevance and AI Completion Errors as metrics and automatic '
-                               'rollback on, '
+                               'Judge Relevance, AI Completion Errors and Stylist Suggestion '
+                               'Added as metrics and automatic rollback on, '
                                'then start a Personal Stylist generator in the Cmd+K panel. The '
                                'Succeeds one walks the rollout to 100%; the Rolls back one has '
                                'Opus\'s judge scores slip until LaunchDarkly rolls it back. The '
@@ -1478,15 +1506,18 @@ AI_CONFIGS = [
           'description': 'What every shopper gets today.',
           # No temperature on either model, so the rollout compares the
           # models alone: Bedrock refuses a request that sends Opus 5.5 one.
+          # The same token limit for the same reason. Opus thinks before it
+          # answers and the thinking counts against the limit, so at 400 it
+          # ran out before writing the JSON and every note came back empty.
           'model': {'modelName': _SONNET_ID,
-                    'parameters': {'maxTokens': 400}},
+                    'parameters': {'maxTokens': 1000}},
           'messages': _PERSONAL_STYLIST_MESSAGES},
          {'ai_config_version_key': 'claude-opus-5-5',
           'ai_model_config_key': _OPUS,
           'ai_config_version_name': 'Claude Opus 5.5',
           'description': 'The upgrade, released with a guarded rollout.',
           'model': {'modelName': _OPUS_ID,
-                    'parameters': {'maxTokens': 400}},
+                    'parameters': {'maxTokens': 1000}},
           'messages': _PERSONAL_STYLIST_MESSAGES}],
      'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0},
                 {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0}],
@@ -1502,7 +1533,8 @@ AI_CONFIGS = [
                          'target': 'claude-opus-5-5',
                          'metrics': ['ai-judge-accuracy',
                                      'ai-judge-relevance',
-                                     'ai-completion-errors'],
+                                     'ai-completion-errors',
+                                     'stylist-suggestion-added'],
                          'stages': [{'allocation': 5000, 'durationMillis': 150000},
                                     {'allocation': 10000, 'durationMillis': 150000},
                                     {'allocation': 25000, 'durationMillis': 150000},
