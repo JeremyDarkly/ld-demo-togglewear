@@ -68,7 +68,7 @@ The account menu at the top right of the store signs you in as one of four shopp
 | Gold Members | `tier` is `gold` |
 | Platinum Members | `tier` is `platinum` |
 
-The account menu also has **Empty** and **Refill** for the cart, and **Simulate an incident > Payment outage** for flag 12.
+The account menu also has **Empty** and **Refill** for the cart, and under **Simulate an incident**, **Payment outage** for flag 12 and **Search model outage** for Smart Search.
 
 ### Flags
 
@@ -120,6 +120,12 @@ Every model call in the store goes through an AI Config, so the model, the promp
 - Two variations, the same prompt on Claude Sonnet 4.6 and Claude Opus 5.5. The model under each note says which one wrote it.
 - The build already ran a guarded rollout from Sonnet to Opus to 100%.
 - **To run one live:** set the default rule back to Claude Sonnet 4.6, start a guarded rollout to Claude Opus 5.5 with AI Judge Accuracy, AI Judge Relevance and AI Completion Errors as metrics and automatic rollback on, then start one of the two Personal Stylist generators. One walks the rollout to 100%; the other has Opus's judge scores slip until LaunchDarkly rolls it back, which errors and latency alone would never catch.
+
+**Smart Search** (completion). The "Picks for your search" row in the search panel: up to three products that fit what the shopper meant, each with a one-line reason, under the usual word-match results.
+
+- Two variations on two providers: **Llama 4 Maverick** (Meta) serves everyone, and **Claude Sonnet 4.6** (Anthropic) is the fallback. The model under the picks says which one chose them.
+- An adaptive trigger switches the default rule to Claude Sonnet 4.6 when more than 3 searches fail in 5 minutes.
+- **To demo:** search "something warm for a rainy conference" and the picks come from Llama 4 Maverick. Turn on **Search model outage** in the account menu and search four more times: each one says picks are unavailable. About two to three minutes later the trigger switches the model, and the next search shows picks from Claude Sonnet 4.6 with the outage still on.
 
 **Cart Recovery** (agent). Writes the reminder in the announcement bar for a signed-in shopper who came back to a cart they left.
 
@@ -189,7 +195,7 @@ The guarded-release generators wait for you to start the rollout in LaunchDarkly
 
 The browser SDK runs the Observability and Session Replay plugins, and the server SDK runs Observability, so errors, logs, traces and replays from both sides arrive in your project. The AI routes also record each agent run as a conversation under **Monitor > Traces > Conversations**, with a span for every model call and tool call.
 
-Flag 05 is the main Observability story, and flags 07, 12, 13 and 14 all produce real errors as well.
+Flag 05 is the main Observability story, and flags 07, 12, 13 and 14 and Smart Search all produce real errors as well.
 
 ### Resetting after a demo
 
@@ -202,6 +208,7 @@ Most demos leave something changed. To put a flag back:
 | 13 Card Testing Protection | Off |
 | 14 Recommendation Engine | Default rule on Personalized Picks (an adaptive trigger doesn't switch it back) |
 | Personal Stylist | Default rule on whichever model you want to start from |
+| Smart Search | Default rule on Llama 4 Maverick (an adaptive trigger doesn't switch it back), and **Search model outage** off in the account menu |
 
 If an environment has drifted too far, run the **Rebuild** workflow.
 
