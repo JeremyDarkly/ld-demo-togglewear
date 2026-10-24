@@ -66,6 +66,11 @@ export default function ProductDetails({
   skus?: Record<string, string>;
 }) {
   const [size, setSize] = useState(product.defaultSize);
+  // The Personal Stylist's size, once its note arrives. It is selected for
+  // the shopper unless they have already chosen one themselves, which the
+  // note arriving a few seconds later must not undo.
+  const [stylistSize, setStylistSize] = useState<string>();
+  const [sizeChosen, setSizeChosen] = useState(false);
   const [colorIndex, setColorIndex] = useState(0);
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideFailed, setGuideFailed] = useState(false);
@@ -94,6 +99,9 @@ export default function ProductDetails({
       const sku = skus ? skuFor(skus, product.slug, size) : undefined;
       add(product.slug, size);
       track(EVENTS.addToCart, { slug: product.slug, size, sku });
+      if (size === stylistSize) {
+        track(EVENTS.stylistSuggestionAdded, { slug: product.slug, size, kind: "size" });
+      }
       setAddFailed(false);
     } catch (err) {
       LDObserve.recordError(err as Error, "Add to cart failed", {
@@ -217,7 +225,10 @@ export default function ProductDetails({
               <button
                 key={s}
                 type="button"
-                onClick={() => setSize(s)}
+                onClick={() => {
+                  setSize(s);
+                  setSizeChosen(true);
+                }}
                 aria-pressed={s === size}
                 className={`rounded-[2px] border px-5 py-3 font-sohne text-small font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black focus-visible:ring-offset-2 ${
                   s === size
@@ -229,6 +240,11 @@ export default function ProductDetails({
               </button>
             ))}
           </div>
+          {stylistSize && (
+            <p className="font-sohne text-xsmall text-grays-04">
+              {stylistSize} is your stylist&apos;s pick
+            </p>
+          )}
         </div>
 
         {hasColors && (
@@ -258,7 +274,14 @@ export default function ProductDetails({
           </div>
         )}
 
-        <StylistNote slug={product.slug} />
+        <StylistNote
+          slug={product.slug}
+          variant={variant}
+          onSize={(picked) => {
+            setStylistSize(picked);
+            if (!sizeChosen) setSize(picked);
+          }}
+        />
 
         <div className="flex flex-col gap-3">
           <button

@@ -17,6 +17,9 @@ export const EVENTS = {
   // metric counts an event key, not what the event's data says. An add from
   // the slots sends both this and add-to-cart, so the funnel still sees it.
   upsellAdded: "upsell-added",
+  // The same exception for the Personal Stylist's guarded rollout: the
+  // product added in the size the stylist picked, or the stylist's pairing.
+  stylistSuggestionAdded: "stylist-suggestion-added",
   checkoutStarted: "checkout-started",
   // Carries the order total as its metric value, so a metric can measure
   // revenue per visitor rather than only whether an order happened.
