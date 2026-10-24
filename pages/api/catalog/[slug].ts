@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { LDObserve } from "@launchdarkly/observability-node";
+import { recordActivity } from "@/lib/activity";
 import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { productBySlug, type Product } from "@/lib/products";
 import { sizeChartFor, type SizeChart } from "@/lib/sizeGuide";
@@ -126,6 +127,11 @@ export default async function handler(
       } catch (err) {
         const error = err as Error;
         LDObserve.recordError(error, secureSessionId, requestId, attributes, { span });
+        recordActivity({
+          kind: "error",
+          title: `Catalog v2 timed out on ${product.slug}`,
+          detail: `${error.message}; answered 504`,
+        });
         res.status(504).json({ error: error.message });
         return;
       }
@@ -139,6 +145,11 @@ export default async function handler(
         requestId,
         attributes,
       );
+      recordActivity({
+        kind: "warning",
+        title: `Catalog v2 has no size chart for ${product.slug}`,
+        detail: "Answered sizes: null",
+      });
     }
 
     res.status(200).json(body);

@@ -5,6 +5,7 @@ import {
   type LDContext,
 } from "@launchdarkly/node-server-sdk";
 import { Observability } from "@launchdarkly/observability-node";
+import { activityHook, recordActivity } from "@/lib/activity";
 import { FlagStore } from "@/lib/flagStore";
 
 // The storefront's server-side LaunchDarkly client, for the API routes that
@@ -49,7 +50,16 @@ export function getServerClient(): Promise<LDClient | null> {
           serviceVersion: process.env.NEXT_PUBLIC_APP_VERSION,
         }),
       ],
+      // Reports each evaluation to the Live tab of Under the hood.
+      hooks: [activityHook],
     });
+    client.on("update", ({ key }: { key: string }) =>
+      recordActivity({
+        kind: "change",
+        title: `LaunchDarkly streamed a change to ${key}`,
+        detail: "No redeploy and no restart: the next evaluation uses it",
+      }),
+    );
     clientPromise = client
       .waitForInitialization({ timeout: 5 })
       .then(() => client)

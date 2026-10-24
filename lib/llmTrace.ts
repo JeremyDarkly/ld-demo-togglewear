@@ -7,7 +7,9 @@ import {
 } from "@opentelemetry/api";
 import type { LDJudgeResult, LDTokenUsage } from "@launchdarkly/server-sdk-ai";
 import type { AIMessage } from "@langchain/core/messages";
+import { recordActivity } from "@/lib/activity";
 import { textOf } from "@/lib/aiServer";
+import { servedByFor } from "@/lib/swagAssistant";
 
 // The spans that make an agent's run readable as a conversation under
 // Monitor > Traces > Conversations in LaunchDarkly, following its
@@ -139,8 +141,19 @@ export function startAgentRun(
         runContext,
       );
       run.setAttribute("gen_ai.request.model", model);
+      const startedAt = Date.now();
       try {
         const { response, usage, output } = await call();
+        recordActivity({
+          kind: "model",
+          title: `${agentName} called ${servedByFor("", model).model}`,
+          detail: [
+            usage && `${usage.input.toLocaleString()} in, ${usage.output.toLocaleString()} out tokens`,
+            `${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        });
         const reply = output !== undefined ? text("assistant", output) : replyMessage(response);
         span.setAttributes({
           "gen_ai.output.messages": JSON.stringify([reply]),
@@ -153,6 +166,11 @@ export function startAgentRun(
       } catch (err) {
         span.recordException(err as Error);
         span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+        recordActivity({
+          kind: "error",
+          title: `${agentName}'s call to ${servedByFor("", model).model} failed`,
+          detail: `${(err as Error).name}: ${(err as Error).message}`.slice(0, 160),
+        });
         throw err;
       } finally {
         span.end();
@@ -160,6 +178,7 @@ export function startAgentRun(
     },
 
     async tool(call, runTool) {
+      recordActivity({ kind: "tool", title: `${agentName} used the ${call.name} tool` });
       const span = tracer.startSpan(
         `execute_tool ${call.name}`,
         {
@@ -194,6 +213,11 @@ export function startAgentRun(
     },
 
     fail(err) {
+      recordActivity({
+        kind: "error",
+        title: `${agentName} couldn't answer`,
+        detail: (err as Error).message.slice(0, 160),
+      });
       run.recordException(err as Error);
       run.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
       close();
@@ -203,6 +227,11 @@ export function startAgentRun(
       if (closed) return;
       for (const result of results) {
         if (!result.sampled || !result.success || result.score === undefined) continue;
+        recordActivity({
+          kind: "judge",
+          title: `${(result.metricKey ?? result.judgeConfigKey ?? "A judge").replace(/^\$ld:ai:judge:/, "")} scored ${agentName} ${result.score}`,
+          detail: result.reasoning?.slice(0, 140),
+        });
         run.addEvent(
           "gen_ai.evaluation.result",
           {

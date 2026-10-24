@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { LDObserve } from "@launchdarkly/observability-node";
+import { recordActivity } from "@/lib/activity";
 import { FLAG_KEY } from "@/pages/api/catalog/[slug]";
 import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { productBySlug } from "@/lib/products";
@@ -57,6 +58,11 @@ export default async function handler(
         requestId,
         attributes,
       );
+      recordActivity({
+        kind: "error",
+        title: `Inventory gateway has no route for ${product.slug}'s stock`,
+        detail: "Answered 502 with an HTML error page",
+      });
       res.status(502).setHeader("Content-Type", "text/html").send(GATEWAY_ERROR_PAGE);
       return;
     }

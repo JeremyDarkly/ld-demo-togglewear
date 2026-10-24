@@ -8,6 +8,7 @@ import {
   getAIUsageFromResponse,
 } from "@launchdarkly/server-sdk-ai-langchain";
 import type { AIMessage } from "@langchain/core/messages";
+import { recordActivity } from "@/lib/activity";
 import { getAiClient, textOf } from "@/lib/aiServer";
 import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { startAgentRun } from "@/lib/llmTrace";
@@ -103,6 +104,16 @@ function picksFrom(
     if (picks.length === MAX_PICKS) break;
   }
   return picks;
+}
+
+// The metric the adaptive trigger's alert counts, said out loud in the Live
+// tab of Under the hood so the count towards the trigger can be watched.
+function noteFailureTracked(model: string) {
+  recordActivity({
+    kind: "warning",
+    title: `Tracked ${SMART_SEARCH_FAILED_KEY} for ${model}`,
+    detail: "The metric Smart Search's adaptive trigger watches",
+  });
 }
 
 export default async function handler(
@@ -201,6 +212,7 @@ export default async function handler(
       agentRun.fail(err);
       LDObserve.recordError(err as Error, secureSessionId, requestId, attributes, { span });
       (await getServerClient())?.track(SMART_SEARCH_FAILED_KEY, context, { model: modelName }, 1);
+      noteFailureTracked(modelName);
       res.status(502).json({ error: "Smart search could not answer" });
       return;
     }
@@ -209,6 +221,7 @@ export default async function handler(
       agentRun.fail(new Error("Smart search returned no usable JSON"));
       LDObserve.recordLog("Smart search returned no usable JSON", "warn", secureSessionId, requestId, attributes);
       (await getServerClient())?.track(SMART_SEARCH_FAILED_KEY, context, { model: modelName }, 1);
+      noteFailureTracked(modelName);
       res.status(502).json({ error: "Smart search could not answer" });
       return;
     }

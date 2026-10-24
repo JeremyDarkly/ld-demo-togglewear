@@ -1,3 +1,4 @@
+import { asGenerator, recordActivity } from "@/lib/activity";
 import { getServerClient } from "@/lib/ldServer";
 import {
   GENERATORS,
@@ -52,12 +53,27 @@ export async function startGenerator(id: GeneratorId) {
   runs.set(id, run);
 
   // Ignored once stopped, so a loop finishing its last iteration cannot
-  // overwrite the stop with a stale update.
+  // overwrite the stop with a stale update. A new detail is also a line in
+  // the Live tab of Under the hood, but not one that only moved a count
+  // ("12 attempts blocked so far"), which would be a line a second.
+  const name = GENERATORS.find((g) => g.id === id)?.name ?? id;
+  const wording = (detail: string) => detail.replace(/\d[\d,]*/g, "#");
   const update = (patch: Partial<GeneratorStatus>) => {
-    if (!controller.signal.aborted) run.status = { ...run.status, ...patch };
+    if (controller.signal.aborted) return;
+    const said = patch.detail !== undefined && wording(patch.detail) !== wording(run.status.detail);
+    run.status = { ...run.status, ...patch };
+    if (said) {
+      recordActivity({
+        kind: run.status.state === "error" ? "error" : "generator",
+        title: `Generator: ${name}`,
+        detail: run.status.detail,
+      });
+    }
   };
   const end = (state: GeneratorStatus["state"], detail: string) =>
     update({ state, detail, endedAt: Date.now() });
+
+  recordActivity({ kind: "generator", title: `Generator: ${name}`, detail: "Started." });
 
   const client = await getServerClient();
   if (!client) {
@@ -65,7 +81,7 @@ export async function startGenerator(id: GeneratorId) {
     return;
   }
 
-  SCENARIOS[id]({ client, signal: controller.signal, update })
+  asGenerator(() => SCENARIOS[id]({ client, signal: controller.signal, update }))
     .then((detail) => end("done", detail))
     .catch((error) => {
       if (controller.signal.aborted) return;
@@ -89,4 +105,6 @@ export function stopGenerator(id: GeneratorId) {
     endedAt: Date.now(),
   };
   run.controller.abort();
+  const name = GENERATORS.find((g) => g.id === id)?.name ?? id;
+  recordActivity({ kind: "generator", title: `Generator: ${name}`, detail: "Stopped by hand." });
 }
