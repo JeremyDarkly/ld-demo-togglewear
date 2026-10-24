@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 
 import ProductCard from "@/components/ui/ProductCard";
+import SmartPicks from "@/components/ui/SmartPicks";
 import { useDialog } from "@/components/ui/useDialog";
 import { categoryHref, type PricingVariant } from "@/lib/products";
 import { searchProducts } from "@/lib/search";
@@ -158,6 +159,10 @@ export default function SearchPanel({
                   </Link>
                 </div>
               )}
+
+              {/* Under the word match whether it found anything or not,
+                  since what the shopper meant matters most when it did not. */}
+              <SmartPicks query={query} variant={variant} />
             </div>
           </div>
         )}
