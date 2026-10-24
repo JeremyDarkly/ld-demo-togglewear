@@ -7,13 +7,14 @@ import {
   type ReactNode,
 } from "react";
 
-// The incident a demo can stage from the account menu: a payment outage, in
+// The incidents a demo can stage from the account menu: a payment outage, in
 // which the new processor fails every charge so flag 12's kill switch can
-// turn it off.
+// turn it off, and a search model outage, in which Smart Search's main model
+// fails every call so its adaptive trigger can switch to the fallback.
 //
-// It is the cause and never the cure. Nothing here changes a flag; the
-// storefront only reports what went wrong, LaunchDarkly decides what to do
-// about it, and the page changes because the flag did.
+// They are the cause and never the cure. Nothing here changes a flag or an
+// AI Config; the storefront only reports what went wrong, LaunchDarkly
+// decides what to do about it, and the page changes because LaunchDarkly did.
 //
 // Flags 13 and 14 react to trouble too, but theirs happens behind the store
 // rather than in it, so they are started from the demo generator (Cmd+K)
@@ -22,10 +23,13 @@ import {
 // Session storage, so a reload mid-demo does not quietly end an outage, and a
 // new tab starts healthy.
 const PAYMENT_KEY = "togglewear.incident.payment";
+const SEARCH_KEY = "togglewear.incident.search";
 
 type IncidentApi = {
   paymentOutage: boolean;
   setPaymentOutage: (on: boolean) => void;
+  searchOutage: boolean;
+  setSearchOutage: (on: boolean) => void;
 };
 
 const IncidentContext = createContext<IncidentApi | null>(null);
@@ -49,9 +53,11 @@ function writeFlag(key: string, on: boolean) {
 
 export function IncidentProvider({ children }: { children: ReactNode }) {
   const [paymentOutage, setPaymentState] = useState(false);
+  const [searchOutage, setSearchState] = useState(false);
 
   useEffect(() => {
     setPaymentState(readFlag(PAYMENT_KEY));
+    setSearchState(readFlag(SEARCH_KEY));
   }, []);
 
   const setPaymentOutage = useCallback((on: boolean) => {
@@ -59,8 +65,15 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
     writeFlag(PAYMENT_KEY, on);
   }, []);
 
+  const setSearchOutage = useCallback((on: boolean) => {
+    setSearchState(on);
+    writeFlag(SEARCH_KEY, on);
+  }, []);
+
   return (
-    <IncidentContext.Provider value={{ paymentOutage, setPaymentOutage }}>
+    <IncidentContext.Provider
+      value={{ paymentOutage, setPaymentOutage, searchOutage, setSearchOutage }}
+    >
       {children}
     </IncidentContext.Provider>
   );

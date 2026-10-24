@@ -77,8 +77,8 @@ export default function App({ Component, pageProps }: AppProps) {
           <LaunchDarklyProvider>
             <SavedItemsProvider>
               <OrderProvider>
-                {/* Staged from the account menu and felt on the checkout
-                    page, so it outlives a page change like the cart does. */}
+                {/* Staged from the account menu and felt at checkout and in
+                    search, so they outlive a page change like the cart does. */}
                 <IncidentProvider>
                   {/* The assistant's conversation outlives a page change too,
                       and the cart's help card opens it from outside the

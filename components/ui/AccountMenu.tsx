@@ -107,7 +107,7 @@ function OutageToggle({
 export default function AccountMenu({ onClose }: { onClose: () => void }) {
   const { person, setShopperId, role } = useShopper();
   const { count, returning, clear, reset } = useCart();
-  const { paymentOutage, setPaymentOutage } = useIncidents();
+  const { paymentOutage, setPaymentOutage, searchOutage, setSearchOutage } = useIncidents();
   const panel = useRef<HTMLDivElement>(null);
 
   // Escape and a click outside, but deliberately not the scroll lock and focus
@@ -282,9 +282,10 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         </p>
       </div>
 
-      {/* The trouble flag 12 reacts to. This only causes the problem; the
-          fix arrives from LaunchDarkly, which is the demo. Flags 13 and 14
-          are backend scenarios, started from the demo generator (Cmd+K). */}
+      {/* The trouble flag 12 and Smart Search's adaptive trigger react to.
+          These only cause the problem; the fix arrives from LaunchDarkly,
+          which is the demo. Flags 13 and 14 are backend scenarios, started
+          from the demo generator (Cmd+K). */}
       <div className="flex flex-col gap-2 border-t border-grays-hairline px-5 py-4">
         <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
           Simulate an incident
@@ -294,6 +295,12 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
           title="The new payment processor fails every charge until flag 12 is turned off"
         >
           <OutageToggle on={paymentOutage} onChange={setPaymentOutage} />
+        </IncidentRow>
+        <IncidentRow
+          label="Search model outage"
+          title="Smart Search's main model, Llama 4 Maverick, fails every search until its adaptive trigger switches to Claude Sonnet 4.6"
+        >
+          <OutageToggle on={searchOutage} onChange={setSearchOutage} />
         </IncidentRow>
       </div>
 
