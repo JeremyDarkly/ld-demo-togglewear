@@ -17,7 +17,8 @@ export type ServedBy = { variation: string; model: string };
 
 // "member-concierge" becomes "Member Concierge", and the Bedrock inference
 // profile "us.anthropic.claude-haiku-4-5-20251001-v1:0" becomes
-// "Claude Haiku 4.5". The flag value only carries the provider's model id,
+// "Claude Haiku 4.5", and "us.meta.llama4-maverick-17b-instruct-v1:0"
+// becomes "Llama 4 Maverick". The flag value only carries the provider's model id,
 // so this is the one place that turns it into something a room can read.
 export function servedByFor(variationKey: string, modelName: string): ServedBy {
   const words = modelName
@@ -33,6 +34,12 @@ export function servedByFor(variationKey: string, modelName: string): ServedBy {
       model[model.length - 1] = `${previous}.${word}`;
     } else if (/^gpt$/i.test(word)) {
       model.push("GPT");
+    } else if (/^llama\d+$/i.test(word)) {
+      // Meta runs the version into the name: "llama4-maverick-17b-instruct"
+      // is Llama 4 Maverick.
+      model.push("Llama", word.slice("llama".length));
+    } else if (/^(\d+b|instruct)$/i.test(word)) {
+      continue;
     } else {
       model.push(word.charAt(0).toUpperCase() + word.slice(1));
     }
