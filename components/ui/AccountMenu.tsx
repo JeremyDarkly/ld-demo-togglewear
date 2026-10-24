@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 
 import { useCart } from "@/components/cart/CartProvider";
+import { useDeveloperToolbar } from "@/components/ui/DeveloperToolbar";
 import { useIncidents } from "@/components/ui/IncidentProvider";
 import ProfileIllustration from "@/components/ui/ProfileIllustration";
 import { useShopper } from "@/components/ui/ShopperProvider";
@@ -80,13 +81,16 @@ function IncidentRow({
 }
 
 // Orange while on, the palette's warning colour, so a demo cannot forget an
-// outage is still running when the next customer reaches checkout.
+// outage is still running when the next customer reaches checkout. Lime for
+// the toolbar, which is on screen anyway and is nothing to be warned about.
 function OutageToggle({
   on,
   onChange,
+  tone = "warning",
 }: {
   on: boolean;
   onChange: (on: boolean) => void;
+  tone?: "warning" | "plain";
 }) {
   return (
     <button
@@ -95,7 +99,11 @@ function OutageToggle({
       onClick={() => onChange(!on)}
       className={
         on
-          ? "rounded-full border border-base-orange bg-base-orange px-2.5 py-1 font-sohne text-[11px] font-medium text-grays-ld-black"
+          ? `rounded-full border px-2.5 py-1 font-sohne text-[11px] font-medium text-grays-ld-black ${
+              tone === "warning"
+                ? "border-base-orange bg-base-orange"
+                : "border-base-lime bg-base-lime"
+            }`
           : PILL
       }
     >
@@ -108,6 +116,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
   const { person, setShopperId, role } = useShopper();
   const { count, returning, clear, reset } = useCart();
   const { paymentOutage, setPaymentOutage, searchOutage, setSearchOutage } = useIncidents();
+  const { toolbarOn, setToolbarOn } = useDeveloperToolbar();
   const panel = useRef<HTMLDivElement>(null);
 
   // Escape and a click outside, but deliberately not the scroll lock and focus
@@ -301,6 +310,20 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
           title="Smart Search's main model, Llama 4 Maverick, fails every search until its adaptive trigger switches to Claude Sonnet 4.6"
         >
           <OutageToggle on={searchOutage} onChange={setSearchOutage} />
+        </IncidentRow>
+      </div>
+
+      {/* For the developer half of a demo: the same toolbar an engineer
+          would run against their own app. See DeveloperToolbar. */}
+      <div className="flex flex-col gap-2 border-t border-grays-hairline px-5 py-4">
+        <p className="font-sohne-mono text-xsmall-mono uppercase text-grays-04">
+          Developer tools
+        </p>
+        <IncidentRow
+          label="LaunchDarkly toolbar"
+          title="Opens LaunchDarkly's developer toolbar in the bottom-left corner: this browser's flags and events, and overrides that only this browser sees. Switching it off clears the overrides."
+        >
+          <OutageToggle on={toolbarOn} onChange={setToolbarOn} tone="plain" />
         </IncidentRow>
       </div>
 

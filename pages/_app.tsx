@@ -5,6 +5,7 @@ import localFont from "next/font/local";
 import { CartProvider } from "@/components/cart/CartProvider";
 import { SavedItemsProvider } from "@/components/account/SavedItemsProvider";
 import { OrderProvider } from "@/components/checkout/OrderProvider";
+import { DeveloperToolbarProvider } from "@/components/ui/DeveloperToolbar";
 import { IncidentProvider } from "@/components/ui/IncidentProvider";
 import { ShopperProvider } from "@/components/ui/ShopperProvider";
 import { SwagAssistantProvider } from "@/components/ui/SwagAssistantProvider";
@@ -80,17 +81,21 @@ export default function App({ Component, pageProps }: AppProps) {
                 {/* Staged from the account menu and felt at checkout and in
                     search, so they outlive a page change like the cart does. */}
                 <IncidentProvider>
-                  {/* The assistant's conversation outlives a page change too,
-                      and the cart's help card opens it from outside the
-                      corner of the screen it lives in. */}
-                  <SwagAssistantProvider>
-                    <div key={asPath} data-page-transition>
-                      <Component {...pageProps} />
-                    </div>
-                    {/* Outside the keyed wrapper, so moving between pages
-                        does not close it. */}
-                    <DemoGenerator />
-                  </SwagAssistantProvider>
+                  {/* Switched on from the account menu, and open until it is
+                      switched off again, whichever page that happens on. */}
+                  <DeveloperToolbarProvider>
+                    {/* The assistant's conversation outlives a page change
+                        too, and the cart's help card opens it from outside
+                        the corner of the screen it lives in. */}
+                    <SwagAssistantProvider>
+                      <div key={asPath} data-page-transition>
+                        <Component {...pageProps} />
+                      </div>
+                      {/* Outside the keyed wrapper, so moving between pages
+                          does not close it. */}
+                      <DemoGenerator />
+                    </SwagAssistantProvider>
+                  </DeveloperToolbarProvider>
                 </IncidentProvider>
               </OrderProvider>
             </SavedItemsProvider>

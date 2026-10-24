@@ -12,6 +12,11 @@ import Observability from "@launchdarkly/observability";
 import SessionReplay from "@launchdarkly/session-replay";
 
 import { useCart } from "@/components/cart/CartProvider";
+import {
+  dropOverridesUnlessToolbarOn,
+  eventInterceptionPlugin,
+  flagOverridePlugin,
+} from "@/components/ui/DeveloperToolbar";
 import { useShopper } from "@/components/ui/ShopperProvider";
 import { contextFor } from "@/lib/ldContext";
 import { DEFAULT_SHOPPER_ID, shopperById } from "@/lib/shopper";
@@ -54,6 +59,8 @@ export default function LaunchDarklyProvider({
     // and no flicker.
     const seed = shopperById(DEFAULT_SHOPPER_ID);
 
+    dropOverridesUnlessToolbarOn();
+
     asyncWithLDProvider({
       clientSideID,
       context: contextFor(seed, seed.role),
@@ -93,6 +100,10 @@ export default function LaunchDarklyProvider({
                 ? context.name
                 : undefined,
           }),
+          // The developer toolbar's, registered whether or not it is open,
+          // since a client's plugins are fixed when it is created.
+          flagOverridePlugin,
+          eventInterceptionPlugin,
         ],
       },
     }).then((provider) => {
