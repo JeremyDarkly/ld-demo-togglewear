@@ -2,6 +2,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useCart } from "@/components/cart/CartProvider";
+import { useUnderTheHood } from "@/components/hood/UnderTheHood";
 import AccountMenu from "@/components/ui/AccountMenu";
 import SearchPanel from "@/components/ui/SearchPanel";
 import { useShopper } from "@/components/ui/ShopperProvider";
@@ -36,6 +37,7 @@ export default function Header({
   // Search results obey the persona the same way every other list does, so
   // the variant is read here rather than passed down from each page.
   const { variant } = useShopper();
+  const { open: hoodOpen, toggle: toggleHood } = useUnderTheHood();
 
   // Which link is lit follows the URL rather than being fixed in the list,
   // which had New Drops highlighted on every page including the cart.
@@ -98,6 +100,20 @@ export default function Header({
           </nav>
 
           <div className="flex items-center gap-5 self-stretch md:gap-[25px]">
+            {/* For whoever is driving the demo rather than the shopper, so it
+                is the one control in the bar that isn't a shop's. */}
+            <button
+              type="button"
+              aria-label="Under the hood"
+              aria-pressed={hoodOpen}
+              title="Under the hood: live backend, code, architecture and demo tools"
+              onClick={toggleHood}
+              className={`flex items-center rounded-full px-2 py-1 font-sohne-mono text-xsmall-mono transition-colors ${
+                hoodOpen ? "bg-base-lime text-grays-ld-black" : "text-grays-02 hover:text-grays-white"
+              }`}
+            >
+              {"</>"}
+            </button>
             <button
               type="button"
               aria-label="Search"

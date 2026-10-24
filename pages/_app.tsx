@@ -11,6 +11,7 @@ import { ShopperProvider } from "@/components/ui/ShopperProvider";
 import { SwagAssistantProvider } from "@/components/ui/SwagAssistantProvider";
 import LaunchDarklyProvider from "@/components/ui/LaunchDarklyProvider";
 import DemoGenerator from "@/components/generator/DemoGenerator";
+import { UnderTheHoodProvider } from "@/components/hood/UnderTheHood";
 import "@/styles/globals.css";
 
 // next/font is only allowed in _app, not _document, so the CSS variable the
@@ -88,12 +89,17 @@ export default function App({ Component, pageProps }: AppProps) {
                         too, and the cart's help card opens it from outside
                         the corner of the screen it lives in. */}
                     <SwagAssistantProvider>
-                      <div key={asPath} data-page-transition>
-                        <Component {...pageProps} />
-                      </div>
-                      {/* Outside the keyed wrapper, so moving between pages
-                          does not close it. */}
-                      <DemoGenerator />
+                      {/* Under the hood stays open through page changes,
+                          which is what lets its Live tab be watched while
+                          shopping. */}
+                      <UnderTheHoodProvider>
+                        <div key={asPath} data-page-transition>
+                          <Component {...pageProps} />
+                        </div>
+                        {/* Outside the keyed wrapper, so moving between
+                            pages does not close it. */}
+                        <DemoGenerator />
+                      </UnderTheHoodProvider>
                     </SwagAssistantProvider>
                   </DeveloperToolbarProvider>
                 </IncidentProvider>

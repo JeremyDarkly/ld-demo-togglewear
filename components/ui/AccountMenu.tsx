@@ -63,7 +63,7 @@ function Avatar({ person }: { person: Person }) {
 const PILL =
   "rounded-full border border-grays-02 px-2.5 py-1 font-sohne text-[11px] font-medium text-grays-ld-black transition-colors hover:bg-base-lime disabled:cursor-not-allowed disabled:border-grays-hairline disabled:text-grays-03 disabled:hover:bg-transparent";
 
-function IncidentRow({
+export function IncidentRow({
   label,
   title,
   children,
@@ -83,7 +83,7 @@ function IncidentRow({
 // Orange while on, the palette's warning colour, so a demo cannot forget an
 // outage is still running when the next customer reaches checkout. Lime for
 // the toolbar, which is on screen anyway and is nothing to be warned about.
-function OutageToggle({
+export function OutageToggle({
   on,
   onChange,
   tone = "warning",

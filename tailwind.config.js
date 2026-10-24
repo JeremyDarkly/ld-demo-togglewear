@@ -120,11 +120,17 @@ module.exports = {
           from: { backgroundColor: "rgba(221, 255, 70, 0.3)", color: "#FFFFFF" },
           to: { backgroundColor: "rgba(221, 255, 70, 0)" },
         },
+        // The Under the hood panel arriving from the edge it lives on.
+        "slide-in-right": {
+          from: { opacity: "0", transform: "translateX(24px)" },
+          to: { opacity: "1", transform: "translateX(0)" },
+        },
       },
       animation: {
         "drop-in": "drop-in 180ms ease-out",
         "fade-in": "fade-in 180ms ease-out",
         "badge-flash": "badge-flash 1.6s ease-out",
+        "slide-in-right": "slide-in-right 200ms ease-out",
       },
     },
   },
