@@ -13,7 +13,7 @@ import {
 import type { GeneratorsResponse } from "@/pages/api/generators";
 
 // The demo generator's remote control, opened with Cmd+K (Ctrl+K elsewhere),
-// the shortcut SEs know from ToggleBank's. The generators themselves run on
+// the shortcut users know from ToggleBank's. The generators themselves run on
 // the server (lib/generator/runner.ts), so this only starts and stops them
 // and reads back where they are up to — closing it, refreshing or shopping
 // on changes nothing.

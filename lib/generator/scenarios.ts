@@ -459,8 +459,8 @@ function stylistUpgrade(failing: boolean): Scenario {
           tracker.trackSuccess();
           // Real notes' sizes, catalog included: Opus writes no more words
           // but counts the same prompt as more tokens and bills about five
-          // times the output tokens for its thinking, which is the cost an
-          // SE can point at beside its better scores.
+          // times the output tokens for its thinking, which is the cost a
+          // user can point at beside its better scores.
           const input = onOpus ? randint(2050, 2450) : randint(1450, 1750);
           const output = onOpus ? randint(380, 500) : randint(60, 110);
           tracker.trackTokens({ input, output, total: input + output });

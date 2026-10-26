@@ -1,5 +1,5 @@
 // The demo generator's menu: what each one is for, in the words the Cmd+K
-// panel shows an SE who has never seen it before. Shared by the panel and the
+// panel shows a user who has never seen it before. Shared by the panel and the
 // server, so the two cannot disagree about what exists.
 //
 // Every one of these is a backend scenario with no screen in the store. The
@@ -28,7 +28,7 @@ export type GeneratorInfo = {
   flagKey: string;
   name: string;
   kind: string;
-  // How a guarded release ends, shown as a tag beside the name so an SE
+  // How a guarded release ends, shown as a tag beside the name so a user
   // picking between the healthy and failing version of a story cannot pick
   // the wrong one.
   outcome?: "succeeds" | "rollsBack";
@@ -67,7 +67,7 @@ export const GENERATORS: GeneratorInfo[] = [
   },
   // The Personal Stylist is an AI Config rather than a numbered flag, so its
   // badge says AI. One story told two ways: the same upgrade from Claude
-  // Sonnet 4.6 to Claude Opus 5.5, going right or going wrong, so an SE can
+  // Sonnet 4.6 to Claude Opus 5.5, going right or going wrong, so a user can
   // pick which one the room sees.
   {
     id: "stylistUpgrade",
@@ -177,7 +177,7 @@ export const GENERATOR_GROUPS: GeneratorGroup[] = [
 
 // idle: never started since the server did. waiting: started, but the thing
 // it feeds (a guarded rollout) has not begun yet. running: sending. done: it
-// stopped itself because the story is over. stopped: an SE stopped it.
+// stopped itself because the story is over. stopped: a user stopped it.
 export type GeneratorState =
   | "idle"
   | "waiting"

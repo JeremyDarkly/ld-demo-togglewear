@@ -16,7 +16,7 @@ export type OrderReviewProgress = Partial<Record<OrderReviewAgentKey, AgentStep>
 // Each row is one line, the start of what the agent wrote, so the card stays
 // the same height from the first agent to the last and never pushes the
 // page into a scroll. A row opens to the agent's whole answer, one at a
-// time, for an SE who wants to talk one of them through.
+// time, for a user who wants to talk one of them through.
 //
 // Order Decision's row does not repeat its answer, which is the summary at
 // the top of the card; it says the decision instead. Case Note only runs for

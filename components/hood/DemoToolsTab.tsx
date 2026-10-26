@@ -6,7 +6,7 @@ import { useDeveloperToolbar } from "@/components/ui/DeveloperToolbar";
 import { useIncidents } from "@/components/ui/IncidentProvider";
 import { GENERATOR_GROUPS, GENERATORS } from "@/lib/generator/catalog";
 
-// Every control a demo needs, in one place an SE can find without knowing
+// Every control a demo needs, in one place a user can find without knowing
 // the shortcuts: the same switches as the account menu and the generator
 // behind Cmd+K, plus what to put back afterwards.
 

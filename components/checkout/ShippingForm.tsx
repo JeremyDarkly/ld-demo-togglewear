@@ -8,7 +8,7 @@ import { addressFor } from "@/lib/account";
 // typing, and so the Order Review agents have an address to reason about.
 //
 // The ZIP is the one field worth knowing about: it is what the Order Review
-// keys its decline path off, so it is the lever an SE changes on stage. Held
+// keys its decline path off, so it is the lever a user changes on stage. Held
 // to exactly five digits, so a mistyped 999999 cannot quietly miss the
 // blocked 99999 and leave the decline looking broken. Megan's is a Dutch
 // postcode instead, with the country where a US address has its state.

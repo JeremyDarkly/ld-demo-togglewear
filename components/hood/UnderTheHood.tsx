@@ -12,7 +12,7 @@ import CodeTab from "@/components/hood/CodeTab";
 import DemoToolsTab from "@/components/hood/DemoToolsTab";
 import LiveTab from "@/components/hood/LiveTab";
 
-// Under the hood: the panel an SE opens beside the store to show what the
+// Under the hood: the panel a user opens beside the store to show what the
 // store is doing in LaunchDarkly. ToggleBank spreads the same jobs over a
 // sidebar terminal, a menu of code and architecture pages and a Demo Tools
 // button; here they are the four tabs of one panel.

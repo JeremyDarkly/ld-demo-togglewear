@@ -44,7 +44,7 @@ const THEME: PrismTheme = {
 };
 
 // Session storage like the panel itself, so a reload mid-call keeps the
-// section and language an SE had picked.
+// section and language a user had picked.
 const STORAGE_KEY = "togglewear.hood.code";
 
 function readSaved(): { section: string; lang: Lang } {

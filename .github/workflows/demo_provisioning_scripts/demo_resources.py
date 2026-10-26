@@ -1477,7 +1477,7 @@ AI_CONFIGS = [
     # upgrade is what a guarded rollout is for. Everyone starts on Sonnet, and
     # the build starts a guarded rollout to Opus on the default rule that
     # results_generator.py walks to 100%, so a new environment already has a
-    # finished one to show. An SE who wants to run one live puts the rule
+    # finished one to show. A user who wants to run one live puts the rule
     # back on Sonnet and uses the Personal Stylist generators in Cmd+K.
     {'config': {'config_key': 'personal-stylist',
                 'config_name': 'Personal Stylist',
@@ -1693,7 +1693,7 @@ AI_CONFIGS = [
 # levers at checkout always land: a total over $800 or five of one item is
 # held, ZIP 99999 is declined. What the models own is reading the facts and
 # saying what they mean, and the Decision agent's thresholds, which are in its
-# instructions so an SE can change them here and watch an ordinary order get
+# instructions so a user can change them here and watch an ordinary order get
 # held. The storefront refuses to approve a blocked ZIP whatever the agents
 # say.
 #

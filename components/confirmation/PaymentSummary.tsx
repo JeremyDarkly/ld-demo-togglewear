@@ -38,7 +38,7 @@ export default function PaymentSummary({
         {/* Not in Jen's design. The Order Review agents clearing the order
             is the whole point of the checkout step, and without a line here
             the only evidence they ran is a moment the audience already
-            forgot. It also says when they did not, which is where an SE
+            forgot. It also says when they did not, which is where a user
             who switched an agent off points to show checkout carried on. */}
         <p className="font-sohne text-xsmall text-grays-04">
           {scripted

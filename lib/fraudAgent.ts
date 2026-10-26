@@ -6,7 +6,7 @@
 // switched off, or the models unreachable, assessOrder reviews the order
 // itself, the same shape as the swag assistant's scripted replies.
 //
-// Deterministic on purpose. An SE has to be able to produce any outcome on
+// Deterministic on purpose. A user has to be able to produce any outcome on
 // stage on the first try, so each one has its own lever and each lever works
 // on its own:
 //

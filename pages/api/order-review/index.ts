@@ -59,7 +59,7 @@ import { servedByFor } from "@/lib/swagAssistant";
 // tool is where their facts come from, and the score is added up from what
 // the tools found rather than read from a model. The decision itself is the
 // model's, with one exception: an order to a blocked ZIP is always declined,
-// since that is the decline lever an SE pulls on stage and it cannot be left
+// since that is the decline lever a user pulls on stage and it cannot be left
 // to a model's judgement on the day.
 //
 // With the graph off (in LaunchDarkly, switching off any one of its agents
