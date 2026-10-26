@@ -147,6 +147,17 @@ function Platform() {
         <DocsLink href={`${DOCS}/home/getting-started/architecture`}>LaunchDarkly architecture</DocsLink>
       </Card>
 
+      <Card title="What your app sends back">
+        <Bullets
+          items={[
+            "The SDK records which variation each context got, plus the events the app tracks: conversions, errors, AI metrics.",
+            "It sends them in batches every few seconds, not one request per evaluation, so tracking adds no wait to a page.",
+            "These events are what fill the Contexts list and flag insights, and what experiments, guarded rollouts and Data Export measure.",
+          ]}
+        />
+        <DocsLink href={`${DOCS}/sdk/concepts/events`}>Analytics events</DocsLink>
+      </Card>
+
       <Card title="Server-side and client-side SDKs">
         <Bullets
           items={[
@@ -162,6 +173,18 @@ function Platform() {
           ]}
         />
         <DocsLink href={`${DOCS}/sdk/concepts/client-side-server-side`}>Choosing an SDK type</DocsLink>
+      </Card>
+
+      <Card title="How AgentControl works">
+        <Bullets
+          items={[
+            "A config holds the model, its settings and the prompt or agent instructions. Targeting rules pick which variation each context gets, just like a flag.",
+            "The AI SDK evaluates it on your server and fills in the prompt's variables from the context.",
+            "Your app calls the model provider itself, with its own credentials. LaunchDarkly doesn't sit in between, and never holds the model keys.",
+            "Afterwards the AI SDK sends back tokens, latency, errors and judge scores, which fill the config's Monitoring tab.",
+          ]}
+        />
+        <DocsLink href={`${DOCS}/home/agentcontrol`}>AgentControl</DocsLink>
       </Card>
 
       <Card title="Relay Proxy (optional)">
