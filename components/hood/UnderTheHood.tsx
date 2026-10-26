@@ -35,6 +35,10 @@ const TABS: { id: HoodTab; label: string }[] = [
 // where it was, and a new tab starts with just the store.
 const STORAGE_KEY = "togglewear.hood";
 
+// Matches --hood-width's transition in globals.css, so the panel and the
+// store it pushes over move as one.
+const SLIDE_MS = 320;
+
 type HoodApi = {
   open: boolean;
   toggle: () => void;
@@ -78,8 +82,15 @@ export function UnderTheHoodProvider({ children }: { children: ReactNode }) {
     }
   }, [open, tab, restored]);
 
+  // Stays mounted after closing until it has slid out of view.
+  const [rendered, setRendered] = useState(false);
   useEffect(() => {
-    document.documentElement.toggleAttribute("data-hood-open", open);
+    if (open) {
+      setRendered(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setRendered(false), SLIDE_MS);
+    return () => window.clearTimeout(timer);
   }, [open]);
 
   const toggle = useCallback(() => setOpen((was) => !was), []);
@@ -88,7 +99,7 @@ export function UnderTheHoodProvider({ children }: { children: ReactNode }) {
   return (
     <HoodContext.Provider value={{ open, toggle, close }}>
       {children}
-      {open && <HoodPanel tab={tab} onTab={setTab} onClose={close} />}
+      {rendered && <HoodPanel open={open} tab={tab} onTab={setTab} onClose={close} />}
     </HoodContext.Provider>
   );
 }
@@ -100,17 +111,38 @@ export function useUnderTheHood() {
 }
 
 function HoodPanel({
+  open,
   tab,
   onTab,
   onClose,
 }: {
+  open: boolean;
   tab: HoodTab;
   onTab: (tab: HoodTab) => void;
   onClose: () => void;
 }) {
+  // Mounted off-screen, then moved in on the next frame so the slide has a
+  // starting point to transition from.
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  const shown = open && entered;
+
+  // The store makes room (--hood-width in globals.css) on the same frame the
+  // panel starts to slide, in either direction, so no gap opens between them.
+  useEffect(() => {
+    document.documentElement.toggleAttribute("data-hood-open", shown);
+  }, [shown]);
+  useEffect(() => () => document.documentElement.removeAttribute("data-hood-open"), []);
+
   // Escape closes it unless something on top (the generator, the search
   // panel) is open and wants the key for itself.
   useEffect(() => {
+    if (!open) return;
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (document.querySelector('[aria-modal="true"]')) return;
@@ -118,16 +150,19 @@ function HoodPanel({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [open, onClose]);
 
   return (
     <aside
       aria-label="Under the hood"
+      inert={!open}
       // Below the generator (z-60), which can be opened from inside it, and
       // above the header (z-50) and the swag assistant (z-40). Its width uses
       // a screen media query, not lg:, because lg: measures the store, which
       // shrinks by the panel's own width when it docks.
-      className="animate-slide-in-right fixed inset-y-0 right-0 z-[55] flex w-full max-w-[620px] flex-col bg-grays-white [@media(min-width:1024px)]:w-[var(--hood-width)] [@media(min-width:1024px)]:max-w-none shadow-[0_8px_32px_rgba(0,0,0,0.28)]"
+      className={`fixed inset-y-0 right-0 z-[55] flex w-full max-w-[620px] flex-col bg-grays-white shadow-[0_8px_32px_rgba(0,0,0,0.28)] transition-transform duration-[320ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none [@media(min-width:1024px)]:w-[var(--hood-size)] [@media(min-width:1024px)]:max-w-none ${
+        shown ? "translate-x-0" : "translate-x-full"
+      }`}
     >
       <header className="flex shrink-0 flex-col gap-4 bg-grays-ld-black px-6 pb-0 pt-5">
         <div className="flex items-center justify-between gap-3">

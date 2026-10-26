@@ -28,6 +28,16 @@
   }
 }
 
+/* Registered as a length so it can be transitioned: the store, the swag
+   assistant and the dialogs' backdrops all read it, so they move over in
+   step with Under the hood sliding in. Declared outside the layer below,
+   where an at-rule like this would be dropped. */
+@property --hood-width {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
 /* The announcement bar's new message settling in when flag 08 changes it. */
 @keyframes banner-swap {
   from {
@@ -61,15 +71,26 @@
      Anything fixed to the right edge of the viewport (the swag assistant, the
      dialogs' backdrops) has to add var(--hood-width) to its right offset, or
      it ends up underneath the panel. Narrower screens keep the panel on top,
-     since there is no room for both. */
+     since there is no room for both.
+
+     --hood-size is the panel's width whether or not it is open, so it keeps
+     its width while sliding out; --hood-width is the room the store gives
+     up, which eases between 0 and that. The duration and curve match the
+     panel's slide in UnderTheHood.tsx. */
   :root {
+    --hood-size: 0px;
     --hood-width: 0px;
+    transition: --hood-width 320ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   @media (min-width: 1024px) {
-    html[data-hood-open] {
-      --hood-width: clamp(440px, 40vw, 620px);
+    :root {
+      --hood-size: clamp(440px, 40vw, 620px);
     }
+  }
+
+  html[data-hood-open] {
+    --hood-width: var(--hood-size);
   }
 
   /* The container the md:, lg: and xl: classes measure (tailwind.config.js).
@@ -151,6 +172,10 @@
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
+    }
+
+    :root {
+      transition: none;
     }
 
     a:active,
