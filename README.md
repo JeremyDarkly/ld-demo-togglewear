@@ -19,6 +19,7 @@ It replaces ToggleBank (ld-core-demo) as the core demo. Where ToggleBank covers 
   - [The demo generator (Cmd+K)](#the-demo-generator-cmdk)
   - [Observability](#observability)
   - [Developer toolbar](#developer-toolbar)
+  - [Under the hood](#under-the-hood)
   - [Resetting after a demo](#resetting-after-a-demo)
 - [Running locally](#running-locally)
 - [How provisioning works](#how-provisioning-works)
@@ -211,6 +212,17 @@ Turn on **LaunchDarkly toolbar** under **Developer tools** in the account menu a
 - **Switching it off clears every override**, straight away. Overrides are also dropped when a new tab opens without the toolbar, so one demo can't leave a hidden override behind for the next.
 - **On a hosted environment** it only works once the domain is allowed. An organization admin adds `*.launchdarklydemos.com` once under **Organization settings > Integrations > LaunchDarkly Developer Toolbar** (the "Allowed domains" field), which covers every SE's `<name>-togglewear` site, and it takes up to five minutes to apply ([safe domains](https://launchdarkly.com/docs/home/getting-started/dev-toolbar-using)). Localhost is always allowed. LaunchDarkly's advice to keep it out of production is about real customers seeing it; here it stays off until someone driving the demo switches it on.
 
+### Under the hood
+
+The **`</>`** button in the header opens a panel beside the store for showing what it is doing in LaunchDarkly. It stays open, on the same tab, as you move around the store, and Escape closes it.
+
+- **Live:** what the server is doing, as it happens. Flag evaluations and the reason for each, which AgentControl config variation each shopper was served, model and tool calls with their tokens and time, judge scores, errors, and the changes LaunchDarkly streams in. Filter it to Flags, AI, Errors or Generator. Browser flags aren't in it, since they never reach the server; the developer toolbar shows those.
+- **Code:** how to do each thing in code, from LaunchDarkly's docs, in the SDKs customers ask about (Node.js, Python, Go, Java, React, JavaScript, iOS, Android). Grouped like the docs, from getting started through releases, experimentation, AgentControl, Observability, infrastructure and developer tools, with search, a copy button and a link to the docs page for each. Pick a language once and every example shows it. Where ToggleWear does the same thing, the example says which file. The new AI SDK is marked open beta and the one ToggleWear uses is marked legacy, as the docs label them.
+- **Architecture:** how LaunchDarkly gets a flag to an app, how ToggleWear is built and where it runs, the path each demo story takes step by step, and which key lives where.
+- **Demo tools:** the generator (the same one as Cmd+K), the two outages, the developer toolbar and the resting states from [Resetting after a demo](#resetting-after-a-demo).
+
+Everything in it is safe to show on a customer call: the code uses the docs' placeholder keys, and nothing names an account, a cluster or a key. When the docs change, the examples are in `components/hood/codeExamples.ts`, each with the page it came from.
+
 ### Resetting after a demo
 
 Most demos leave something changed. To put a flag back:
@@ -323,6 +335,7 @@ The Create and Rebuild workflows also report their progress to the demo portal's
 │       └── generators.ts     The Cmd+K demo generator
 ├── components/               React components, grouped by page or area
 │   ├── generator/            The Cmd+K panel
+│   ├── hood/                 The Under the hood panel and its code examples
 │   └── ui/                   Shared pieces, including the LaunchDarkly provider
 ├── lib/                      Data and server logic
 │   ├── products.ts           The catalog: best sellers, tech and members-only
@@ -330,6 +343,7 @@ The Create and Rebuild workflows also report their progress to the demo portal's
 │   ├── fraudAgent.ts         The Order Review's risk rules and thresholds
 │   ├── aiServer.ts           The LaunchDarkly AI client and shared AI helpers
 │   ├── llmTrace.ts           Conversation traces for the AI routes
+│   ├── activity.ts           The server activity the Live tab shows
 │   ├── ldServer.ts           The LaunchDarkly server client
 │   ├── events.ts             The metric events the store sends
 │   └── generator/            What each Cmd+K generator does
