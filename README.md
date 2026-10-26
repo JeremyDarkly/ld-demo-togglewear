@@ -214,7 +214,7 @@ Turn on **LaunchDarkly toolbar** under **Developer tools** in the account menu a
 
 ### Under the hood
 
-The **`</>`** button in the header opens a panel beside the store for showing what it is doing in LaunchDarkly. It stays open, on the same tab, as you move around the store, and Escape closes it.
+The **`</>`** button in the header opens a panel beside the store for showing what it is doing in LaunchDarkly. On a laptop or larger screen it docks: the store moves over and lays itself out for the space left, so the Swag Assistant and everything else stay usable while the panel is open. It stays open, on the same tab, as you move around the store, and Escape closes it.
 
 - **Live:** what the server is doing, as it happens. Flag evaluations and the reason for each, which AgentControl config variation each shopper was served, model and tool calls with their tokens and time, judge scores, errors, and the changes LaunchDarkly streams in. Filter it to Flags, AI, Errors or Generator. Browser flags aren't in it, since they never reach the server; the developer toolbar shows those.
 - **Code:** how to do each thing in code, from LaunchDarkly's docs, in the SDKs customers ask about (Node.js, Python, Go, Java, React, JavaScript, iOS, Android). Grouped like the docs, from getting started through releases, experimentation, AgentControl, Observability, infrastructure and developer tools, with search, a copy button and a link to the docs page for each. Pick a language once and every example shows it. Where ToggleWear does the same thing, the example says which file. The new AI SDK is marked open beta and the one ToggleWear uses is marked legacy, as the docs label them.
