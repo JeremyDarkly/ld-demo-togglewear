@@ -411,6 +411,7 @@ config = Config("YOUR_SDK_KEY", all_attributes_private=True)`,
         summary:
           "Client-side SDKs evaluate for one context at a time. When the visitor signs in, identify the new context and the SDK fetches their flags. Server-side SDKs take the context on every call instead.",
         docs: `${DOCS}/sdk/features/identify`,
+        inToggleWear: "Picking a shopper in the account menu, or the cart changing (components/ui/LaunchDarklyProvider.tsx)",
         snippets: [
           {
             lang: "react",
@@ -583,7 +584,7 @@ const detail = client.boolVariationDetail('example-flag-key', false);`,
         id: "changes",
         title: "React to a flag change",
         summary:
-          "Changes stream to every connected SDK in about 200 milliseconds. Subscribe when something has to happen at that moment rather than on the next evaluation, such as closing a connection pool.",
+          "Changes stream to every connected SDK as soon as they're saved. Subscribe when something has to happen at that moment rather than on the next evaluation, such as closing a connection pool.",
         docs: `${DOCS}/sdk/features/flag-changes`,
         inToggleWear: "lib/ldServer.ts, which posts the CHANGE lines in the Live tab",
         snippets: [
@@ -691,7 +692,7 @@ ldclient.set_config(Config("YOUR_SDK_KEY", hooks=[ExampleHook()]))`,
         id: "kill-switch",
         title: "A kill switch",
         summary:
-          "Put the new code path behind a flag, with the proven path as the fallback. Turning the flag off is the rollback: no redeploy, and it reaches every server in about 200 milliseconds.",
+          "Put the new code path behind a flag, with the proven path as the fallback. Turning the flag off is the rollback: no redeploy, and it streams to every server as soon as it's saved.",
         docs: `${DOCS}/home/flags/target`,
         inToggleWear: "12 New Payment Processor and the payment outage in the account menu",
         snippets: [
