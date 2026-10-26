@@ -278,7 +278,7 @@ export default function ChatPanel({
       // one. A conversation stacks upward from the input, so most of a tall
       // panel is room it has not grown into yet, and the header ends up far
       // enough away to be a journey.
-      className={`fixed bottom-[25px] right-[30px] z-40 flex max-h-[calc(100vh-50px)] w-[calc(100vw-60px)] flex-col overflow-hidden rounded-[30px] bg-grays-white shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition-[max-width,height] duration-200 ease-out ${
+      className={`fixed bottom-[25px] right-[calc(30px_+_var(--hood-width))] z-40 flex max-h-[calc(100vh-50px)] w-[calc(100vw_-_60px_-_var(--hood-width))] flex-col overflow-hidden rounded-[30px] bg-grays-white shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition-[max-width,height] duration-200 ease-out ${
         expanded ? "h-[760px] max-w-[880px]" : "h-[600px] max-w-[400px]"
       }`}
     >

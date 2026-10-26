@@ -11,7 +11,7 @@ export default function ChatLauncher({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label="Open swag assistant"
-      className="fixed bottom-[25px] right-[30px] z-40 flex items-center gap-2.5 rounded-full bg-base-blue px-5 py-3 text-grays-01 shadow-[0_8px_8px_rgba(0,0,0,0.1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white focus-visible:ring-offset-2"
+      className="fixed bottom-[25px] right-[calc(30px_+_var(--hood-width))] z-40 flex items-center gap-2.5 rounded-full bg-base-blue px-5 py-3 text-grays-01 shadow-[0_8px_8px_rgba(0,0,0,0.1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white focus-visible:ring-offset-2"
     >
       <svg
         width="16"

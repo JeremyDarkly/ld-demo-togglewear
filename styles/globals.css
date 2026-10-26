@@ -56,6 +56,30 @@
     scroll-behavior: smooth;
   }
 
+  /* Under the hood docks beside the store on wide screens instead of
+     covering it, so the store gives up its width while the panel is open.
+     Anything fixed to the right edge of the viewport (the swag assistant, the
+     dialogs' backdrops) has to add var(--hood-width) to its right offset, or
+     it ends up underneath the panel. Narrower screens keep the panel on top,
+     since there is no room for both. */
+  :root {
+    --hood-width: 0px;
+  }
+
+  @media (min-width: 1024px) {
+    html[data-hood-open] {
+      --hood-width: clamp(440px, 40vw, 620px);
+    }
+  }
+
+  /* The container the md:, lg: and xl: classes measure (tailwind.config.js).
+     inline-size containment only, so position: fixed still means the
+     viewport. */
+  body {
+    padding-right: var(--hood-width);
+    container: store / inline-size;
+  }
+
   /* Nearly everything clickable in the app changes colour on hover, and most
      of it was changing instantly because the transition had to be remembered
      per component. Declaring it once here means every link and button eases

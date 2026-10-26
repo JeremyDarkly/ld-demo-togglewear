@@ -17,9 +17,9 @@ import LiveTab from "@/components/hood/LiveTab";
 // sidebar terminal, a menu of code and architecture pages and a Demo Tools
 // button; here they are the four tabs of one panel.
 //
-// It sits beside the page rather than over it, with no dim and no focus
-// trap, because the point of the Live tab is to watch it while clicking
-// around the store. It is owned above the pages so it stays open, on the
+// It docks beside the page rather than over it (see --hood-width in
+// globals.css), with no dim and no focus trap, because the point of the Live
+// tab is to watch it while clicking around the store. It is owned above the pages so it stays open, on the
 // same tab, through every page change.
 
 export type HoodTab = "live" | "code" | "architecture" | "tools";
@@ -78,6 +78,10 @@ export function UnderTheHoodProvider({ children }: { children: ReactNode }) {
     }
   }, [open, tab, restored]);
 
+  useEffect(() => {
+    document.documentElement.toggleAttribute("data-hood-open", open);
+  }, [open]);
+
   const toggle = useCallback(() => setOpen((was) => !was), []);
   const close = useCallback(() => setOpen(false), []);
 
@@ -120,8 +124,10 @@ function HoodPanel({
     <aside
       aria-label="Under the hood"
       // Below the generator (z-60), which can be opened from inside it, and
-      // above the header (z-50) and the swag assistant (z-40).
-      className="animate-slide-in-right fixed inset-y-0 right-0 z-[55] flex w-full max-w-[620px] flex-col bg-grays-white shadow-[0_8px_32px_rgba(0,0,0,0.28)]"
+      // above the header (z-50) and the swag assistant (z-40). Its width uses
+      // a screen media query, not lg:, because lg: measures the store, which
+      // shrinks by the panel's own width when it docks.
+      className="animate-slide-in-right fixed inset-y-0 right-0 z-[55] flex w-full max-w-[620px] flex-col bg-grays-white [@media(min-width:1024px)]:w-[var(--hood-width)] [@media(min-width:1024px)]:max-w-none shadow-[0_8px_32px_rgba(0,0,0,0.28)]"
     >
       <header className="flex shrink-0 flex-col gap-4 bg-grays-ld-black px-6 pb-0 pt-5">
         <div className="flex items-center justify-between gap-3">

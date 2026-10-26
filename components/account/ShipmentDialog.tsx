@@ -63,7 +63,7 @@ export default function ShipmentDialog({
   return createPortal(
     <div
       onClick={onClose}
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-grays-ld-black/60 p-6"
+      className="animate-fade-in fixed inset-y-0 left-0 right-[var(--hood-width)] z-50 flex items-center justify-center bg-grays-ld-black/60 p-6"
     >
       <div
         role="dialog"

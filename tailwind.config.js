@@ -1,3 +1,18 @@
+const plugin = require("tailwindcss/plugin");
+
+// Tailwind's default breakpoints, measured against the store rather than the
+// screen. The body is the "store" container (globals.css), and it gives up
+// its width to Under the hood when that panel is docked, so the pages lay
+// themselves out for the room they actually have. With the panel closed the
+// body is the full width, and these behave exactly like the defaults.
+const STORE_SCREENS = {
+  sm: "640px",
+  md: "768px",
+  lg: "1024px",
+  xl: "1280px",
+  "2xl": "1536px",
+};
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
@@ -6,6 +21,7 @@ module.exports = {
     "./components/**/*.{ts,tsx}",
   ],
   theme: {
+    screens: {},
     container: {
       center: true,
       padding: "2rem",
@@ -134,5 +150,11 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(({ addVariant }) => {
+      for (const [name, width] of Object.entries(STORE_SCREENS)) {
+        addVariant(name, `@container store (min-width: ${width})`);
+      }
+    }),
+  ],
 };

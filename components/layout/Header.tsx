@@ -101,14 +101,16 @@ export default function Header({
 
           <div className="flex items-center gap-5 self-stretch md:gap-[25px]">
             {/* For whoever is driving the demo rather than the shopper, so it
-                is the one control in the bar that isn't a shop's. */}
+                is the one control in the bar that isn't a shop's. Hidden on
+                phones, where it pushed into the logo and the panel would
+                cover the whole store anyway. */}
             <button
               type="button"
               aria-label="Under the hood"
               aria-pressed={hoodOpen}
               title="Under the hood: live backend, code, architecture and demo tools"
               onClick={toggleHood}
-              className={`flex items-center rounded-full px-2 py-1 font-sohne-mono text-xsmall-mono transition-colors ${
+              className={`hidden items-center rounded-full px-2 py-1 sm:flex font-sohne-mono text-xsmall-mono transition-colors ${
                 hoodOpen ? "bg-base-lime text-grays-ld-black" : "text-grays-02 hover:text-grays-white"
               }`}
             >

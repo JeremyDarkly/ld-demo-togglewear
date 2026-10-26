@@ -49,7 +49,7 @@ export default function SearchPanel({
         <div
           onClick={onClose}
           aria-hidden
-          className="animate-fade-in fixed inset-0 z-[45] bg-grays-ld-black/50"
+          className="animate-fade-in fixed inset-y-0 left-0 right-[var(--hood-width)] z-[45] bg-grays-ld-black/50"
         />,
         document.body,
       )}

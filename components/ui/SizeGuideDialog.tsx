@@ -66,7 +66,7 @@ export default function SizeGuideDialog({
       // Clicking the backdrop closes; clicking the panel must not, which is
       // what the stopPropagation below is for.
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-grays-ld-black/60 p-6"
+      className="fixed inset-y-0 left-0 right-[var(--hood-width)] z-50 flex items-center justify-center bg-grays-ld-black/60 p-6"
     >
       <div
         ref={panelRef}
