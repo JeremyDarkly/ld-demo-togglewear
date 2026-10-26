@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import ToggleWearDiagram from "@/components/hood/ToggleWearDiagram";
+
 // How the pieces fit: LaunchDarkly's own architecture, as its docs describe
 // it, then ToggleWear's, then the path each demo story takes through both.
 // Written to be shown on a customer call, so it names services and
@@ -114,78 +116,14 @@ function Mono({ children }: { children: ReactNode }) {
   return <span className="font-sohne-mono text-xsmall-mono text-grays-ld-black">{children}</span>;
 }
 
-type Tone = "ld" | "app" | "outside";
-
-const BOX_TONES: Record<Tone, string> = {
-  ld: "bg-grays-ld-black text-grays-white",
-  app: "border border-grays-02 bg-grays-white text-grays-ld-black",
-  outside: "bg-grays-01 text-grays-ld-black",
-};
-
-function Box({
-  title,
-  detail,
-  parts,
-  tone,
-  className = "",
-}: {
-  title: string;
-  detail?: string;
-  parts?: string[];
-  tone: Tone;
-  className?: string;
-}) {
+// The docs' own diagrams, copied into public/img/hood so the panel works
+// offline and doesn't depend on the docs site's image links.
+function Figure({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className={`flex flex-col gap-1.5 rounded-[12px] px-3.5 py-3 ${BOX_TONES[tone]} ${className}`}>
-      <span className="font-sohne text-small font-medium">{title}</span>
-      {detail && (
-        <span className={`font-sohne text-xsmall ${tone === "ld" ? "text-grays-03" : "text-grays-04"}`}>
-          {detail}
-        </span>
-      )}
-      {parts && (
-        <span className="flex flex-wrap gap-1">
-          {parts.map((part) => (
-            <span
-              key={part}
-              className={`rounded-full px-2 py-0.5 font-sohne text-[11px] ${
-                tone === "ld" ? "bg-grays-06 text-grays-01" : "bg-grays-01 text-grays-ld-black"
-              }`}
-            >
-              {part}
-            </span>
-          ))}
-        </span>
-      )}
-    </div>
-  );
-}
-
-// A vertical connector between boxes, with what travels along it.
-function Down({ label, up = false }: { label: string; up?: boolean }) {
-  return (
-    <div className="flex items-center gap-2 py-1 pl-6">
-      <span aria-hidden="true" className="font-sohne-mono text-xsmall-mono text-grays-03">
-        {up ? "↑" : "↓"}
-      </span>
-      <span className="font-sohne text-xsmall text-grays-04">{label}</span>
-    </div>
-  );
-}
-
-// A sideways connector, for the middle column of the ToggleWear diagram.
-function Across({ toRight, toLeft }: { toRight: string; toLeft: string }) {
-  return (
-    <div className="flex flex-col justify-center gap-2 px-1 font-sohne text-[11px] leading-snug text-grays-04">
-      <span>
-        <span aria-hidden="true" className="text-grays-03">→ </span>
-        {toRight}
-      </span>
-      <span>
-        <span aria-hidden="true" className="text-grays-03">← </span>
-        {toLeft}
-      </span>
-    </div>
+    <figure className="flex flex-col gap-1.5">
+      <img src={src} alt={alt} loading="lazy" className="w-full rounded-[12px]" />
+      <figcaption className="font-sohne text-[11px] text-grays-03">From LaunchDarkly&apos;s docs</figcaption>
+    </figure>
   );
 }
 
@@ -194,84 +132,47 @@ function Across({ toRight, toLeft }: { toRight: string; toLeft: string }) {
 function Platform() {
   return (
     <>
-      <Card title="How a flag change reaches an app">
-        <div className="flex flex-col">
-          <Box
-            tone="outside"
-            title="Someone changes a flag"
-            detail="In the LaunchDarkly app, or from the REST API, Terraform, a trigger, a schedule or a guarded rollout's next step."
-          />
-          <Down label="saved, then sent over the stream" />
-          <Box
-            tone="ld"
-            title="LaunchDarkly's flag delivery network"
-            detail="A content delivery network in front of LaunchDarkly's core services, which span several cloud availability zones."
-          />
-          <Down label="a long-lived streaming connection per SDK; polling where streaming isn't possible" />
-          <div className="grid grid-cols-3 gap-2">
-            <Box tone="app" title="Server-side SDKs" detail="Download every flag's rules and evaluate locally, in memory." />
-            <Box tone="app" title="Client-side SDKs" detail="Receive the values for the one person using the app." />
-            <Box tone="app" title="Edge SDKs" detail="Read the rules from the edge platform's own store." />
-          </div>
-          <Down label="events, sent back in batches" up />
-          <Box
-            tone="ld"
-            title="Events"
-            detail="Which variation each context got, plus the metric events the app tracks. They feed flag insights, the Contexts list, experiments, guarded rollouts and AI metrics."
-          />
-        </div>
+      <Card title="How flags reach your app">
+        <Figure
+          src="/img/hood/flag-delivery.png"
+          alt="LaunchDarkly's core infrastructure sends flags through the flag delivery network, a content delivery network for SDKs in polling mode and a multi-region streaming service for SDKs in streaming mode, to the SDKs in your application, which keep flag values in memory and have fallback values in code."
+        />
+        <Bullets
+          items={[
+            "Flags go out through the flag delivery network: a multi-region streaming service for SDKs that stream, and a content delivery network for SDKs that poll.",
+            "The SDK keeps flag values in memory, so evaluating a flag never waits on a network call, and changes stream in as soon as they're saved.",
+            "If LaunchDarkly can't be reached, the SDK keeps serving what it has, and at startup it serves the fallback values written in the code.",
+          ]}
+        />
         <DocsLink href={`${DOCS}/home/getting-started/architecture`}>LaunchDarkly architecture</DocsLink>
       </Card>
 
-      <Card title="Where a flag is evaluated">
+      <Card title="Server-side and client-side SDKs">
         <Bullets
           items={[
             <>
-              <b className="font-medium text-grays-ld-black">Server-side and edge SDKs</b> evaluate
-              with embedded rules, so an evaluation is a lookup in memory, not a network call.
-              Server-side SDKs use a secret SDK key, because they download every rule in the
-              environment; edge SDKs read the rules LaunchDarkly has already pushed to the edge
-              platform, and use the client-side ID.
+              <b className="font-medium text-grays-ld-black">Server-side SDKs</b> download every
+              flag&apos;s rules and evaluate them in memory, so they use a secret SDK key.
             </>,
             <>
               <b className="font-medium text-grays-ld-black">Client-side SDKs</b> (browsers and
-              mobile apps) ask LaunchDarkly to evaluate for their one context, and get back only the
-              values. The rules, targeting lists and other people&apos;s values never reach the
-              device. Only flags marked as available to client-side SDKs are sent.
-            </>,
-            <>
-              <b className="font-medium text-grays-ld-black">AI SDKs</b> work like server-side SDKs:
-              they choose the AgentControl config variation locally, from embedded rules.
+              mobile apps) get only the values for the one person using the app. The rules and
+              targeting lists never reach the device.
             </>,
           ]}
         />
         <DocsLink href={`${DOCS}/sdk/concepts/client-side-server-side`}>Choosing an SDK type</DocsLink>
       </Card>
 
-      <Card title="If LaunchDarkly can't be reached">
-        <Bullets
-          items={[
-            "An SDK that has connected keeps serving from its in-memory copy, and catches up when the connection comes back.",
-            "An SDK that can't connect at startup serves the fallback value written in the code, which is why every evaluation names one.",
-            "A persistent store (Redis, DynamoDB) or the Relay Proxy lets new server processes start with flags even before they reach LaunchDarkly.",
-          ]}
+      <Card title="Relay Proxy (optional)">
+        <Figure
+          src="/img/hood/relay-proxy.png"
+          alt="The same flag delivery path with a Relay Proxy between the flag delivery network and your application environment."
         />
-        <Text>A server-side evaluation never waits on LaunchDarkly: it happens inside the app.</Text>
-      </Card>
-
-      <Card title="Optional pieces you run yourself">
-        <Bullets
-          items={[
-            <>
-              <b className="font-medium text-grays-ld-black">Relay Proxy:</b> a service inside your
-              network that holds one connection to LaunchDarkly and serves many SDKs.
-            </>,
-            <>
-              <b className="font-medium text-grays-ld-black">Data Export:</b> streams event data to
-              your own warehouse or analytics tools.
-            </>,
-          ]}
-        />
+        <Text>
+          A service you run in your own network. It holds one connection to LaunchDarkly and serves
+          your SDKs, so they keep getting flags even if the outside connection drops.
+        </Text>
         <DocsLink href={`${DOCS}/sdk/relay-proxy`}>The Relay Proxy</DocsLink>
       </Card>
     </>
@@ -283,44 +184,8 @@ function Platform() {
 function ToggleWear() {
   return (
     <>
-      <Card title="The store and LaunchDarkly">
-        <div className="grid grid-cols-[1fr_118px_1fr] gap-y-0">
-          <Box
-            tone="app"
-            title="Browser"
-            detail="Next.js pages and React"
-            parts={["React SDK", "Observability", "Session Replay", "Developer toolbar"]}
-          />
-          <Across toRight="events, errors, replays" toLeft="this shopper's flag values, streamed" />
-          <Box
-            tone="ld"
-            className="row-span-3"
-            title="LaunchDarkly"
-            detail="One project per SE, built from code by the deploy."
-            parts={["Flags", "AgentControl", "Experiments", "Guarded rollouts", "Observability", "Triggers"]}
-          />
-
-          <Down label="page loads and /api calls" />
-          <div />
-
-          <Box
-            tone="app"
-            title="ToggleWear server"
-            detail="Next.js API routes on Node.js"
-            parts={["Node.js server SDK", "AI SDK", "LangChain", "Observability"]}
-          />
-          <Across toRight="events, AI metrics, traces" toLeft="every flag's and config's rules, streamed" />
-
-          <Down label="model calls, through LangChain" />
-          <div />
-          <div />
-
-          <Box
-            tone="outside"
-            title="Amazon Bedrock"
-            detail="Claude, Nova and Llama models. AgentControl decides which one each call uses."
-          />
-        </div>
+      <Card title="How ToggleWear is built">
+        <ToggleWearDiagram />
       </Card>
 
       <Card title="Where each flag is evaluated">
@@ -345,25 +210,6 @@ function ToggleWear() {
         />
       </Card>
 
-      <Card title="Where it runs">
-        <div className="flex flex-col">
-          <Box tone="outside" title="https://<name>-togglewear.launchdarklydemos.com" detail="One address per SE, in Amazon Route 53." />
-          <Down label="HTTPS" />
-          <Box tone="app" title="NGINX ingress" detail="TLS certificates from Let's Encrypt." />
-          <Down label="to the SE's own namespace" />
-          <Box
-            tone="app"
-            title="One pod on Amazon EKS"
-            detail="The store's Docker image on Node.js 22. Its AWS access to Bedrock comes from EKS Pod Identity, so the app holds no AWS keys."
-          />
-        </div>
-        <Text>
-          A GitHub Actions workflow builds each environment: it creates the SE&apos;s LaunchDarkly
-          project from code (every flag, segment, metric, config, experiment and alert), runs the
-          generators for about ten minutes so the results aren&apos;t empty, then builds and deploys
-          the image. Rebuilding gives a fresh copy of both.
-        </Text>
-      </Card>
     </>
   );
 }
@@ -543,13 +389,8 @@ const CREDENTIALS: { name: string; where: string; why: string }[] = [
   },
   {
     name: "API access token",
-    where: "Only in GitHub Actions secrets, for the workflow that builds the project.",
+    where: "Only used to build the LaunchDarkly project, never by the store.",
     why: "It can change the project, so the running store never has one.",
-  },
-  {
-    name: "Trigger URLs",
-    where: "Created by the build and handed straight to the Observability alerts.",
-    why: "Anyone with one can switch its flag, so it's never printed or kept in code.",
   },
   {
     name: "AWS access",
@@ -584,14 +425,6 @@ function Security() {
           ]}
         />
         <DocsLink href={`${DOCS}/sdk/features/private-attributes`}>Private attributes</DocsLink>
-      </Card>
-
-      <Card title="What this panel shows">
-        <Text>
-          Only things that are safe on a customer call: placeholder keys in the code examples, no
-          account or infrastructure names, and the Live feed&apos;s descriptions of what happened,
-          never a key or a shopper&apos;s data beyond their demo name.
-        </Text>
       </Card>
     </>
   );
