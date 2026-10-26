@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import EvaluationDiagram from "@/components/hood/EvaluationDiagram";
 import ToggleWearDiagram from "@/components/hood/ToggleWearDiagram";
 
 // How the pieces fit: LaunchDarkly's own architecture, as its docs describe
@@ -7,13 +8,14 @@ import ToggleWearDiagram from "@/components/hood/ToggleWearDiagram";
 // Written to be shown on a customer call, so it names services and
 // products but never this deployment's accounts, clusters or keys.
 
-type View = "platform" | "togglewear" | "flows" | "security";
+type View = "platform" | "togglewear" | "flows" | "security" | "deep";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "platform", label: "How LaunchDarkly works" },
   { id: "togglewear", label: "How ToggleWear is built" },
   { id: "flows", label: "Story flows" },
   { id: "security", label: "Keys and security" },
+  { id: "deep", label: "Deep dives" },
 ];
 
 const STORAGE_KEY = "togglewear.hood.architecture";
@@ -69,6 +71,7 @@ export default function ArchitectureTab() {
         {view === "togglewear" && <ToggleWear />}
         {view === "flows" && <Flows />}
         {view === "security" && <Security />}
+        {view === "deep" && <DeepDives />}
       </div>
     </div>
   );
@@ -109,6 +112,19 @@ function DocsLink({ href, children }: { href: string; children: ReactNode }) {
     >
       {children} ↗
     </a>
+  );
+}
+
+function Rows({ rows }: { rows: { name: string; detail: ReactNode }[] }) {
+  return (
+    <div className="flex flex-col divide-y divide-grays-hairline">
+      {rows.map(({ name, detail }) => (
+        <div key={name} className="flex flex-col gap-0.5 py-2.5 first:pt-0 last:pb-0">
+          <span className="font-sohne text-small font-medium text-grays-ld-black">{name}</span>
+          <span className="font-sohne text-small text-grays-04">{detail}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -448,6 +464,233 @@ function Security() {
           ]}
         />
         <DocsLink href={`${DOCS}/sdk/features/private-attributes`}>Private attributes</DocsLink>
+      </Card>
+    </>
+  );
+}
+
+// ---- Deep dives ----
+
+// The questions that come up once a customer's engineers want the detail
+// behind the overview. Every claim is from LaunchDarkly's docs, linked from
+// its card; plan-specific features say which plan.
+
+const FAILURES = [
+  {
+    name: "LaunchDarkly can't be reached while the app runs",
+    detail:
+      "Nothing changes for users. The SDK keeps serving the flags it holds in memory, reconnects on its own and catches up on any changes it missed.",
+  },
+  {
+    name: "LaunchDarkly can't be reached when a server starts",
+    detail:
+      "Evaluations return the fallback values written in the code until the SDK connects. With a persistent store (Redis, DynamoDB or Consul), it starts from the last flags it saw instead.",
+  },
+  {
+    name: "A browser or mobile app starts offline",
+    detail:
+      "It uses the flags cached on the device from the last visit, or values bootstrapped from your server, and catches up once it connects. A first visit with neither gets the code's fallbacks.",
+  },
+  {
+    name: "A mobile app goes into the background",
+    detail: "It stops receiving live updates to save battery, and catches up when it comes back to the foreground.",
+  },
+  {
+    name: "The database behind a persistent store fails",
+    detail: "Evaluations keep using the SDK's in-memory cache until it expires, then return fallback values.",
+  },
+  {
+    name: "A Relay Proxy fails",
+    detail:
+      "The SDKs behind it stop getting updates, so it should run as several instances across availability zones behind a load balancer. Run any other way, it can cause more downtime than having no Relay Proxy.",
+  },
+];
+
+const DATA = [
+  {
+    name: "What leaves your app",
+    detail:
+      "Contexts (only the attributes you choose to send), which variation each one got, and the events you track. With Observability on, also errors, logs, traces and session replays, masked by its privacy setting.",
+  },
+  {
+    name: "What you can hold back",
+    detail:
+      "Private attributes still work in targeting rules, but the SDK removes their values before sending; LaunchDarkly shows only their names. One setting makes every attribute private except the key and kind.",
+  },
+  {
+    name: "What never reaches a browser or phone",
+    detail:
+      "Flag rules, targeting lists and anyone else's values. Client-side SDKs receive only their own context's values, for flags marked as available to them.",
+  },
+  {
+    name: "Your source code",
+    detail:
+      "Code references are scanned in your own CI. With context lines turned off, LaunchDarkly gets only file names, line numbers and commit IDs, never code.",
+  },
+];
+
+const INSTANCES = [
+  { name: "Commercial (US)", detail: "launchdarkly.com" },
+  {
+    name: "EU",
+    detail:
+      "eu.launchdarkly.com, hosted in AWS Frankfurt (eu-central-1) under EU data residency principles. Edge delivery and operational monitoring still run from the US. For Enterprise plans; a few features aren't there yet, such as Session Replay and edge SDKs.",
+  },
+  {
+    name: "Federal",
+    detail:
+      "launchdarkly.us, FedRAMP compliant, with FIPS 140-3 validated encryption. AgentControl and Observability aren't available there.",
+  },
+];
+
+const RUNTIMES = [
+  {
+    name: "Long-running servers and containers",
+    detail:
+      "One streaming connection per SDK instance, and every evaluation after startup happens in memory. The default setup is right for almost everyone.",
+  },
+  {
+    name: "Serverless functions",
+    detail:
+      "The default works for most. If cold starts matter, the SDK can read from a persistent store that's kept up to date for it (daemon mode), or connect to a Relay Proxy in the same region. Close the SDK before the function ends so its events are sent.",
+  },
+  {
+    name: "PHP",
+    detail:
+      "PHP shares nothing between requests, so it can't hold a stream. It reads flags from a store the Relay Proxy keeps up to date, or polls.",
+  },
+  {
+    name: "Thousands of servers",
+    detail:
+      "The Relay Proxy in proxy mode gives them one local stream, so the firewall sees a few outbound connections instead of thousands. One instance can handle tens of thousands of connections.",
+  },
+  {
+    name: "Browsers and mobile apps",
+    detail:
+      "Connect straight to LaunchDarkly, or bootstrap values from your server. They shouldn't stream through the Relay Proxy, which isn't built for that many client connections.",
+  },
+  {
+    name: "Edge platforms",
+    detail:
+      "Edge SDKs read flags from the platform's own store, which LaunchDarkly keeps in sync, so an evaluation at the edge makes no call back.",
+  },
+  {
+    name: "Networks with no internet access",
+    detail: "The Relay Proxy in offline mode, on Enterprise plans.",
+  },
+];
+
+const GOVERNANCE = [
+  {
+    name: "Who can do what",
+    detail:
+      "Roles are built from policies: which actions on which resources, down to a project, environment or flag. They're assigned to members, teams and API tokens.",
+  },
+  {
+    name: "Approvals",
+    detail:
+      "Changes to flags, AgentControl configs, segments and experiments can go through review, like a pull request. Enterprise plans can require approval per environment. Approvals can also run through ServiceNow or a team's own approval system.",
+  },
+  {
+    name: "Change history",
+    detail:
+      "Every change, with who made it, where, when and a diff. A flag can be rolled back to an earlier version from it, and it's available through the REST API.",
+  },
+  {
+    name: "Changes as code",
+    detail:
+      "Flags, segments, environments and more can be managed through the REST API and the Terraform provider, so a project can be built and reviewed like code. ToggleWear's whole project is built that way.",
+  },
+  {
+    name: "Flag cleanup",
+    detail:
+      "Code references show where each flag is used. When the last reference is removed, LaunchDarkly records an extinction event, and archive checks mark the flag ready for removal.",
+  },
+];
+
+function DeepDives() {
+  return (
+    <>
+      <Card title="How does a flag decide what someone gets?">
+        <EvaluationDiagram />
+        <Bullets
+          items={[
+            "Rules can match on any context attribute, on segments, and on more than one context kind at once, such as a user and their organization.",
+            "Each flag splits its rollouts independently. To roll out to the same people across several flags, target a segment that holds that percentage.",
+            <>
+              Every evaluation can report its reason, the codes above, with the rule&apos;s position
+              and ID. If the SDK can&apos;t evaluate at all (not connected yet, an unknown flag, the
+              wrong type), it serves the code&apos;s fallback with the reason <Mono>ERROR</Mono>.
+            </>,
+          ]}
+        />
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <DocsLink href={`${DOCS}/guides/flags/flag-hierarchy#flag-evaluation-sequence`}>Evaluation order</DocsLink>
+          <DocsLink href={`${DOCS}/sdk/concepts/evaluation-reasons`}>Evaluation reasons</DocsLink>
+          <DocsLink href={`${DOCS}/home/releases/percentage-rollouts`}>Percentage rollouts</DocsLink>
+        </div>
+      </Card>
+
+      <Card title="What happens when something fails?">
+        <Rows rows={FAILURES} />
+        <Text>
+          This is why every evaluation names a fallback: it should be the value that&apos;s safest
+          if LaunchDarkly were never reached.
+        </Text>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <DocsLink href={`${DOCS}/sdk/features/storing-data`}>Persistent stores</DocsLink>
+          <DocsLink href={`${DOCS}/sdk/features/bootstrapping`}>Bootstrapping</DocsLink>
+          <DocsLink href={`${DOCS}/sdk/relay-proxy/use-cases`}>Relay Proxy use cases</DocsLink>
+        </div>
+      </Card>
+
+      <Card title="Where does our data go?">
+        <Rows rows={DATA} />
+        <h4 className="pt-1 font-sohne text-small font-medium text-grays-ld-black">Three separate instances</h4>
+        <Rows rows={INSTANCES} />
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <DocsLink href={`${DOCS}/sdk/features/private-attributes`}>Private attributes</DocsLink>
+          <DocsLink href={`${DOCS}/home/infrastructure/eu`}>EU instance</DocsLink>
+          <DocsLink href={`${DOCS}/home/infrastructure/federal`}>Federal instance</DocsLink>
+        </div>
+      </Card>
+
+      <Card title="How does it hold up at scale?">
+        <Rows rows={RUNTIMES} />
+        <Text>
+          Server-side SDKs are counted as service connections: one SDK instance connected to one
+          environment, measured by the minute. Client-side and edge SDKs are counted by monthly
+          active contexts. The Relay Proxy reduces outbound connections, not service connections.
+        </Text>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <DocsLink href={`${DOCS}/guides/infrastructure/serverless`}>Serverless</DocsLink>
+          <DocsLink href={`${DOCS}/home/account/service-connections`}>Service connections</DocsLink>
+        </div>
+      </Card>
+
+      <Card title="How are changes governed?">
+        <Rows rows={GOVERNANCE} />
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <DocsLink href={`${DOCS}/home/account/roles`}>Roles</DocsLink>
+          <DocsLink href={`${DOCS}/home/releases/approvals`}>Approvals</DocsLink>
+          <DocsLink href={`${DOCS}/home/releases/change-history`}>Change history</DocsLink>
+          <DocsLink href={`${DOCS}/home/flags/code-references`}>Code references</DocsLink>
+        </div>
+      </Card>
+
+      <Card title="How are experiment and rollout results measured?">
+        <Bullets
+          items={[
+            "Experiments default to frequentist analysis with sequential testing, so results can be read at any time. Fixed-horizon analysis (a t-test) suits teams that plan a sample size up front.",
+            "Bayesian analysis gives results as plain probabilities, such as probability to beat the baseline. By default it shrinks results toward the control; uninformative priors are an option.",
+            "Also built in: CUPED covariate adjustment to reduce noise, multiple comparisons correction, stratified sampling and sample ratio mismatch checks.",
+            "Guarded rollouts compare the new variation with the original using the absolute difference and sequential testing. A regression is when the whole confidence interval lands on the worse side, and LaunchDarkly can roll back on its own. Too few contexts at any step also rolls it back.",
+          ]}
+        />
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <DocsLink href={`${DOCS}/guides/statistical-methodology/choosing`}>Choosing a methodology</DocsLink>
+          <DocsLink href={`${DOCS}/home/releases/guarded-rollouts`}>Guarded rollouts</DocsLink>
+        </div>
       </Card>
     </>
   );

@@ -4,14 +4,14 @@
 // lime icons and the LaunchDarkly mark. Inline SVG rather than an image so
 // the text uses the store's fonts and stays sharp at any width.
 
-const GROUND = "#262626";
-const OUTLINE = "#6A6FE0";
-const LINE = "#8C8D90";
-const TEXT = "#F8F8F8";
-const MUTED = "#A7A9AC";
-const LIME = "#DDFF46";
+export const GROUND = "#262626";
+export const OUTLINE = "#6A6FE0";
+export const LINE = "#8C8D90";
+export const TEXT = "#F8F8F8";
+export const MUTED = "#A7A9AC";
+export const LIME = "#DDFF46";
 
-function Label({
+export function Label({
   x,
   y,
   children,
