@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { Activity, ActivityKind } from "@/lib/activity";
+import type { Activity, ActivityGroup, ActivityKind } from "@/lib/activity";
 
 // What the store's backend is doing with LaunchDarkly, as it happens
 // (lib/activity.ts and pages/api/activity.ts). Kept to the server on
@@ -35,6 +35,70 @@ let clearedThrough = 0;
 
 const time = (at: number) =>
   new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+// The moments worth catching while talking: LaunchDarkly pushing a change,
+// and something going wrong.
+const ACCENTS: Partial<Record<ActivityKind, string>> = {
+  change: "before:bg-base-lime",
+  error: "before:bg-[#FF6B6B]",
+};
+
+// Past this a detail is clamped to two lines and opens on a click: a judge's
+// full explanation is worth reading, but not every time it scrolls past.
+const LONG_DETAIL = 110;
+
+type Item =
+  | { type: "line"; entry: Activity }
+  | { type: "group"; group: ActivityGroup; entries: Activity[] };
+
+// One AI request's lines (lib/activity.ts activityGroup) become one item,
+// where its first line arrived; everything else stays a line of its own.
+function toItems(entries: Activity[]): Item[] {
+  const items: Item[] = [];
+  const groups = new Map<number, Extract<Item, { type: "group" }>>();
+  for (const entry of entries) {
+    if (!entry.group) {
+      items.push({ type: "line", entry });
+      continue;
+    }
+    let item = groups.get(entry.group.id);
+    if (!item) {
+      item = { type: "group", group: entry.group, entries: [] };
+      groups.set(entry.group.id, item);
+      items.push(item);
+    }
+    item.entries.push(entry);
+  }
+  return items;
+}
+
+// A request in one line: who it was for, the model or models, how long the
+// answer took, the tokens it cost and what the judges gave it.
+function summarize(group: ActivityGroup, entries: Activity[]) {
+  const who = entries.find((e) => e.who)?.who;
+  const failure = entries.find((e) => e.kind === "error");
+  const calls = entries.filter((e) => e.stats?.model);
+  const models = [...new Set(calls.map((e) => e.stats!.model!))];
+  const tokensIn = calls.reduce((sum, e) => sum + (e.stats!.inputTokens ?? 0), 0);
+  const tokensOut = calls.reduce((sum, e) => sum + (e.stats!.outputTokens ?? 0), 0);
+  const answeredAt = calls.length ? calls[calls.length - 1].at : undefined;
+  const scores = entries
+    .filter((e) => e.kind === "judge" && e.stats?.score !== undefined)
+    .map((e) => `${e.stats!.judge} ${e.stats!.score}`);
+
+  const detail = failure
+    ? failure.title
+    : [
+        models.join(", "),
+        answeredAt !== undefined && `${((answeredAt - group.startedAt) / 1000).toFixed(1)}s`,
+        tokensIn + tokensOut > 0 && `${tokensIn.toLocaleString()} in / ${tokensOut.toLocaleString()} out tokens`,
+        ...scores,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "working…";
+
+  return { title: who ? `${group.label} for ${who}` : group.label, detail, failed: Boolean(failure) };
+}
 
 export default function LiveTab() {
   const [entries, setEntries] = useState<Activity[]>([]);
@@ -73,8 +137,23 @@ export default function LiveTab() {
     return () => source.close();
   }, []);
 
+  // A request shows under a filter if any of its steps would, and then with
+  // all of them, so its story stays whole.
   const kinds = FILTERS.find((f) => f.id === filter)?.kinds;
-  const shown = kinds ? entries.filter((e) => kinds.includes(e.kind)) : entries;
+  const shown = toItems(entries).filter(
+    (item) =>
+      !kinds ||
+      (item.type === "line" ? kinds.includes(item.entry.kind) : item.entries.some((e) => kinds.includes(e.kind))),
+  );
+
+  // Which requests and long lines are open, by "g" or "l" and their id.
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const toggle = (key: string) =>
+    setOpened((was) => {
+      const next = new Set(was);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
 
   // Follows the newest line unless someone has scrolled up to read.
   useLayoutEffect(() => {
@@ -156,27 +235,129 @@ export default function LiveTab() {
                 : "Connecting to the store's server."}
             </p>
           ) : (
-            shown.map((entry) => {
-              const tag = TAGS[entry.kind];
-              return (
-                <div key={entry.id} className="flex gap-3 py-1">
-                  <span className="shrink-0 text-grays-05">{time(entry.at)}</span>
-                  <span className={`w-[52px] shrink-0 ${tag.className}`}>{tag.label}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="break-words text-grays-01">
-                      {entry.title}
-                      {entry.count > 1 && <span className="text-grays-03"> ×{entry.count}</span>}
-                    </span>
-                    {entry.detail && (
-                      <span className="block break-words text-grays-03">{entry.detail}</span>
-                    )}
-                  </span>
-                </div>
-              );
-            })
+            shown.map((item) =>
+              item.type === "line" ? (
+                <Line
+                  key={`l${item.entry.id}`}
+                  entry={item.entry}
+                  open={opened.has(`l${item.entry.id}`)}
+                  onToggle={() => toggle(`l${item.entry.id}`)}
+                />
+              ) : (
+                <Group
+                  key={`g${item.group.id}`}
+                  group={item.group}
+                  entries={item.entries}
+                  open={opened.has(`g${item.group.id}`)}
+                  onToggle={() => toggle(`g${item.group.id}`)}
+                  opened={opened}
+                  onToggleLine={toggle}
+                />
+              ),
+            )
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// The left bar ACCENTS colours, drawn outside the row so text stays aligned.
+const ROW = "relative flex w-full gap-3 py-1 text-left before:absolute before:-left-2.5 before:bottom-1.5 before:top-1.5 before:w-0.5 before:rounded-full";
+
+function Line({ entry, open, onToggle }: { entry: Activity; open: boolean; onToggle: () => void }) {
+  const tag = TAGS[entry.kind];
+  const long = (entry.detail?.length ?? 0) > LONG_DETAIL;
+  const body = (
+    <>
+      <span className="shrink-0 text-grays-05">{time(entry.at)}</span>
+      <span className={`w-[52px] shrink-0 ${tag.className}`}>{tag.label}</span>
+      <span className="min-w-0 flex-1">
+        <span className="break-words text-grays-01">
+          {entry.title}
+          {entry.count > 1 && <span className="text-grays-03"> ×{entry.count}</span>}
+        </span>
+        {entry.detail && (
+          <span className={`block break-words text-grays-03 ${long && !open ? "line-clamp-2" : ""}`}>
+            {entry.detail}
+          </span>
+        )}
+      </span>
+    </>
+  );
+  const className = `${ROW} ${ACCENTS[entry.kind] ?? ""}`;
+
+  return long ? (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={onToggle}
+      className={`${className} rounded-[6px] hover:bg-grays-black-01 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-grays-05`}
+    >
+      {body}
+    </button>
+  ) : (
+    <div className={className}>{body}</div>
+  );
+}
+
+function Group({
+  group,
+  entries,
+  open,
+  onToggle,
+  opened,
+  onToggleLine,
+}: {
+  group: ActivityGroup;
+  entries: Activity[];
+  open: boolean;
+  onToggle: () => void;
+  opened: Set<string>;
+  onToggleLine: (key: string) => void;
+}) {
+  const { title, detail, failed } = summarize(group, entries);
+
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className={`${ROW} rounded-[6px] hover:bg-grays-black-01 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-grays-05 ${
+          failed ? ACCENTS.error : ""
+        }`}
+      >
+        <span className="shrink-0 text-grays-05">{time(entries[0].at)}</span>
+        <span className={`w-[52px] shrink-0 ${failed ? "text-[#FF6B6B]" : "text-[#9AA8FF]"}`}>
+          {failed ? "ERROR" : "AI"}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="break-words text-grays-01">
+            <span aria-hidden="true" className="mr-1.5 inline-block w-2 text-grays-03">
+              {open ? "▾" : "▸"}
+            </span>
+            {title}
+            <span className="text-grays-04">
+              {" "}
+              · {entries.length} {entries.length === 1 ? "step" : "steps"}
+            </span>
+          </span>
+          <span className="block break-words pl-[18px] text-grays-03">{detail}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="mb-1 ml-1 border-l border-grays-06 pl-3">
+          {entries.map((entry) => (
+            <Line
+              key={entry.id}
+              entry={entry}
+              open={opened.has(`l${entry.id}`)}
+              onToggle={() => onToggleLine(`l${entry.id}`)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
