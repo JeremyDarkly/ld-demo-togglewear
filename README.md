@@ -219,13 +219,17 @@ The **`</>`** button in the header opens a panel beside the store for showing wh
 - **Live:** what the server is doing, as it happens. Flag evaluations and the reason for each, which AgentControl config variation each shopper was served, model and tool calls with their tokens and time, judge scores, errors, and the changes LaunchDarkly streams in. Each AI request is one line with its model, time, tokens and judge scores; click it for the steps in order, and click a long line, like a judge's explanation, to read all of it. Filter it to Flags, AI, Errors or Generator. Browser flags aren't in it, since they never reach the server; the developer toolbar shows those.
 - **Code:** how to do each thing in code, from LaunchDarkly's docs, in the SDKs customers ask about (Node.js, Python, Go, Java, React, JavaScript, iOS, Android). Grouped like the docs, from getting started through releases, experimentation, AgentControl, Observability, infrastructure and developer tools, with search, a copy button and a link to the docs page for each. Pick a language once and every example shows it. Where ToggleWear does the same thing, the example says which file. The new AI SDK is marked open beta and the one ToggleWear uses is marked legacy, as the docs label them.
 - **Architecture:** how LaunchDarkly gets a flag to an app, how ToggleWear is built and where it runs, the path each demo story takes step by step, and which key lives where. Deep dives covers the detail engineers ask for: how a flag picks a variation, what happens when something fails, where data goes, scale, governance, and how experiment and rollout results are measured.
-- **Demo tools:** the generator (the same one as Cmd+K), the two outages, the developer toolbar and the resting states from [Resetting after a demo](#resetting-after-a-demo).
+- **Demo tools:** the generator (the same one as Cmd+K), the two outages, the developer toolbar, and the Reset demo button with the resting states from [Resetting after a demo](#resetting-after-a-demo).
 
 Everything in it is safe to show on a customer call: the code uses the docs' placeholder keys, and nothing names an account, a cluster or a key. When the docs change, the examples are in `components/hood/codeExamples.ts`, each with the page it came from.
 
 ### Resetting after a demo
 
-Most demos leave something changed. To put a flag back:
+Most demos leave something changed. **Reset demo**, in the Demo tools tab of Under the hood, puts everything in this table back except Personal Stylist, turns both outages off and stops the generator. It shows what it changed, and LaunchDarkly's audit log records each change as made by the reset.
+
+The button changes LaunchDarkly, which the store's SDK keys can't, so each environment gets its own reset key. DemoBuilder creates it as a service token named `togglewear-reset-<project key>`, allowed only to turn these four flags on or off, set their default rules and change Smart Search's targeting, in that project's production environment. The Rebuild workflow replaces it and the Delete workflow removes it. An environment built before the button says to put things back by hand.
+
+To put a flag back by hand:
 
 | Flag or config | Resting state |
 |---|---|
@@ -258,6 +262,7 @@ Create `.env.local` in the repo root:
 |---|---|
 | `NEXT_PUBLIC_LD_CLIENT_KEY` | The project's client-side ID, from the production environment |
 | `LD_SDK_KEY` | The production environment's server-side SDK key |
+| `LD_PROJECT_KEY` and `LD_RESET_TOKEN` | Optional, for the Reset demo button: the project's key, and its reset key (see [Resetting after a demo](#resetting-after-a-demo)) |
 | `AWS_REGION` | Optional. Defaults to `us-east-1` |
 
 Then:
