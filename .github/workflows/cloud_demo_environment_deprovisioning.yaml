@@ -77,6 +77,29 @@ jobs:
         run: |
           ldcli projects delete --project ${{ env.LD_PROJECT_KEY }}
 
+      # Tokens belong to the account rather than the project, so deleting the
+      # project leaves the store's reset key behind. Found by the name
+      # DemoBuilder gives it (reset_token_name in LDPlatform.py).
+      - name: Delete the store's reset key
+        # Even when the project was already gone.
+        if: ${{ !cancelled() }}
+        env:
+          LD_API_KEY: ${{ secrets.LD_EAP_API_KEY }}
+          TOKEN_NAME: togglewear-reset-${{ env.LD_PROJECT_KEY }}
+        run: |
+          OFFSET=0
+          while :; do
+            PAGE=$(curl -sf -H "Authorization: $LD_API_KEY" -H "LD-API-Version: 20240415" \
+              "https://app.launchdarkly.com/api/v2/tokens?showAll=true&limit=100&offset=$OFFSET") \
+              || { echo "Could not list tokens, leaving the reset key"; break; }
+            for ID in $(echo "$PAGE" | jq -r --arg name "$TOKEN_NAME" '.items[] | select(.name == $name) | ._id'); do
+              curl -sf -X DELETE -H "Authorization: $LD_API_KEY" -H "LD-API-Version: 20240415" \
+                "https://app.launchdarkly.com/api/v2/tokens/$ID" && echo "Deleted the reset key"
+            done
+            [ "$(echo "$PAGE" | jq '.items | length')" -lt 100 ] && break
+            OFFSET=$((OFFSET + 100))
+          done
+
       - name: Check Namespace in Kubernetes
         uses: kodermax/kubectl-aws-eks@master
         with:

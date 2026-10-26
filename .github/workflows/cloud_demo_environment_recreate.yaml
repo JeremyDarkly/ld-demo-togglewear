@@ -184,6 +184,8 @@ jobs:
           touch ./.env.production
           echo NEXT_PUBLIC_LD_CLIENT_KEY=${{ env.LD_CLIENT_KEY }} >> ./.env.production
           echo LD_SDK_KEY=${{ env.LD_SDK_KEY }} >> ./.env.production
+          echo LD_PROJECT_KEY=${{ env.LD_PROJECT_KEY }} >> ./.env.production
+          echo LD_RESET_TOKEN=${{ env.LD_RESET_TOKEN }} >> ./.env.production
           echo AWS_REGION=us-east-1 >> ./.env.production
           echo AWS_DEFAULT_REGION=us-east-1 >> ./.env.production
 
