@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { openDemoGenerator } from "@/components/generator/DemoGenerator";
 import { IncidentRow, OutageToggle } from "@/components/ui/AccountMenu";
 import { useDeveloperToolbar } from "@/components/ui/DeveloperToolbar";
 import { useIncidents } from "@/components/ui/IncidentProvider";
+import type { ResetResult } from "@/lib/demoReset";
 import { GENERATOR_GROUPS, GENERATORS } from "@/lib/generator/catalog";
+import type { DemoResetResponse } from "@/pages/api/demo-reset";
 
 // Every control a demo needs, in one place a user can find without knowing
 // the shortcuts: the same switches as the account menu and the generator
@@ -27,6 +29,96 @@ const RESTING_STATES: { what: string; state: string }[] = [
     state: "Default rule on Llama 4 Maverick, with Search model outage off",
   },
 ];
+
+const OUTCOMES: Record<ResetResult["outcome"], string> = {
+  reset: "Put back",
+  unchanged: "Already there",
+  failed: "Couldn't reset",
+};
+
+// Flags and the config are reset on the server, with the environment's own
+// reset key; the two outages live in this browser, so they are switched off
+// here.
+function ResetDemo({ onReset }: { onReset: () => void }) {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [running, setRunning] = useState(false);
+  const [results, setResults] = useState<ResetResult[] | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/demo-reset")
+      .then((res) => res.json() as Promise<DemoResetResponse>)
+      .then(({ configured }) => setConfigured(configured))
+      .catch(() => setConfigured(false));
+  }, []);
+
+  async function reset() {
+    setRunning(true);
+    setError(false);
+    onReset();
+    try {
+      const res = await fetch("/api/demo-reset", { method: "POST" });
+      const body = (await res.json()) as DemoResetResponse;
+      setConfigured(body.configured);
+      setResults(body.results ?? null);
+    } catch {
+      setError(true);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  if (configured === false) {
+    return (
+      <p className="font-sohne text-small text-grays-04">
+        This environment was built before Reset demo. Run the Rebuild workflow to add it, or put
+        things back by hand from the list below.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={reset}
+          disabled={running || configured === null}
+          className="rounded-full bg-grays-ld-black px-4 py-2 font-sohne text-small font-medium text-grays-white transition-colors hover:bg-grays-black-01 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-60"
+        >
+          {running ? "Resetting…" : "Reset demo"}
+        </button>
+        <span className="font-sohne text-xsmall text-grays-04">Also stops the generator</span>
+      </div>
+      <div aria-live="polite">
+        {error && (
+          <p className="font-sohne text-xsmall text-grays-04">
+            The store couldn&apos;t reach its server. Try again in a moment.
+          </p>
+        )}
+        {results && (
+          <ul className="flex flex-col gap-1 rounded-[12px] bg-grays-01 px-3 py-2.5 font-sohne text-xsmall">
+            {results.map(({ what, outcome, detail }) => (
+              <li key={what} className="flex justify-between gap-3">
+                <span className="text-grays-ld-black">{what}</span>
+                <span
+                  title={detail}
+                  className={outcome === "failed" ? "text-[#C4314B]" : "text-grays-04"}
+                >
+                  {OUTCOMES[outcome]}
+                </span>
+              </li>
+            ))}
+            <li className="flex justify-between gap-3">
+              <span className="text-grays-ld-black">Both outages</span>
+              <span className="text-grays-04">Off</span>
+            </li>
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function Section({
   title,
@@ -111,8 +203,12 @@ export default function DemoToolsTab() {
 
       <Section
         title="After a demo"
-        description="What to put back so the next demo starts where the script expects. Run the Rebuild workflow if an environment has drifted too far."
+        description="Reset demo puts everything below back, except Personal Stylist, so the next demo starts where the script expects. Run the Rebuild workflow if an environment has drifted too far."
       >
+        <ResetDemo onReset={() => {
+          setPaymentOutage(false);
+          setSearchOutage(false);
+        }} />
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 font-sohne text-xsmall">
           {RESTING_STATES.map(({ what, state }) => (
             <div key={what} className="contents">
