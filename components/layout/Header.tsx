@@ -100,22 +100,6 @@ export default function Header({
           </nav>
 
           <div className="flex items-center gap-5 self-stretch md:gap-[25px]">
-            {/* For whoever is driving the demo rather than the shopper, so it
-                is the one control in the bar that isn't a shop's. Hidden on
-                phones, where it pushed into the logo and the panel would
-                cover the whole store anyway. */}
-            <button
-              type="button"
-              aria-label="Under the hood"
-              aria-pressed={hoodOpen}
-              title="Under the hood: live backend, code, architecture and demo tools"
-              onClick={toggleHood}
-              className={`hidden items-center rounded-full px-2 py-1 sm:flex font-sohne-mono text-xsmall-mono transition-colors ${
-                hoodOpen ? "bg-base-lime text-grays-ld-black" : "text-grays-02 hover:text-grays-white"
-              }`}
-            >
-              {"</>"}
-            </button>
             <button
               type="button"
               aria-label="Search"
@@ -158,6 +142,23 @@ export default function Header({
                 ({cartCount})
               </span>
             </Link>
+            {/* For whoever is driving the demo rather than the shopper, so it
+                sits apart from the shop's own controls, past a divider at the
+                end of the bar. Hidden on phones, where it pushed into the logo
+                and the panel would cover the whole store anyway. */}
+            <span aria-hidden="true" className="ml-3 hidden h-5 w-px bg-grays-05 sm:block md:ml-5" />
+            <button
+              type="button"
+              aria-label="Under the hood"
+              aria-pressed={hoodOpen}
+              title="Under the hood: live backend, code, architecture and demo tools"
+              onClick={toggleHood}
+              className={`hidden items-center rounded-full px-2 py-1 sm:flex font-sohne-mono text-xsmall-mono transition-colors ${
+                hoodOpen ? "bg-base-lime text-grays-ld-black" : "text-grays-02 hover:text-grays-white"
+              }`}
+            >
+              {"</>"}
+            </button>
           </div>
         </div>
 
