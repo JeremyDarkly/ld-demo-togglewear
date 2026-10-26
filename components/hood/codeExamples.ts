@@ -1,4 +1,4 @@
-// The Code tab's content: how to do each thing an SE gets asked about, in
+// The Code tab's content: how to do each thing a user gets asked about, in
 // the SDKs customers use, arranged like LaunchDarkly's docs. Every snippet
 // is taken from the docs page it links to, checked against the current
 // package names, and uses the docs' placeholder keys; nothing here is a real
@@ -45,7 +45,7 @@ export type Example = {
   docs: string;
   // Shown as a badge, in the docs' own words ("Open beta", "Legacy").
   status?: string;
-  // Where ToggleWear does the same thing, for an SE who wants to show it
+  // Where ToggleWear does the same thing, for a user who wants to show it
   // working rather than read about it.
   inToggleWear?: string;
   snippets: Snippet[];
@@ -616,29 +616,6 @@ listener = ldclient.get().flag_tracker.add_listener(flag_change_listener)`,
         ],
       },
       {
-        id: "all-flags",
-        title: "Get every flag at once",
-        summary:
-          "Evaluates every flag for a context. Mostly for handing a server's results to the browser (bootstrapping) or debugging, since it doesn't record which flags were really used.",
-        docs: `${DOCS}/sdk/features/all-flags`,
-        snippets: [
-          {
-            lang: "node",
-            code: `const state = await client.allFlagsState(context, { clientSideOnly: true });
-const json = state.toJSON(); // hand this to the browser SDK as bootstrap data`,
-          },
-          {
-            lang: "python",
-            code: `state = ldclient.get().all_flags_state(context, client_side_only=True)
-bootstrap = state.to_json_string()`,
-          },
-          {
-            lang: "javascript",
-            code: `const allFlags = client.allFlags();`,
-          },
-        ],
-      },
-      {
         id: "hooks",
         title: "Hooks",
         summary:
@@ -1004,43 +981,6 @@ print(result["response"])
 print(result["usage"])
 
 await shutdown()`,
-          },
-        ],
-      },
-      {
-        id: "ai-stream",
-        title: "Stream a reply",
-        summary: "The same call, delivered as it's generated. The last event carries the usage and any judge results.",
-        docs: `${DOCS}/sdk/ai/node-js`,
-        status: "Open beta",
-        snippets: [
-          {
-            lang: "node",
-            code: `import { config, globalRegistry } from '@launchdarkly/ai-server';
-
-const stream = config({ key: 'my-ai-config-flag', registry: globalRegistry })
-  .stream('What is feature flagging?', { kind: 'user', key: 'user-123' });
-
-for await (const event of stream) {
-  if (event.type === 'chunk') {
-    process.stdout.write(event.text);
-  } else {
-    console.log('\\n', event.usage);
-  }
-}`,
-          },
-          {
-            lang: "python",
-            code: `from launchdarkly_ai_server import config, global_registry
-
-async for event in config(key="my-ai-config", registry=global_registry).stream(
-    "What is feature flagging?",
-    {"kind": "user", "key": "user-123"},
-):
-    if event["type"] == "chunk":
-        print(event["text"], end="", flush=True)
-    else:
-        print("\\n", event["usage"])`,
           },
         ],
       },
@@ -1447,25 +1387,6 @@ const client = createClient('example-client-side-id', context);
 
 // bootstrapData is the server's allFlagsState output
 client.start({ bootstrap: JSON.parse(bootstrapData) });`,
-          },
-        ],
-      },
-      {
-        id: "offline",
-        title: "Offline mode",
-        summary:
-          "The SDK makes no connection and serves every fallback. For tests, local runs without network access, and checking what users would see if LaunchDarkly were unreachable.",
-        docs: `${DOCS}/sdk/features/offline-mode`,
-        snippets: [
-          {
-            lang: "node",
-            code: `const client = init('YOUR_SDK_KEY', { offline: true });
-await client.boolVariation('any.feature.flag', context, false); // always false`,
-          },
-          {
-            lang: "python",
-            code: `ldclient.set_config(Config("YOUR_SDK_KEY", offline=True))
-ldclient.get().variation("any.feature.flag", context, False)  # always False`,
           },
         ],
       },
