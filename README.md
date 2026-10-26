@@ -1,13 +1,13 @@
 # ToggleWear
 
-ToggleWear is LaunchDarkly's retail demo: an online store selling LaunchDarkly swag and tech gear, built so a Solutions Engineer can walk a customer through LaunchDarkly one capability at a time. Every feature in the store is behind a flag or an AI Config, and every LaunchDarkly resource the demo needs is created by code in this repo, so each SE's environment is identical and can be rebuilt from scratch in about fifteen minutes.
+ToggleWear is LaunchDarkly's retail demo: an online store selling LaunchDarkly swag and tech gear, built so a user can walk a customer through LaunchDarkly one capability at a time. Every feature in the store is behind a flag or an AI Config, and every LaunchDarkly resource the demo needs is created by code in this repo, so each user's environment is identical and can be rebuilt from scratch in about fifteen minutes.
 
 It replaces ToggleBank (ld-core-demo) as the core demo. Where ToggleBank covers five industries, ToggleWear covers one, in depth.
 
 - **Storefront:** Next.js 16 (pages router), React 19, Tailwind CSS 3
 - **LaunchDarkly:** React client SDK, Node server SDK, AI SDK, Observability and Session Replay
 - **AI:** Amazon Bedrock through LangChain (Claude Sonnet 4.6, Claude Haiku 4.5, Claude Opus 5.5 and Amazon Nova 2 Lite)
-- **Hosting:** one pod per SE on the shared EKS cluster, at `https://<name>-togglewear.launchdarklydemos.com`
+- **Hosting:** one pod per user on the shared EKS cluster, at `https://<name>-togglewear.launchdarklydemos.com`
 
 ## Contents
 
@@ -93,7 +93,7 @@ Flags are numbered in the order a demo walks through them, simplest first, and t
 | 13 | Card Testing Protection | Auto-enable trigger | Start the Card Testing generator. Declined $1 charges set off an alert on `CardDeclinedError`, and its trigger turns the flag on about two minutes later. Resting state: off. |
 | 14 | Recommendation Engine | Adaptive trigger | Start the Recommendation Engine generator. Failed recommendations set off the adaptive trigger, which switches the default rule to Best Sellers about two minutes later. Resting state: Personalized Picks. |
 
-**Flag 05's five errors**, each in its own place in the store, so an SE can show one at a time:
+**Flag 05's five errors**, each in its own place in the store, so a user can show one at a time:
 
 1. Open a one-size item, such as the Bucket Hat or any tech item, and the page crashes.
 2. Open the Checkerboard Socks and the page is slow, then times out on the server.
@@ -210,7 +210,7 @@ Turn on **LaunchDarkly toolbar** under **Developer tools** in the account menu a
 - **To demo:** sign in as Alex, then override flag 01 to on in the toolbar and the Early Access section appears for him, while his targeting in LaunchDarkly still says off. Add something to the cart and the toolbar's Events tab shows the `add-to-cart` event.
 - **Only browser flags:** flag 05, the generator's scenarios and the AI Configs are evaluated on the server, so the toolbar can't override them.
 - **Switching it off clears every override**, straight away. Overrides are also dropped when a new tab opens without the toolbar, so one demo can't leave a hidden override behind for the next.
-- **On a hosted environment** it only works once the domain is allowed. An organization admin adds `*.launchdarklydemos.com` once under **Organization settings > Integrations > LaunchDarkly Developer Toolbar** (the "Allowed domains" field), which covers every SE's `<name>-togglewear` site, and it takes up to five minutes to apply ([safe domains](https://launchdarkly.com/docs/home/getting-started/dev-toolbar-using)). Localhost is always allowed. LaunchDarkly's advice to keep it out of production is about real customers seeing it; here it stays off until someone driving the demo switches it on.
+- **On a hosted environment** it only works once the domain is allowed. An organization admin adds `*.launchdarklydemos.com` once under **Organization settings > Integrations > LaunchDarkly Developer Toolbar** (the "Allowed domains" field), which covers every user's `<name>-togglewear` site, and it takes up to five minutes to apply ([safe domains](https://launchdarkly.com/docs/home/getting-started/dev-toolbar-using)). Localhost is always allowed. LaunchDarkly's advice to keep it out of production is about real customers seeing it; here it stays off until someone driving the demo switches it on.
 
 ### Under the hood
 
