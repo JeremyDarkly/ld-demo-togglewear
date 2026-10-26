@@ -7,6 +7,7 @@ import {
   getAIUsageFromResponse,
 } from "@launchdarkly/server-sdk-ai-langchain";
 import { HumanMessage, SystemMessage, type AIMessage } from "@langchain/core/messages";
+import { activityGroup } from "@/lib/activity";
 import { getAiClient, judge } from "@/lib/aiServer";
 import { resolveLines, type CartLine } from "@/lib/cart";
 import {
@@ -92,7 +93,9 @@ function offersOf(custom: Record<string, unknown> | undefined): Offer[] {
 
 type Written = { message: string; offer: Offer; metrics: LDAIMetrics };
 
-export default async function handler(
+export default activityGroup("Cart Recovery", handler);
+
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse<CartRecoveryReply | { error: string }>,
 ) {

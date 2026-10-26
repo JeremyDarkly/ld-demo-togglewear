@@ -5,7 +5,7 @@ import {
   type LDContext,
 } from "@launchdarkly/node-server-sdk";
 import { Observability } from "@launchdarkly/observability-node";
-import { activityHook, recordActivity } from "@/lib/activity";
+import { activityHook, outsideGroup, recordActivity } from "@/lib/activity";
 import { FlagStore } from "@/lib/flagStore";
 
 // The storefront's server-side LaunchDarkly client, for the API routes that
@@ -42,27 +42,34 @@ export function getServerClient(): Promise<LDClient | null> {
       return Promise.resolve(null);
     }
     store = new FlagStore();
-    const client = init(sdkKey, {
-      featureStore: store,
-      plugins: [
-        new Observability({
-          serviceName: "togglewear-api",
-          serviceVersion: process.env.NEXT_PUBLIC_APP_VERSION,
-        }),
-      ],
-      // Reports each evaluation to the Live tab of Under the hood.
-      hooks: [activityHook],
-    });
-    client.on("update", ({ key }: { key: string }) =>
-      recordActivity({
-        kind: "change",
-        title: `LaunchDarkly streamed a change to ${key}`,
-        detail: "No redeploy and no restart: the next evaluation uses it",
+    const featureStore = store;
+    const client = outsideGroup(() =>
+      init(sdkKey, {
+        featureStore,
+        plugins: [
+          new Observability({
+            serviceName: "togglewear-api",
+            serviceVersion: process.env.NEXT_PUBLIC_APP_VERSION,
+          }),
+        ],
+        // Reports each evaluation to the Live tab of Under the hood.
+        hooks: [activityHook],
       }),
     );
     clientPromise = client
       .waitForInitialization({ timeout: 5 })
-      .then(() => client)
+      .then(() => {
+        // Listening only once the flags have loaded, so the first download
+        // does not read as a change to every flag in the project.
+        client.on("update", ({ key }: { key: string }) =>
+          recordActivity({
+            kind: "change",
+            title: `LaunchDarkly streamed a change to ${key}`,
+            detail: "No redeploy and no restart: the next evaluation uses it",
+          }),
+        );
+        return client;
+      })
       .catch((err) => {
         console.warn("LaunchDarkly server client failed to start", err);
         clientPromise = null;

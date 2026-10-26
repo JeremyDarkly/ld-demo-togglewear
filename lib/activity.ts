@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { integrations, LDContext, LDEvaluationDetail } from "@launchdarkly/node-server-sdk";
+import type { NextApiHandler } from "next";
 
 // What the server has just done with LaunchDarkly, for the Live tab of Under
 // the hood: every flag and AI Config it evaluated and why, each change
@@ -32,7 +33,22 @@ export type Activity = {
   // How many times the same thing happened in a row, a second or two apart:
   // a category page asks for every card's stock at once.
   count: number;
+  // Set on everything recorded while one AI request ran (activityGroup), so
+  // the Live tab can show the request as one line that opens to its steps.
+  group?: ActivityGroup;
+  // Who a flag or config was evaluated for, for that line's title.
+  who?: string;
+  // What the Live tab adds up for a group's line.
+  stats?: {
+    model?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    judge?: string;
+    score?: number;
+  };
 };
+
+export type ActivityGroup = { id: number; label: string; startedAt: number };
 
 type Listener = (entry: Activity) => void;
 
@@ -40,9 +56,40 @@ const KEEP = 200;
 const MERGE_WITHIN_MS = 3_000;
 
 const scope = globalThis as typeof globalThis & {
-  __togglewearActivity?: { entries: Activity[]; listeners: Set<Listener>; nextId: number };
+  __togglewearActivity?: {
+    entries: Activity[];
+    listeners: Set<Listener>;
+    nextId: number;
+    nextGroup: number;
+  };
 };
-const feed = (scope.__togglewearActivity ??= { entries: [], listeners: new Set(), nextId: 1 });
+const feed = (scope.__togglewearActivity ??= {
+  entries: [],
+  listeners: new Set(),
+  nextId: 1,
+  nextGroup: 1,
+});
+// A hot reload keeps the feed from before this field existed.
+feed.nextGroup ??= 1;
+
+// The request an entry belongs to. AsyncLocalStorage follows the request's
+// promises, so the judges' scores, which arrive after the response has been
+// sent, still land in the request that asked for them.
+const groupScope = new AsyncLocalStorage<ActivityGroup>();
+
+// Wraps an AI route's handler so everything it records is one group in the
+// Live tab, named label (the agent, as the store calls it).
+export function activityGroup(label: string, handler: NextApiHandler): NextApiHandler {
+  return (req, res) =>
+    groupScope.run({ id: feed.nextGroup++, label, startedAt: Date.now() }, () => handler(req, res));
+}
+
+// Runs fn outside any request's group. Work it starts that outlives the
+// request, like the SDK's streaming connection, would otherwise record into
+// whichever request happened to start it.
+export function outsideGroup<T>(fn: () => T): T {
+  return groupScope.exit(fn);
+}
 
 export function recentActivity(): Activity[] {
   return feed.entries;
@@ -55,15 +102,17 @@ export function onActivity(listener: Listener) {
   };
 }
 
-export function recordActivity(entry: Omit<Activity, "id" | "at" | "count">) {
+export function recordActivity(entry: Omit<Activity, "id" | "at" | "count" | "group">) {
   const now = Date.now();
+  const group = groupScope.getStore();
   const last = feed.entries[feed.entries.length - 1];
   if (
     last &&
     now - last.at < MERGE_WITHIN_MS &&
     last.kind === entry.kind &&
     last.title === entry.title &&
-    last.detail === entry.detail
+    last.detail === entry.detail &&
+    last.group?.id === group?.id
   ) {
     last.count += 1;
     last.at = now;
@@ -71,7 +120,7 @@ export function recordActivity(entry: Omit<Activity, "id" | "at" | "count">) {
     return;
   }
 
-  const added: Activity = { ...entry, id: feed.nextId++, at: now, count: 1 };
+  const added: Activity = { ...entry, id: feed.nextId++, at: now, count: 1, ...(group && { group }) };
   feed.entries.push(added);
   if (feed.entries.length > KEEP) feed.entries.splice(0, feed.entries.length - KEEP);
   feed.listeners.forEach((listener) => listener(added));
@@ -144,12 +193,14 @@ export const activityHook: integrations.Hook = {
         kind: "config",
         title: `${hookContext.flagKey} served ${meta.variationKey ?? "its fallback"} to ${who}`,
         detail: why,
+        who,
       });
     } else {
       recordActivity({
         kind: "flag",
         title: `${hookContext.flagKey} evaluated to ${describeValue(detail.value)} for ${who}`,
         detail: why,
+        who,
       });
     }
     return data;

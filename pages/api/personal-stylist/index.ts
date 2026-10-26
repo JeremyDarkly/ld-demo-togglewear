@@ -8,6 +8,7 @@ import {
   getAIUsageFromResponse,
 } from "@launchdarkly/server-sdk-ai-langchain";
 import type { AIMessage } from "@langchain/core/messages";
+import { activityGroup } from "@/lib/activity";
 import { getAiClient, judge, rememberReply, textOf } from "@/lib/aiServer";
 import { contextFromRequest } from "@/lib/ldServer";
 import { startAgentRun } from "@/lib/llmTrace";
@@ -91,7 +92,9 @@ function pickedFrom(text: string, product: Product, catalog: { slug: string }[])
   };
 }
 
-export default async function handler(
+export default activityGroup("Personal Stylist", handler);
+
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse<StylistReply | { error: string }>,
 ) {

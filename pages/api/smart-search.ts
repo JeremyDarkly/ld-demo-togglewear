@@ -8,7 +8,7 @@ import {
   getAIUsageFromResponse,
 } from "@launchdarkly/server-sdk-ai-langchain";
 import type { AIMessage } from "@langchain/core/messages";
-import { recordActivity } from "@/lib/activity";
+import { activityGroup, recordActivity } from "@/lib/activity";
 import { getAiClient, textOf } from "@/lib/aiServer";
 import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { startAgentRun } from "@/lib/llmTrace";
@@ -116,7 +116,9 @@ function noteFailureTracked(model: string) {
   });
 }
 
-export default async function handler(
+export default activityGroup("Smart Search", handler);
+
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse<SmartSearchReply | { error: string }>,
 ) {

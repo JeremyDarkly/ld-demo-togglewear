@@ -19,6 +19,7 @@ import {
   ToolMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
+import { activityGroup } from "@/lib/activity";
 import { addUsage, getAiClient, judge, rememberReply, textOf } from "@/lib/aiServer";
 import { contextFromRequest } from "@/lib/ldServer";
 import { startAgentRun, type AgentRun } from "@/lib/llmTrace";
@@ -204,7 +205,9 @@ function isTurn(value: unknown): value is Turn {
   );
 }
 
-export default async function handler(
+export default activityGroup("Swag Assistant", handler);
+
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse<SwagAssistantReply | { error: string }>,
 ) {

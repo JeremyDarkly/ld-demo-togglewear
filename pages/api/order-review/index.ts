@@ -22,6 +22,7 @@ import {
   type AIMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
+import { activityGroup } from "@/lib/activity";
 import { addUsage, getAiClient, judge, textOf } from "@/lib/aiServer";
 import {
   assessOrder,
@@ -382,7 +383,9 @@ async function runGraph(
   }
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default activityGroup("Order Review", handler);
+
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     res.status(405).json({ error: "Method not allowed" });

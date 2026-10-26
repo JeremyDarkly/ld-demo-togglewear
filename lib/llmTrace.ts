@@ -144,15 +144,17 @@ export function startAgentRun(
       const startedAt = Date.now();
       try {
         const { response, usage, output } = await call();
+        const modelName = servedByFor("", model).model;
         recordActivity({
           kind: "model",
-          title: `${agentName} called ${servedByFor("", model).model}`,
+          title: `${agentName} called ${modelName}`,
           detail: [
             usage && `${usage.input.toLocaleString()} in, ${usage.output.toLocaleString()} out tokens`,
             `${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
           ]
             .filter(Boolean)
             .join(" · "),
+          stats: { model: modelName, inputTokens: usage?.input, outputTokens: usage?.output },
         });
         const reply = output !== undefined ? text("assistant", output) : replyMessage(response);
         span.setAttributes({
@@ -169,7 +171,7 @@ export function startAgentRun(
         recordActivity({
           kind: "error",
           title: `${agentName}'s call to ${servedByFor("", model).model} failed`,
-          detail: `${(err as Error).name}: ${(err as Error).message}`.slice(0, 160),
+          detail: `${(err as Error).name}: ${(err as Error).message}`.slice(0, 600),
         });
         throw err;
       } finally {
@@ -216,7 +218,7 @@ export function startAgentRun(
       recordActivity({
         kind: "error",
         title: `${agentName} couldn't answer`,
-        detail: (err as Error).message.slice(0, 160),
+        detail: (err as Error).message.slice(0, 600),
       });
       run.recordException(err as Error);
       run.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
@@ -227,10 +229,14 @@ export function startAgentRun(
       if (closed) return;
       for (const result of results) {
         if (!result.sampled || !result.success || result.score === undefined) continue;
+        const judgeName = (result.metricKey ?? result.judgeConfigKey ?? "A judge").replace(/^\$ld:ai:judge:/, "");
         recordActivity({
           kind: "judge",
-          title: `${(result.metricKey ?? result.judgeConfigKey ?? "A judge").replace(/^\$ld:ai:judge:/, "")} scored ${agentName} ${result.score}`,
-          detail: result.reasoning?.slice(0, 140),
+          title: `${judgeName} scored ${agentName} ${result.score}`,
+          // Whole, because the Live tab clamps it to two lines and opens the
+          // rest on a click; capped only so a runaway answer can't bloat the feed.
+          detail: result.reasoning?.slice(0, 2000),
+          stats: { judge: judgeName, score: result.score },
         });
         run.addEvent(
           "gen_ai.evaluation.result",
