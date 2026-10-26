@@ -334,6 +334,75 @@ class LDPlatform:
         )
 
     ##################################################
+    # The store's reset key
+    ##################################################
+    # Tokens belong to the account, not the project, so deleting a project
+    # leaves its token behind. Each project's is found by this exact name,
+    # which delete_reset_tokens and the Delete workflow both rely on.
+    def reset_token_name(self):
+        return "togglewear-reset-" + self.project_key
+
+    def delete_reset_tokens(self):
+        headers = {"Authorization": self.api_key, "LD-API-Version": "20240415"}
+        stale, offset = [], 0
+        while True:
+            res = self.getrequest(
+                "GET",
+                f"https://app.launchdarkly.com/api/v2/tokens?showAll=true&limit=100&offset={offset}",
+                headers=headers,
+            )
+            items = self._parse_json_response(res, context="list tokens").get("items", [])
+            stale += [t["_id"] for t in items if t.get("name") == self.reset_token_name()]
+            if len(items) < 100:
+                break
+            offset += 100
+        for token_id in stale:
+            self.getrequest(
+                "DELETE", "https://app.launchdarkly.com/api/v2/tokens/" + token_id, headers=headers
+            )
+        return len(stale)
+
+    # A service token, so it outlives whoever ran the workflow, with an inline
+    # policy allowing only the changes in `changes`, in this project's `env`:
+    # {"flags": [...], "ai_configs": [...]}. Returns the token's secret, or
+    # None. Replaces any earlier one, so Rebuild never leaves two.
+    def create_reset_token(self, env, changes):
+        self.delete_reset_tokens()
+        scope = f"proj/{self.project_key}:env/{env}"
+        policy = []
+        if changes.get("flags"):
+            policy.append({
+                "effect": "allow",
+                "actions": ["updateOn", "updateFallthrough"],
+                "resources": [f"{scope}:flag/{key}" for key in changes["flags"]],
+            })
+        if changes.get("ai_configs"):
+            policy.append({
+                "effect": "allow",
+                "actions": ["updateAIConfigTargeting"],
+                "resources": [f"{scope}:aiconfig/{key}" for key in changes["ai_configs"]],
+            })
+        res = self.getrequest(
+            "POST",
+            "https://app.launchdarkly.com/api/v2/tokens",
+            headers={"Authorization": self.api_key, "LD-API-Version": "20240415",
+                     "Content-Type": "application/json"},
+            json={
+                "name": self.reset_token_name(),
+                "description": "The Reset demo button in this ToggleWear store. "
+                               "Removed by the Delete and Rebuild workflows.",
+                "serviceToken": True,
+                "inlineRole": policy,
+                "defaultApiVersion": 20240415,
+            },
+        )
+        data = self._parse_json_response(res, context="create reset token")
+        if "message" in data:
+            print("Error creating reset token: " + data["message"])
+            return None
+        return data.get("token")
+
+    ##################################################
     # Create a flag
     ##################################################
     def create_flag(

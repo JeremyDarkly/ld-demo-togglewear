@@ -71,6 +71,7 @@ class DemoBuilder:
     # arrives as a table entry, or a step here, with the capability needing it.
     def build(self):
         self.create_project()
+        self.create_reset_token()
         # Declared up front rather than left to appear when the SDK first sends
         # one, so device and location are already marked available for
         # experiments before any segment, flag or experiment refers to them.
@@ -147,6 +148,32 @@ class DemoBuilder:
                 print(f"Unable to write to environment file: {e}")
         else:
             print("GITHUB_ENV not set")
+
+    # The key behind the store's Reset demo button (lib/demoReset.ts), allowed
+    # to change only what that button puts back. Keep this in step with
+    # RESETS there.
+    RESET_CHANGES = {
+        "flags": ["catalogApiV2", "newPaymentProcessor", "cardTestingProtection",
+                  "recommendationEngine"],
+        "ai_configs": ["smart-search"],
+    }
+
+    def create_reset_token(self):
+        print("Creating the store's reset key", end="...")
+        token = self.ldproject.create_reset_token("production", self.RESET_CHANGES)
+        if not token:
+            # The store still works; its Reset demo button says to put things
+            # back by hand instead.
+            return
+        print("Done")
+        env_file = os.getenv('GITHUB_ENV')
+        if env_file:
+            print(f"\n::add-mask::{token}", flush=True)
+            try:
+                with open(env_file, "a") as f:
+                    f.write(f"LD_RESET_TOKEN={token}\n")
+            except IOError as e:
+                print(f"Unable to write to environment file: {e}")
 
     # Create all the metrics (definitions live in the METRICS table above)
     def create_metrics(self):
