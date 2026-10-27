@@ -342,6 +342,9 @@ class LDPlatform:
     def reset_token_name(self):
         return "togglewear-reset-" + self.project_key
 
+    # True once no reset key is left for this project. False when the keys
+    # couldn't be listed or one couldn't be deleted, so the caller knows an
+    # old key may still be there.
     def delete_reset_tokens(self):
         headers = {"Authorization": self.api_key, "LD-API-Version": "20240415"}
         stale, offset = [], 0
@@ -351,23 +354,35 @@ class LDPlatform:
                 f"https://app.launchdarkly.com/api/v2/tokens?showAll=true&limit=100&offset={offset}",
                 headers=headers,
             )
+            if not res.ok:
+                print(f"Could not list tokens (HTTP {res.status_code})")
+                return False
             items = self._parse_json_response(res, context="list tokens").get("items", [])
             stale += [t["_id"] for t in items if t.get("name") == self.reset_token_name()]
             if len(items) < 100:
                 break
             offset += 100
+        cleared = True
         for token_id in stale:
-            self.getrequest(
+            res = self.getrequest(
                 "DELETE", "https://app.launchdarkly.com/api/v2/tokens/" + token_id, headers=headers
             )
-        return len(stale)
+            # 404: already gone.
+            if not res.ok and res.status_code != 404:
+                print(f"Could not delete reset key {token_id} (HTTP {res.status_code})")
+                cleared = False
+        return cleared
 
     # A service token, so it outlives whoever ran the workflow, with an inline
     # policy allowing only the changes in `changes`, in this project's `env`:
     # {"flags": [...], "ai_configs": [...]}. Returns the token's secret, or
-    # None. Replaces any earlier one, so Rebuild never leaves two.
+    # None. Replaces any earlier one, and makes none while an earlier one
+    # may still be there, so Rebuild never leaves two.
     def create_reset_token(self, env, changes):
-        self.delete_reset_tokens()
+        if not self.delete_reset_tokens():
+            print("Error creating reset token: an earlier "
+                  f"{self.reset_token_name()} couldn't be removed, so no new one was made")
+            return None
         scope = f"proj/{self.project_key}:env/{env}"
         policy = []
         if changes.get("flags"):
