@@ -1489,7 +1489,7 @@ AI_CONFIGS = [
                                'Suggestion Added, a guarded rollout metric. Two variations, '
                                'the same prompt on Claude Sonnet 4.6 (everyone today) and Claude '
                                'Opus 5.5 (the upgrade). The build already ran a guarded rollout '
-                               'from Sonnet to Opus, finished at 100%, to show as it is. To run '
+                               'from Sonnet to Opus, finished at 100%. To run '
                                'one live: set the default rule back to Claude Sonnet 4.6, start '
                                'a guarded rollout to Claude Opus 5.5 with AI Judge Accuracy, AI '
                                'Judge Relevance, AI Completion Errors and Stylist Suggestion '
