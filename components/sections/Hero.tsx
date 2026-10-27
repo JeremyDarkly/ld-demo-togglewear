@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { categoryHref } from "@/lib/products";
-import type { LoyaltyTier } from "@/lib/shopper";
+import type { LoyaltyTier, ShopperRole } from "@/lib/shopper";
 
 // Figma component "hero" (63:4062), which has two variants: Default and
 // "Loyal Gold Member". Both the copy and the image change between them.
@@ -61,8 +61,41 @@ const VARIANTS: Record<LoyaltyTier, Variant> = {
   },
 };
 
-export default function Hero({ tier = "none" }: { tier?: LoyaltyTier }) {
-  const { eyebrow, headline, body, cta, href, image } = VARIANTS[tier];
+// Beta testers and developers have no tier, so without these they saw the
+// default hero and nothing on the page said who was signed in. Neither has art
+// from Jen; both reuse her product shots, the Visor model photo (Figma
+// 277:1280), a new arrival everyone can see, and the Sticker Pack laptop
+// (47:2252), cropped the same way as the platinum panel.
+const ROLE_VARIANTS: Partial<Record<ShopperRole, Variant>> = {
+  beta: {
+    eyebrow: "Beta access.",
+    headline: "You see it before it ships.",
+    body: "As a beta tester, new drops reach you first, before they go out to everyone else.",
+    cta: "Shop new arrivals",
+    href: categoryHref("new"),
+    image: "/images/hero-beta-visor.png",
+  },
+  developer: {
+    eyebrow: "Staff preview.",
+    headline: "Every rollout starts with you.",
+    body: "As a ToggleWear developer, you're first in line for every release, so you see what's changing before anyone else.",
+    cta: "Shop tech",
+    href: categoryHref("tech"),
+    image: "/images/hero-developer-stickers.png",
+  },
+};
+
+// A tier wins over a role, the same order the announcement bar uses, so a
+// gold member switched to beta still sees the gold hero.
+export default function Hero({
+  tier = "none",
+  role = "shopper",
+}: {
+  tier?: LoyaltyTier;
+  role?: ShopperRole;
+}) {
+  const { eyebrow, headline, body, cta, href, image } =
+    (tier === "none" && ROLE_VARIANTS[role]) || VARIANTS[tier];
 
   return (
     <section className="w-full bg-grays-ld-black">

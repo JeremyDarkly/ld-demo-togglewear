@@ -14,7 +14,7 @@ export default function Home() {
   // Loyalty Gold Member. Cart Abandoner and New Customer have no art of their
   // own yet, so they fall back to default while keeping their own
   // announcement bar.
-  const { persona, variant, tier } = useShopper();
+  const { persona, variant, tier, role } = useShopper();
   // Flag 01, the release toggle: on for beta testers and developers by
   // segment, off for everyone else, and off for all when the flag is.
   const { earlyAccessDrop } = useFlags();
@@ -22,7 +22,7 @@ export default function Home() {
   return (
     <>
       <Header persona={persona} />
-      <Hero tier={tier} />
+      <Hero tier={tier} role={role} />
       {earlyAccessDrop && <EarlyAccessDrop variant={variant} />}
       <BestSellers variant={variant} />
       <QuoteBreak />
