@@ -255,7 +255,7 @@ export default function ProductDetails({
             <div className="flex items-center gap-3">
               {product.colors?.map((c, i) => (
                 <button
-                  key={c.hex}
+                  key={c.name}
                   type="button"
                   onClick={() => setColorIndex(i)}
                   aria-label={c.name}
@@ -267,7 +267,7 @@ export default function ProductDetails({
                       ? "ring-1 ring-grays-ld-black ring-offset-2"
                       : ""
                   } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-04 focus-visible:ring-offset-2`}
-                  style={{ backgroundColor: c.hex }}
+                  style={{ background: c.swatch ?? c.hex }}
                 />
               ))}
             </div>

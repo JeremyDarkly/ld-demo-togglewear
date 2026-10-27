@@ -1,4 +1,6 @@
-export type ProductColor = { name: string; hex: string };
+// swatch is for a colourway no single hex can show, such as a fade or a print;
+// the swatch circle paints it instead of the hex.
+export type ProductColor = { name: string; hex: string; swatch?: string };
 
 // The three Jen lists in the footer's Shop column, which is the only place in
 // her designs that names them all — the header shows New Drops, Apparel and
@@ -18,6 +20,22 @@ export const COLORS: Record<string, ProductColor> = {
   cyan: { name: "Cyan", hex: "#3DD6F5" },
   pink: { name: "Pink", hex: "#F98FC9" },
   grey: { name: "Grey", hex: "#6D6E71" },
+  // Jen's later drop adds three that are not solid colours. Lime is her
+  // Base/Lime; the purple-to-cyan fade on two of the hoodies runs from the
+  // cart's accent purple into Base/Cyan, top to bottom as it is dyed; and
+  // Confetti is the glasses case's star print, drawn as a wheel of the
+  // print's own colours.
+  lime: { name: "Lime", hex: "#DDFF46" },
+  fade: {
+    name: "Fade",
+    hex: "#A34FDE",
+    swatch: "linear-gradient(180deg, #A34FDE, #3DD6F5)",
+  },
+  confetti: {
+    name: "Confetti",
+    hex: "#F98FC9",
+    swatch: "conic-gradient(#F98FC9, #DDFF46, #3DD6F5, #405BFF, #F98FC9)",
+  },
 };
 
 const APPAREL_SIZES = ["XS", "S", "M", "L", "XL", "2XL"];
@@ -328,7 +346,7 @@ export const BEST_SELLERS: Product[] = [
 // hero already makes: "first dibs on new merch — before it drops for everyone
 // else." Her designs show the same catalogue to both personas, so this tier
 // is ours rather than hers, built from product photography she shot but did
-// not place on any screen.
+// not place on any screen, and from the loudest piece in her later drop.
 export const MEMBERS_ONLY: Product[] = [
   {
     slug: "togglewear-crewneck",
@@ -354,6 +372,315 @@ export const MEMBERS_ONLY: Product[] = [
       "Embroidered LaunchDarkly logo on front chest",
       "Ribbed cuffs and hem",
       "Members-only colourway",
+    ],
+  },
+  {
+    slug: "pixel-hoodie",
+    name: "Pixel Hoodie",
+    priceUsd: 78,
+    description: "All-over glitch print, brushed fleece",
+    image: "/images/products/pixel-hoodie-model-2.png",
+    category: "apparel",
+    isNew: true,
+    membersOnly: true,
+    badge: "Early Access",
+    gallery: [
+      "/images/products/pixel-hoodie-model-2.png",
+      "/images/products/pixel-hoodie-model-1.png",
+    ],
+    sizes: APPAREL_SIZES,
+    defaultSize: "M",
+    detail:
+      "Rendered at full resolution, bugs included. A checkerboard glitch print in lime, cyan, blue and pink runs edge to edge, over a brushed fleece that is softer than it has any right to look.\n\nMembers get it before anyone else does.",
+    features: [
+      "All-over glitch print",
+      "Brushed midweight fleece",
+      "Ribbed cuffs and hem",
+      "Members-only early access",
+    ],
+  },
+];
+
+// Jen's second round of apparel and accessories, from the bottom of the
+// "Product images - Apparel" (63:4166) and "Product images - Accessories"
+// (160:1198) frames, in the order she laid them out. The pixel hoodie from
+// the same round is in MEMBERS_ONLY above.
+//
+// A list of their own for the same reason as TECH: the homepage keeps the
+// best sellers grid she designed, and these live in their categories and in
+// New Drops. All of them are new, since they are the newest thing in the shop.
+//
+// Where she shot a piece in two colourways, both photos are in the gallery
+// and both are offered as colours; a single colourway gets no colour block.
+export const NEW_ARRIVALS: Product[] = [
+  {
+    slug: "heather-crewneck",
+    name: "Heather Crewneck",
+    priceUsd: 54,
+    description: "Midweight fleece, heather grey",
+    image: "/images/products/crewneck-heather-model.png",
+    category: "apparel",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/crewneck-heather-model.png"],
+    sizes: APPAREL_SIZES,
+    defaultSize: "M",
+    detail:
+      "The stable release. A heather grey crewneck in midweight fleece with the mark printed small on the chest, for the days that call for something quieter than a hoodie.\n\nRelaxed through the body, with ribbed cuffs and hem.",
+    features: [
+      "Midweight cotton-blend fleece",
+      "Printed LaunchDarkly mark on chest",
+      "Ribbed cuffs and hem",
+      "Relaxed fit",
+    ],
+  },
+  {
+    slug: "big-mark-hoodie",
+    name: "Big Mark Hoodie",
+    priceUsd: 74,
+    description: "Oversized print, heavyweight fleece",
+    image: "/images/products/big-mark-hoodie-gradient.png",
+    category: "apparel",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: [
+      "/images/products/big-mark-hoodie-gradient.png",
+      "/images/products/big-mark-hoodie-black-back.png",
+    ],
+    sizes: APPAREL_SIZES,
+    defaultSize: "M",
+    colors: [COLORS.fade, COLORS.black],
+    detail:
+      "Shipped at 100%. The mark, printed big enough to read from across the expo hall: across the chest on the purple-to-cyan fade, across the back on the black.\n\nHeavyweight fleece with a lined hood and a relaxed fit.",
+    features: [
+      "Oversized LaunchDarkly mark",
+      "Heavyweight cotton-blend fleece",
+      "Lined hood",
+      "In Fade or Black",
+    ],
+  },
+  {
+    slug: "arrow-hoodie",
+    name: "Arrow Hoodie",
+    priceUsd: 68,
+    description: "Midweight fleece, printed mark",
+    image: "/images/products/arrow-hoodie-gradient.png",
+    category: "apparel",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: [
+      "/images/products/arrow-hoodie-gradient.png",
+      "/images/products/arrow-hoodie-black.png",
+    ],
+    sizes: APPAREL_SIZES,
+    defaultSize: "M",
+    colors: [COLORS.fade, COLORS.black],
+    detail:
+      "Pointed at production. The arrow mark, centre chest, on a midweight hoodie dyed from purple into cyan, or in plain black for the days you would rather blend in.\n\nTrue to size, with a lined hood and ribbed cuffs.",
+    features: [
+      "Printed LaunchDarkly mark, centre chest",
+      "Midweight cotton-blend fleece",
+      "Lined hood and ribbed cuffs",
+      "In Fade or Black",
+    ],
+  },
+  {
+    slug: "togglewear-visor",
+    name: "ToggleWear Visor",
+    priceUsd: 26,
+    description: "Cotton twill, adjustable strap",
+    image: "/images/products/visor-product.png",
+    category: "apparel",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: [
+      "/images/products/visor-model.png",
+      "/images/products/visor-product.png",
+    ],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "All of the brim, none of the overhead. A natural cotton twill visor with the LaunchDarkly wordmark embroidered across the front, for sunny conference patios and the walk between them.\n\nAdjustable strap at the back fits most heads.",
+    features: [
+      "Natural cotton twill",
+      "Embroidered LaunchDarkly wordmark",
+      "Curved brim",
+      "Adjustable back strap",
+    ],
+  },
+  {
+    slug: "glasses-case",
+    name: "Glasses Case",
+    priceUsd: 22,
+    description: "Fold-over felt, magnetic close",
+    image: "/images/products/glasses-case-pattern.png",
+    category: "accessories",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: [
+      "/images/products/glasses-case-pattern.png",
+      "/images/products/glasses-case-lime.png",
+    ],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    colors: [COLORS.confetti, COLORS.lime],
+    detail:
+      "Somewhere safe to park your lenses between screens. A slim fold-over case in pressed felt that snaps shut on a magnet, in a loud star print or plain lime with the mark on the flap.\n\nFits most glasses and sunglasses.",
+    features: [
+      "Pressed felt shell",
+      "Magnetic fold-over closure",
+      "Soft lining",
+      "In Confetti or Lime",
+    ],
+  },
+  {
+    slug: "can-cooler",
+    name: "Can Cooler",
+    priceUsd: 10,
+    description: "Neoprene sleeve, fits 12oz cans",
+    image: "/images/products/can-cooler.png",
+    category: "accessories",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/can-cooler.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Keeps the cold path cold. A neoprene sleeve in a purple-to-orange fade with the mark near the base, for the happy hour after the launch.\n\nFits a standard 12oz can and folds flat into a pocket.",
+    features: [
+      "Insulating neoprene",
+      "Fits 12oz cans",
+      "Folds flat",
+      "Printed LaunchDarkly mark",
+    ],
+  },
+  {
+    slug: "sport-bottle",
+    name: "Sport Bottle",
+    priceUsd: 34,
+    description: "24oz insulated, lime fade",
+    image: "/images/products/sport-bottle.png",
+    category: "accessories",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/sport-bottle.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Hydration with a short feedback loop. A double-walled bottle that fades from cream into lime, with the wordmark running up the side and a strap lid that hooks onto a bag.\n\nCold for 24 hours, hot for 12.",
+    features: [
+      "24oz double-walled stainless steel",
+      "Strap lid with leakproof seal",
+      "Vertical LaunchDarkly wordmark",
+      "Cold 24 hours, hot 12",
+    ],
+  },
+  {
+    slug: "compact-umbrella",
+    name: "Compact Umbrella",
+    priceUsd: 36,
+    description: "Auto open, gradient canopy",
+    image: "/images/products/umbrella.png",
+    category: "accessories",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/umbrella.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Graceful degradation for the weather. A compact umbrella with a canopy that runs from pink through orange to violet, and the wordmark printed across one panel.\n\nOpens at the push of a button and folds down to fit a backpack.",
+    features: [
+      "One-touch auto open",
+      "Gradient canopy",
+      "Printed LaunchDarkly wordmark",
+      "Folds to backpack size",
+    ],
+  },
+  {
+    slug: "spiral-notebook",
+    name: "Spiral Notebook",
+    priceUsd: 14,
+    description: "Pocket size, dot grid",
+    image: "/images/products/spiral-notebook.png",
+    category: "accessories",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/spiral-notebook.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "For ideas that are not ready for a ticket yet. A pocket notebook in a lime fade with the mark on the cover, bound at the top so it flips open in one hand.\n\nDot grid pages, easy to tear out.",
+    features: [
+      "Pocket size, top bound",
+      "Dot grid pages",
+      "Lime fade cover",
+      "Printed LaunchDarkly mark",
+    ],
+  },
+  {
+    slug: "hardcover-notebook",
+    name: "Hardcover Notebook",
+    priceUsd: 24,
+    description: "A5, lined, elastic closure",
+    image: "/images/products/hardcover-notebook-front.png",
+    category: "accessories",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: [
+      "/images/products/hardcover-notebook-front.png",
+      "/images/products/hardcover-notebook-desk.png",
+    ],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "The design doc, before it is a doc. A black hardcover notebook with the mark on the cover, an elastic band to keep it shut and a ribbon to keep your place.\n\nA5, with lined ivory pages.",
+    features: [
+      "A5 hardcover",
+      "Lined ivory pages",
+      "Elastic closure and ribbon marker",
+      "Printed LaunchDarkly mark",
+    ],
+  },
+  {
+    slug: "leather-keychain",
+    name: "Leather Keychain",
+    priceUsd: 16,
+    description: "Black leather loop, split ring",
+    image: "/images/products/keychain.png",
+    category: "accessories",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/keychain.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "One ring to hold the keys to prod. A folded black leather loop with the wordmark stamped down its length, on a split ring that takes a whole bunch of keys.\n\nSoftens and darkens with use.",
+    features: [
+      "Folded black leather",
+      "Stamped LaunchDarkly wordmark",
+      "Steel split ring",
+      "Softens with use",
+    ],
+  },
+  {
+    slug: "pixel-sticker",
+    name: "Pixel Sticker",
+    priceUsd: 6,
+    description: "Large glitch-print vinyl sticker",
+    image: "/images/products/pixel-sticker.png",
+    category: "accessories",
+    isNew: true,
+    badge: "Limited Run",
+    gallery: ["/images/products/pixel-sticker.png"],
+    sizes: ONE_SIZE,
+    defaultSize: "One size",
+    detail:
+      "Ship a patch. One large square sticker in a checkerboard glitch print, with the wordmark in the middle, for a laptop lid that has room for a statement.\n\nWeatherproof vinyl with a matte finish.",
+    features: [
+      "Large square vinyl sticker",
+      "Glitch print with LaunchDarkly wordmark",
+      "Weatherproof, matte finish",
+      "Peels off clean",
     ],
   },
 ];
@@ -620,7 +947,12 @@ export const TECH: Product[] = [
   },
 ];
 
-export const ALL_PRODUCTS: Product[] = [...BEST_SELLERS, ...TECH, ...MEMBERS_ONLY];
+export const ALL_PRODUCTS: Product[] = [
+  ...BEST_SELLERS,
+  ...NEW_ARRIVALS,
+  ...TECH,
+  ...MEMBERS_ONLY,
+];
 
 export function productBySlug(slug: string) {
   return ALL_PRODUCTS.find((p) => p.slug === slug);
@@ -739,7 +1071,7 @@ export function productsFor(
   variant: PricingVariant,
   filter?: ProductFilter,
 ): Product[] {
-  const catalogue = [...bestSellersFor(variant), ...TECH];
+  const catalogue = [...bestSellersFor(variant), ...NEW_ARRIVALS, ...TECH];
   if (!filter) return catalogue;
   if (filter === "new") return catalogue.filter((p) => p.isNew);
   return catalogue.filter((p) => p.category === filter);
