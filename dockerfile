@@ -1,13 +1,16 @@
-# FROM node:18-alpine AS deps
-FROM public.ecr.aws/docker/library/node:22-alpine AS deps
+# Docker's official Node image, from Google's public mirror of Docker Hub.
+# Amazon's public registry (public.ecr.aws) refuses anonymous pulls once a
+# data limit shared by GitHub's runners is used up (429 toomanyrequests).
+ARG NODE_IMAGE=mirror.gcr.io/library/node:22-alpine
+
+FROM ${NODE_IMAGE} AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --legacy-peer-deps
 
-# FROM node:18-alpine AS builder
-FROM public.ecr.aws/docker/library/node:22-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -16,8 +19,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
-# FROM node:18-alpine AS runner
-FROM public.ecr.aws/docker/library/node:22-alpine AS runner
+FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
