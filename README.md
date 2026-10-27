@@ -319,6 +319,7 @@ The Create and Rebuild workflows do the same work:
 4. **Build and push the image** to the `ld-demo-togglewear` ECR repository.
 5. **Deploy** `deploy_files/deploy.yaml` into the `<name>-togglewear` namespace on the shared `ld-core-demo-eks` cluster: a deployment, a service and an ingress with a TLS certificate. `update_k8s_deploy_file.py` fills in the namespace, host and image.
 6. **Point DNS** at the cluster's ingress with a Route 53 CNAME for `<name>-togglewear.launchdarklydemos.com`.
+7. **Check everything was built.** `check_build.py` reads the project back and compares it with `demo_resources.py`, since DemoBuilder logs a failed resource and carries on. If anything is missing, it lists it on the run's summary page and fails the step. The store is already online by then, and the provisioning app tells the user part of their project didn't build. To check a project by hand, run `python check_build.py <project-key>` with `LD_API_KEY` set; it only reads.
 
 The Create and Rebuild workflows also report their progress to the demo portal's records Lambda, under the user key `<name>-togglewear`. The Delete workflow reports to a webhook instead, when it is given one.
 
@@ -363,6 +364,7 @@ The Create and Rebuild workflows also report their progress to the demo portal's
     └── demo_provisioning_scripts/
         ├── demo_resources.py   Every LaunchDarkly resource, as tables
         ├── DemoBuilder.py      Builds the project from those tables
+        ├── check_build.py      Confirms the build made all of them
         ├── LDPlatform.py       The LaunchDarkly API client
         ├── results_generator.py, LDGeneratorsRunner.py   Build-time results
         ├── run_optimization.py Reruns an agent optimization on Bedrock

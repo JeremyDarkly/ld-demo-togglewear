@@ -246,6 +246,11 @@ jobs:
       - name: Remove .env file
         run: rm ./.env.production
 
+      # Last, so a missing piece never keeps the store offline. The
+      # provisioning app finds this step by its name; rename both together.
+      - name: Check everything was built
+        run: python ./.github/workflows/demo_provisioning_scripts/check_build.py
+
   update-workflow-record-success:
     runs-on: ubuntu-latest
     needs: [provisioning_demo_environment]
