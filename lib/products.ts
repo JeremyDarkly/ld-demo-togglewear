@@ -323,7 +323,6 @@ export const BEST_SELLERS: Product[] = [
     description: "Heavyweight cotton, relaxed fit",
     image: "/images/products/tee-white-hanger.png",
     category: "apparel",
-    isNew: true,
     badge: "Limited Run",
     gallery: [
       "/images/products/polo-white-model.png",
@@ -407,8 +406,12 @@ export const MEMBERS_ONLY: Product[] = [
 // the same round is in MEMBERS_ONLY above.
 //
 // A list of their own for the same reason as TECH: the homepage keeps the
-// best sellers grid she designed, and these live in their categories and in
-// New Drops. All of them are new, since they are the newest thing in the shop.
+// best sellers grid she designed, and these live in their categories.
+//
+// Only three carry the New badge, one hoodie and two accessories. New Drops
+// is kept to a handful across the whole shop (Jen's three from her design,
+// one tech piece, these three and the members' two), because a badge on half
+// the catalogue stops meaning anything.
 //
 // Where she shot a piece in two colourways, both photos are in the gallery
 // and both are offered as colours; a single colourway gets no colour block.
@@ -420,7 +423,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "Midweight fleece, heather grey",
     image: "/images/products/crewneck-heather-model.png",
     category: "apparel",
-    isNew: true,
     badge: "Limited Run",
     gallery: ["/images/products/crewneck-heather-model.png"],
     sizes: APPAREL_SIZES,
@@ -466,7 +468,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "Midweight fleece, printed mark",
     image: "/images/products/arrow-hoodie-gradient.png",
     category: "apparel",
-    isNew: true,
     badge: "Limited Run",
     gallery: [
       "/images/products/arrow-hoodie-gradient.png",
@@ -491,7 +492,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "Cotton twill, adjustable strap",
     image: "/images/products/visor-product.png",
     category: "apparel",
-    isNew: true,
     badge: "Limited Run",
     gallery: [
       "/images/products/visor-model.png",
@@ -540,7 +540,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "Neoprene sleeve, fits 12oz cans",
     image: "/images/products/can-cooler.png",
     category: "accessories",
-    isNew: true,
     badge: "Limited Run",
     gallery: ["/images/products/can-cooler.png"],
     sizes: ONE_SIZE,
@@ -561,7 +560,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "24oz insulated, lime fade",
     image: "/images/products/sport-bottle.png",
     category: "accessories",
-    isNew: true,
     badge: "Limited Run",
     gallery: ["/images/products/sport-bottle.png"],
     sizes: ONE_SIZE,
@@ -603,7 +601,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "Pocket size, dot grid",
     image: "/images/products/spiral-notebook.png",
     category: "accessories",
-    isNew: true,
     badge: "Limited Run",
     gallery: ["/images/products/spiral-notebook.png"],
     sizes: ONE_SIZE,
@@ -624,7 +621,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "A5, lined, elastic closure",
     image: "/images/products/hardcover-notebook-front.png",
     category: "accessories",
-    isNew: true,
     badge: "Limited Run",
     gallery: [
       "/images/products/hardcover-notebook-front.png",
@@ -648,7 +644,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "Black leather loop, split ring",
     image: "/images/products/keychain.png",
     category: "accessories",
-    isNew: true,
     badge: "Limited Run",
     gallery: ["/images/products/keychain.png"],
     sizes: ONE_SIZE,
@@ -669,7 +664,6 @@ export const NEW_ARRIVALS: Product[] = [
     description: "Large glitch-print vinyl sticker",
     image: "/images/products/pixel-sticker.png",
     category: "accessories",
-    isNew: true,
     badge: "Limited Run",
     gallery: ["/images/products/pixel-sticker.png"],
     sizes: ONE_SIZE,
@@ -890,7 +884,6 @@ export const TECH: Product[] = [
     description: "Noise cancelling, 30-hour battery",
     image: "/images/products/headphones-stand.png",
     category: "tech",
-    isNew: true,
     badge: "Limited Run",
     gallery: ["/images/products/headphones-stand.png"],
     sizes: ONE_SIZE,
@@ -911,7 +904,6 @@ export const TECH: Product[] = [
     description: "Four Bluetooth trackers, four colors",
     image: "/images/products/key-finders.png",
     category: "tech",
-    isNew: true,
     badge: "Limited Run",
     gallery: ["/images/products/key-finders.png"],
     sizes: ONE_SIZE,
