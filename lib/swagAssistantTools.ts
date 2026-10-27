@@ -22,7 +22,7 @@ import { sizeChartFor } from "@/lib/sizeGuide";
 // function here is skipped with a warning.
 //
 // Every tool reads the catalogue as this shopper sees it, so a non-member
-// cannot be told about the members-only crewneck by asking the assistant
+// cannot be told about the members-only items by asking the assistant
 // rather than the search box.
 
 // The shopper the request was made as. A guest's context carries no key we
@@ -201,7 +201,7 @@ export function swagAssistantTools(context: LDContext): SwagAssistantTools {
               },
             ],
         early_access: member
-          ? "Sees members-only drops, such as the ToggleWear Crewneck, before anyone else"
+          ? "Sees members-only drops, such as the ToggleWear Crewneck and the Pixel Hoodie, before anyone else"
           : null,
         shipping: "Free on every order, delivered in 3 to 5 business days",
         loyalty_points: status.points,

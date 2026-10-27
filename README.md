@@ -343,7 +343,7 @@ The Create and Rebuild workflows also report their progress to the demo portal's
 │   ├── hood/                 The Under the hood panel and its code examples
 │   └── ui/                   Shared pieces, including the LaunchDarkly provider
 ├── lib/                      Data and server logic
-│   ├── products.ts           The catalog: best sellers, tech and members-only
+│   ├── products.ts           The catalog: best sellers, new arrivals, tech and members-only
 │   ├── shopper.ts            The shoppers and their LaunchDarkly contexts
 │   ├── fraudAgent.ts         The Order Review's risk rules and thresholds
 │   ├── aiServer.ts           The LaunchDarkly AI client and shared AI helpers
