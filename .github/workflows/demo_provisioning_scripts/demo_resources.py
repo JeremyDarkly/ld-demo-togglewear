@@ -1895,7 +1895,9 @@ def _playground_variant(config_key, variation_key=None, model=None, user=None):
     max_tokens = parameters.get('maxTokens')
     # From Anthropic, Opus 5.5 thinks before it writes, which spends tokens
     # Bedrock's does not, and at 400 a note can run out before its first word.
-    if model == _OPUS and max_tokens:
+    # GPT-6 Luna, standing in for Nova, reasons the same way and at 300 some
+    # replies come back empty.
+    if model in (_OPUS, _NOVA) and max_tokens:
         max_tokens = max(max_tokens, 1500)
     return {'name': f"{spec['config']['config_name']} · {model_name}",
             'provider': provider,
