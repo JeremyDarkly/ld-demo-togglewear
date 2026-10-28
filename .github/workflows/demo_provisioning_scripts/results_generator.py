@@ -76,6 +76,8 @@ ENVIRONMENT_KEY = "production"
 HEADERS = {
     "Authorization": LD_API_KEY,
     "Content-Type": "application/json",
+    # LaunchDarkly retires every other version on Dec 31 2026.
+    "LD-API-Version": "20240415",
 }
 
 # 06 — Live Inventory Service, the healthy scenario
@@ -342,7 +344,8 @@ def _get_json(url, retries=3):
 
 
 def get_all_flags_by_tag(tag):
-    data = _get_json(f"{LD_API_URL}/flags/{PROJECT_KEY}?tag={tag}")
+    # The flag list comes 20 to a page unless asked; 100 is its largest.
+    data = _get_json(f"{LD_API_URL}/flags/{PROJECT_KEY}?tag={tag}&limit=100")
     if not data:
         return []
     return [item["key"] for item in data.get("items", [])]

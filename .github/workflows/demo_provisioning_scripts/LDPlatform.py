@@ -109,6 +109,9 @@ class LDPlatform:
     MAX_TRANSIENT_RETRIES = 3
     TRANSIENT_STATUS_CODES = (500, 502, 503, 504)
 
+    PUBLIC_API = "https://app.launchdarkly.com/api/v2/"
+    API_VERSION = "20240415"
+
     def getrequest(self, method, url, json=None, headers=None, data=None):
         """Make an API request with connection reuse and rate-limit handling.
 
@@ -122,7 +125,16 @@ class LDPlatform:
           sleeps only until the advertised reset time (capped) so the
           next call doesn't hit a 429.
         - Always returns a requests.Response (never a string).
+        - Sends LD-API-Version 20240415 on public API calls that don't name a
+          version. Without it a call uses its token's version, and LaunchDarkly
+          retires every other version on Dec 31 2026. Calls that ask for beta
+          keep it, and the internal routes, which aren't versioned, are left
+          alone.
         """
+        if url.startswith(self.PUBLIC_API) and not any(
+            k.lower() == "ld-api-version" for k in (headers or {})
+        ):
+            headers = {**(headers or {}), "LD-API-Version": self.API_VERSION}
         response = None
         transient_attempts = 0
         for attempt in range(self.MAX_RETRIES + 1):
