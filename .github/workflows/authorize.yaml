@@ -7,8 +7,6 @@ name: Authorize
 #   mgarza86             Melanie. The Demo Hub starts every user's Create and
 #                        Rebuild with her token, so all of those count as her.
 #   kevincloud           Kevin.
-#   github-actions[bot]  The Rebuild workflows Rebuild All starts, which it can
-#                        only do once it has passed this check itself.
 #
 # If the Demo Hub's GH_TOKEN is ever replaced with someone else's, add their
 # account here first, or every Create and Rebuild will stop at this check.
@@ -29,7 +27,7 @@ jobs:
           STARTED_BY: ${{ github.triggering_actor }}
         run: |
           case "$STARTED_BY" in
-            mgarza86|kevincloud|github-actions\[bot\])
+            mgarza86|kevincloud)
               echo "Started by $STARTED_BY."
               ;;
             *)

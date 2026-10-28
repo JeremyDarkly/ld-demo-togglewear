@@ -37,7 +37,6 @@ Environments are created and managed by GitHub Actions workflows, all started by
 | **Create Demo Environment** (`cloud_demo_environment_create.yaml`) | Builds a new environment: a LaunchDarkly project, a container image and a pod, and a DNS record. |
 | **Rebuild Demo Environment (Delete + Create)** (`cloud_demo_environment_recreate.yaml`) | Deletes your environment and builds it again from the current code. Use it to pick up changes or to reset a demo that has drifted. |
 | **Delete Demo Environment** (`cloud_demo_environment_deprovisioning.yaml`) | Deletes your environment: the LaunchDarkly project, its reset key and code references, the Kubernetes namespace and the DNS record. |
-| **Rebuild All Demo Environments** (`cloud_demo_environment_recreate_all.yaml`) | Starts a Rebuild for every ToggleWear environment on the cluster, skipping any usernames you list. Has a dry run that only lists them. |
 | **Add Code References** (`ld-add-code-references.yaml`) | Refreshes one user's code references by hand. Create and Rebuild already add them. |
 
 A build takes around fifteen minutes, ten of which are the generators filling in experiment and rollout results (see [How provisioning works](#how-provisioning-works)). When it finishes:
