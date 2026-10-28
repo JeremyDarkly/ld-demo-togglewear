@@ -100,6 +100,23 @@ jobs:
             OFFSET=$((OFFSET + 100))
           done
 
+      # Code references repositories also belong to the account. Each user
+      # has their own, named as in the Add code references build step.
+      - name: Delete the store's code references
+        if: ${{ !cancelled() }}
+        env:
+          LD_API_KEY: ${{ secrets.LD_EAP_API_KEY }}
+          REPO_NAME: ld-demo-togglewear-${{ github.event.inputs.name }}
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "Authorization: $LD_API_KEY" -H "LD-API-Version: 20240415" \
+            "https://app.launchdarkly.com/api/v2/code-refs/repositories/$REPO_NAME")
+          case "$STATUS" in
+            204) echo "Deleted the code references" ;;
+            404) echo "No code references to delete" ;;
+            *) echo "Could not delete the code references (HTTP $STATUS), leaving them" ;;
+          esac
+
       - name: Check Namespace in Kubernetes
         uses: kodermax/kubectl-aws-eks@master
         with:

@@ -1,0 +1,5 @@
+# Left out of LaunchDarkly Code References: the build scripts name every flag
+# to create it, which would bury where the store itself uses them.
+.github/
+README.md
+docs/

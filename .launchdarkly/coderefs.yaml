@@ -1,0 +1,9 @@
+# Settings for LaunchDarkly Code References (ld-find-code-refs), which the
+# Create and Rebuild workflows run so every flag shows where the store uses it.
+#
+# By default it only matches a flag key in quotes, and the React components
+# read flags unquoted, as in `const { earlyAccessDrop } = useFlags()`. The
+# keys are already camelCase, so a camelcase alias is the key itself, and
+# aliases match wherever they appear.
+aliases:
+  - type: camelcase

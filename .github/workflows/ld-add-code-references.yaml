@@ -16,14 +16,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Create and Rebuild already do this; this refreshes one user's by hand.
+      # Same settings as their "Add code references" step, so the two write
+      # to the same per-user repository rather than over each other's.
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 11
-          
+
       - name: LaunchDarkly Code References
-        uses: launchdarkly/find-code-references@v2.12.0
+        uses: launchdarkly/find-code-references@v2.18.4
         with:
           accessToken: ${{ env.LD_API_KEY }}
           projKey: ${{ env.LD_PROJECT_KEY }}
-          repoName: main
+          repoName: ld-demo-togglewear-${{ github.event.inputs.name }}
+          lookback: 0

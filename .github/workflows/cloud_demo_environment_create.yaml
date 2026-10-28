@@ -248,6 +248,20 @@ jobs:
       - name: Remove .env file
         run: rm ./.env.production
 
+      # Fills in each flag's Code references tab. A repository name per user,
+      # because every upload replaces whatever was under its name: shared, it
+      # would keep only whoever ran last. .launchdarkly/coderefs.yaml and
+      # .ldignore shape what it finds. A hiccup here never fails the build.
+      - name: Add code references
+        uses: launchdarkly/find-code-references@v2.18.4
+        continue-on-error: true
+        with:
+          accessToken: ${{ env.LD_API_KEY }}
+          projKey: ${{ env.LD_PROJECT_KEY }}
+          repoName: ld-demo-togglewear-${{ env.DEMO_USER }}
+          lookback: 0
+          ignoreServiceErrors: true
+
       # Last, so a missing piece never keeps the store offline. The
       # provisioning app finds this step by its name; rename both together.
       - name: Check everything was built
