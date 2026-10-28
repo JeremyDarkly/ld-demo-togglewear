@@ -33,10 +33,14 @@ jobs:
     outputs:
       environments: ${{ steps.build_list.outputs.environments }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up kubectl
+        uses: ./.github/actions/setup-kubectl
+
       - name: List demo deployments in Kubernetes
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: get deployments --all-namespaces --no-headers -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name > deployments.txt
+        run: kubectl get deployments --all-namespaces --no-headers -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name > deployments.txt
 
       - name: Build environment list with exclusions
         id: build_list

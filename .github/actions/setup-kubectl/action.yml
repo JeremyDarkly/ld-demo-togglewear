@@ -1,0 +1,56 @@
+name: Set up kubectl
+description: Installs kubectl and aws-iam-authenticator and points kubectl at the cluster in KUBE_CONFIG_DATA.
+
+# Replaces kodermax/kubectl-aws-eks, which built a Docker image on every run
+# from a third party's master branch and looked up a download through
+# GitHub's API without a token. When that lookup was rate limited, builds
+# failed before they started, and whatever its owner pushed ran next time with
+# the AWS keys and the cluster login.
+#
+# The same tools it gave the build, at the same versions: kubectl v1.23.0 (the
+# KUBECTL_VERSION every workflow sets) and aws-iam-authenticator v0.6.11, for
+# a kubeconfig that signs in with it. Both come straight from their publishers'
+# download URLs, which aren't rate limited like the API, and are checked
+# against the SHA-256 each publisher lists, so a changed file stops the build.
+#
+# Run it before anything is created, so a failed download stops the build
+# with nothing half built, as the old action's did.
+
+runs:
+  using: composite
+  steps:
+    - name: Install kubectl and aws-iam-authenticator
+      shell: bash
+      run: |
+        set -euo pipefail
+        BIN="$RUNNER_TEMP/kube-bin"
+        mkdir -p "$BIN"
+
+        curl -fsSL --retry 5 --retry-all-errors -o "$BIN/kubectl" \
+          https://dl.k8s.io/release/v1.23.0/bin/linux/amd64/kubectl
+        echo "2d0f5ba6faa787878b642c151ccb2c3390ce4c1e6c8e2b59568b3869ba407c4f  $BIN/kubectl" | sha256sum -c -
+
+        curl -fsSL --retry 5 --retry-all-errors -o "$BIN/aws-iam-authenticator" \
+          https://github.com/kubernetes-sigs/aws-iam-authenticator/releases/download/v0.6.11/aws-iam-authenticator_0.6.11_linux_amd64
+        echo "8593d0c5125f8fba4589008116adf12519cdafa56e1bfa6b11a277e2886fc3c8  $BIN/aws-iam-authenticator" | sha256sum -c -
+
+        chmod +x "$BIN/kubectl" "$BIN/aws-iam-authenticator"
+        # Ahead of the runner's own kubectl, which is a newer version.
+        echo "$BIN" >> "$GITHUB_PATH"
+
+    - name: Write the cluster login
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "${KUBE_CONFIG_DATA:-}" ]; then
+          echo "::error::KUBE_CONFIG_DATA is not set"
+          exit 1
+        fi
+        umask 077
+        printf '%s' "$KUBE_CONFIG_DATA" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+        if [ ! -s "$RUNNER_TEMP/kubeconfig" ]; then
+          echo "::error::KUBE_CONFIG_DATA didn't decode to a kubeconfig"
+          exit 1
+        fi
+        echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+        "$RUNNER_TEMP/kube-bin/kubectl" version --client

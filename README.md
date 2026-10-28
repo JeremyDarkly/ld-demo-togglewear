@@ -359,8 +359,10 @@ The Create and Rebuild workflows also report their progress to the demo portal's
 ├── styles/                   Global CSS and the Söhne fonts
 ├── dockerfile                The production image
 ├── docs/api_endpoint_usage.csv  Which LaunchDarkly REST endpoints the build calls
+├── .github/actions/setup-kubectl/  Installs pinned, checksum-checked kubectl for the workflows
 └── .github/workflows/
     ├── cloud_demo_environment_*.yaml   The workflows above
+    ├── authorize.yaml                  Stops any run Melanie or Kevin didn't start
     ├── deploy_files/deploy.yaml        The Kubernetes manifest
     ├── update_k8s_deploy_file.py
     └── demo_provisioning_scripts/

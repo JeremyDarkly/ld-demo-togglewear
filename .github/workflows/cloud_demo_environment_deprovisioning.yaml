@@ -70,6 +70,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set up kubectl
+        uses: ./.github/actions/setup-kubectl
+
       - name: Install LaunchDarkly CLI
         run: npm install -g @launchdarkly/ldcli
       
@@ -123,15 +126,11 @@ jobs:
           esac
 
       - name: Check Namespace in Kubernetes
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: get namespace ${{ env.DEMO_NAMESPACE }} &>/dev/null && echo "namespace_exists=true" >> $GITHUB_ENV || echo "namespace_exists=false" >> $GITHUB_ENV
+        run: kubectl get namespace ${{ env.DEMO_NAMESPACE }} &>/dev/null && echo "namespace_exists=true" >> $GITHUB_ENV || echo "namespace_exists=false" >> $GITHUB_ENV
 
       - name: Delete Kubernetes Namespace
         if: env.namespace_exists == 'true'
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: delete namespace ${{ env.DEMO_NAMESPACE }}
+        run: kubectl delete namespace ${{ env.DEMO_NAMESPACE }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1

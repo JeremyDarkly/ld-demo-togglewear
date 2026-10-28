@@ -70,6 +70,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set up kubectl
+        uses: ./.github/actions/setup-kubectl
+
       - name: Update Workflow Record Status to In Progress
         run: |
           echo "Updating workflow record status to in_progress..."
@@ -96,15 +99,11 @@ jobs:
           ldcli projects delete --project ${{ env.LD_PROJECT_KEY }} || echo "Project may not exist, continuing..."
 
       - name: Check Namespace in Kubernetes
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: get namespace ${{ env.DEMO_NAMESPACE }} &>/dev/null && echo "namespace_exists=true" >> $GITHUB_ENV || echo "namespace_exists=false" >> $GITHUB_ENV
+        run: kubectl get namespace ${{ env.DEMO_NAMESPACE }} &>/dev/null && echo "namespace_exists=true" >> $GITHUB_ENV || echo "namespace_exists=false" >> $GITHUB_ENV
 
       - name: Delete Kubernetes Namespace
         if: env.namespace_exists == 'true'
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: delete namespace ${{ env.DEMO_NAMESPACE }}
+        run: kubectl delete namespace ${{ env.DEMO_NAMESPACE }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -164,6 +163,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Set up kubectl
+        uses: ./.github/actions/setup-kubectl
 
       - name: Set up Python
         uses: actions/setup-python@v2
@@ -227,20 +229,14 @@ jobs:
           IMAGE: ${{ steps.login-ecr.outputs.registry }}/ld-demo-togglewear:${{ env.DEMO_NAMESPACE }}-${{ github.run_id }}
 
       - name: Check Namespace in Kubernetes
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: get namespace ${{ env.DEMO_NAMESPACE }} &>/dev/null && echo "namespace_exists=true" >> $GITHUB_ENV || echo "namespace_exists=false" >> $GITHUB_ENV
+        run: kubectl get namespace ${{ env.DEMO_NAMESPACE }} &>/dev/null && echo "namespace_exists=true" >> $GITHUB_ENV || echo "namespace_exists=false" >> $GITHUB_ENV
 
       - name: Create Namespace In Kubernetes
         if: env.namespace_exists == 'false'
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: create namespace ${{ env.DEMO_NAMESPACE }}
+        run: kubectl create namespace ${{ env.DEMO_NAMESPACE }}
 
       - name: Applying deploy file to Kubernetes
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: apply -f ./.github/workflows/deploy_files/deploy.yaml -n ${{ env.DEMO_NAMESPACE }}
+        run: kubectl apply -f ./.github/workflows/deploy_files/deploy.yaml -n ${{ env.DEMO_NAMESPACE }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -251,9 +247,7 @@ jobs:
 
       - name: Get NGINX Ingress Controller Load Balancer IP
         id: get-nginx-lb
-        uses: kodermax/kubectl-aws-eks@master
-        with:
-          args: get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' > hostname.txt && echo "NGINX_LB_HOSTNAME=$(cat hostname.txt)" >> $GITHUB_ENV
+        run: kubectl get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' > hostname.txt && echo "NGINX_LB_HOSTNAME=$(cat hostname.txt)" >> $GITHUB_ENV
 
       - name: Refresh Route 53 CNAME Record for NGINX Ingress
         run: |
