@@ -435,3 +435,4 @@ This repository and its Actions logs are **public**.
 - Never put a key, token, webhook URL or account ID in code, in a workflow's `echo`, or in a workflow expression that ends up in a printed script.
 - Secrets from GitHub are masked automatically. Anything else a workflow generates or receives as an input has to be masked with `::add-mask::` before it is used. The Delete workflow's webhook steps show how.
 - `.env`, `.env.local` and `.env.production` are git-ignored. Keep them that way.
+- Every workflow starts with `authorize.yaml`, which stops the run unless Melanie or Kevin started it. The Demo Hub starts every user's Create and Rebuild with Melanie's token, so users are unaffected. If the Demo Hub's token is ever replaced with someone else's, add their GitHub account to `authorize.yaml` first.

@@ -1,0 +1,39 @@
+name: Authorize
+
+# Every workflow here calls this first, and nothing else in it runs unless this
+# passes, because a run can read the repository's secrets and change anyone's
+# environment. Only these GitHub accounts may start one:
+#
+#   mgarza86             Melanie. The Demo Hub starts every user's Create and
+#                        Rebuild with her token, so all of those count as her.
+#   kevincloud           Kevin.
+#   github-actions[bot]  The Rebuild workflows Rebuild All starts, which it can
+#                        only do once it has passed this check itself.
+#
+# If the Demo Hub's GH_TOKEN is ever replaced with someone else's, add their
+# account here first, or every Create and Rebuild will stop at this check.
+#
+# triggering_actor rather than actor, so that re-running someone else's run
+# is checked against whoever pressed Re-run.
+
+on:
+  workflow_call:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check who started this run
+        env:
+          STARTED_BY: ${{ github.triggering_actor }}
+        run: |
+          case "$STARTED_BY" in
+            mgarza86|kevincloud|github-actions\[bot\])
+              echo "Started by $STARTED_BY."
+              ;;
+            *)
+              echo "::error::$STARTED_BY can't start ToggleWear workflows. Create and rebuild environments from the Demo Hub, or ask Melanie Garza or Kevin Cochran."
+              exit 1
+              ;;
+          esac

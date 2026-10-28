@@ -12,8 +12,12 @@ env:
   LD_API_KEY: ${{ secrets.LD_EAP_API_KEY }}
 
 jobs:
+  authorize:
+    uses: ./.github/workflows/authorize.yaml
+
   add-code-references:
     runs-on: ubuntu-latest
+    needs: [authorize]
 
     steps:
       # Create and Rebuild already do this; this refreshes one user's by hand.
