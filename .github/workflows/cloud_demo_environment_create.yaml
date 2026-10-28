@@ -62,6 +62,8 @@ jobs:
   provisioning_demo_environment:
     runs-on: ubuntu-latest
     needs: [create-workflow-record]
+    outputs:
+      check: ${{ steps.check.outcome }}
 
     steps:
       - name: Checkout code
@@ -249,6 +251,7 @@ jobs:
       # Last, so a missing piece never keeps the store offline. The
       # provisioning app finds this step by its name; rename both together.
       - name: Check everything was built
+        id: check
         run: python ./.github/workflows/demo_provisioning_scripts/check_build.py
 
   update-workflow-record-success:
@@ -286,3 +289,23 @@ jobs:
             }' \
             --cli-binary-format raw-in-base64-out \
             /tmp/lambda-response.json || echo "Failed to update workflow record, continuing anyway..."
+
+  # DMs the owner from the ToggleWear Slack app, so nobody has to keep the
+  # Demo Hub open to find out. Runs after a failure too; not after a cancel,
+  # which someone chose. The provisioning app leaves this job out of its
+  # progress bar by its name; rename both together.
+  notify-owner:
+    runs-on: ubuntu-latest
+    needs: [provisioning_demo_environment]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Tell the owner in Slack
+        run: python3 ./.github/workflows/demo_provisioning_scripts/notify_slack.py
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          BUILD: create
+          RESULT: ${{ needs.provisioning_demo_environment.result }}
+          CHECK: ${{ needs.provisioning_demo_environment.outputs.check }}
