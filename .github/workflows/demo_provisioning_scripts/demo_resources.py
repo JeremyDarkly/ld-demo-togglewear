@@ -1956,6 +1956,8 @@ PLAYGROUNDS = [
 # --quick run takes: their metadata scenarios, or how many from the top.
 # variations defaults to the one the default rule serves. user_message is
 # added to a prompt that has none of its own, filled in from the row.
+# statements names an agent optimization whose acceptance statements are
+# judged too.
 CI_EVALS = [
     # The store has it answer by filling in DECISION_SCHEMA
     # (pages/api/order-review/index.ts), so CI asks for the same. LangChain
@@ -1976,6 +1978,14 @@ CI_EVALS = [
      'scorers': ['decision-matches-points'],
      'quick': ['ordinary-member', 'just-under-value', 'high-value-platinum',
                'value-and-quantity', 'blocked-zip-gold', 'blocked-zip-small']},
+    # No judges attached, so the case-note-quality optimization's acceptance
+    # statements stand in for them, each at its own threshold.
+    {'config': 'case-note-agent',
+     'dataset': 'case_note.jsonl',
+     'scorers': ['case-note-covers-the-case'],
+     'statements': 'case-note-quality',
+     'quick': ['high-value-platinum', 'value-and-quantity', 'blocked-zip-gold',
+               'blocked-zip-small']},
     # Both of the guarded rollout's models. The scorer checks what the page
     # acts on, the size and the pairing; the judges score the note.
     {'config': 'personal-stylist',

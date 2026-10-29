@@ -32,7 +32,9 @@ from launchdarkly_ai_langchain_messages import create_langchain_messages_handler
 from launchdarkly_ai_server import AIConfig, Judge, ProviderHandler, Scorer, init_evaluations, shutdown
 from launchdarkly_ai_server.judge_scoring import numeric_score, parse_judge_response
 
-from demo_resources import AGENT_CONFIGS, AI_CONFIGS, CI_EVALS, PROMPT_SNIPPETS
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from demo_resources import AGENT_CONFIGS, AGENT_OPTIMIZATIONS, AI_CONFIGS, CI_EVALS, PROMPT_SNIPPETS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(HERE, "..", "..", "..", ".env"))
@@ -171,7 +173,90 @@ def score_stylist_reply(row, output):
     return 0.0 if [p for p in problems if "words" not in p] else 1.0
 
 
-SCORERS = {"decision-matches-points": score_decision, "stylist-reply-usable": score_stylist_reply}
+SIGNAL_POINTS = re.compile(r"with (\d+) points")
+SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+
+
+def score_case_note(row, output):
+    """1.0 when the note does what the Case Note prompt asks that code can check:
+    three or four sentences, the decision, each signal's points, and plain text.
+
+    Whether it gets the account history right and invents nothing is left to
+    the acceptance statements.
+    """
+    note = output if isinstance(output, str) else json.dumps(output)
+    metadata = row.metadata or {}
+    problems = []
+    # Order numbers and prices don't end a sentence, so a full stop counts
+    # only before a space or the end.
+    sentences = len(SENTENCE_END.findall(note.strip()))
+    if not 3 <= sentences <= 4:
+        problems.append(f"{sentences} sentences")
+    decision = metadata.get("expected_decision")
+    said = {"review": ("held", "review"), "decline": ("declin",)}.get(decision, ())
+    if said and not any(word in note.lower() for word in said):
+        problems.append(f"doesn't say it was {'held' if decision == 'review' else 'declined'}")
+    for points in sorted(set(SIGNAL_POINTS.findall(row.input or ""))):
+        if points not in note:
+            problems.append(f"no {points}-point signal")
+    if re.search(r"(^|\n)\s*([-*#]|\d+\.)\s|\*\*", note):
+        problems.append("markdown")
+    if problems and current is not None:
+        current.misses.append(Miss(row_label(metadata, row.input), "the note the prompt asks for",
+                                   "; ".join(problems), answer=note))
+    return 0.0 if problems else 1.0
+
+
+SCORERS = {"decision-matches-points": score_decision, "stylist-reply-usable": score_stylist_reply,
+           "case-note-covers-the-case": score_case_note}
+
+
+# ---- Acceptance statements ----
+#
+# An agent optimization's acceptance statements, each judged as a scorer of
+# its own, by the optimization's judge model at its threshold. For a config
+# with no judges attached, they say what a good answer is without CI having
+# a judge config of its own in LaunchDarkly, which only has what
+# demo_resources.py builds.
+STATEMENT_JUDGE = (
+    "You judge whether a response from an AI agent meets one statement. The message history "
+    "is what the agent was handed, and the response is what it wrote.\n\n"
+    "Statement: {statement}\n\n"
+    "Score from 0 to 1 how fully the response meets the statement: 1.0 when it fully does, "
+    "0.0 when it clearly doesn't. Explain your score in one or two sentences, naming what is "
+    "missing or wrong."
+)
+
+
+def statement_scorers(optimization_key):
+    optimization = next(o for o in AGENT_OPTIMIZATIONS if o["key"] == optimization_key)
+    judge = bedrock_model({"model": {"name": optimization["judge_model"],
+                                     "parameters": {"maxTokens": 500, "temperature": 0}}})
+    judge = judge.with_structured_output(JUDGE_SCHEMA)
+
+    def scorer(index, spec):
+        name = f"{optimization_key}-{index}"
+
+        async def fn(row, output):
+            verdict = await judge.ainvoke([
+                SystemMessage(STATEMENT_JUDGE.format(statement=spec["statement"])),
+                HumanMessage(judge_request(row.input or "", output)),
+            ])
+            score = numeric_score(verdict.get("score"))
+            if score is None:
+                raise ValueError(f"{name} gave no score: {verdict}")
+            if score < spec["threshold"] and current is not None:
+                current.misses.append(Miss(
+                    row_label(row.metadata, row.input), f"{name} ≥ {spec['threshold']}",
+                    f"{score:.2f}: {' '.join(str(verdict.get('reasoning')).split())[:200]}",
+                    answer=str(output), reasoning=str(verdict.get("reasoning"))))
+            if current is not None:
+                current.judge_scores.setdefault(name, []).append(score)
+            return score
+
+        return Scorer(name=name, fn=fn, threshold=spec["threshold"])
+
+    return [scorer(i, spec) for i, spec in enumerate(optimization["acceptance_statements"], 1)]
 
 
 # ---- What the judges see ----
@@ -386,6 +471,7 @@ async def run_target(evals, target, variation_key, args):
             # handed on; the datasets carry what the tools found.
             tools=[],
             criteria=[Scorer(name=name, fn=SCORERS[name]) for name in target.get("scorers", [])]
+            + (statement_scorers(target["statements"]) if "statements" in target else [])
             + [Judge(key=j["judgeConfigKey"]) for j in spec.get("judges", [])],
             concurrency=args.concurrency,
             poll_timeout_seconds=600,
