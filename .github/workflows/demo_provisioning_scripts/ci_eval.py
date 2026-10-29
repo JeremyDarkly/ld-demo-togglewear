@@ -53,6 +53,10 @@ class Miss:
     row: str
     expected: str
     actual: str
+    # In --json-out only: the answer the row was judged on, and the judge's
+    # whole reasoning.
+    answer: str = ""
+    reasoning: str = ""
 
 
 @dataclass
@@ -70,6 +74,8 @@ class Result:
     # The first few distinct errors rows raised. The SDK counts those rows as
     # errors but doesn't say why.
     row_errors: list = field(default_factory=list)
+    # judge key -> every score it gave, for the summary's mean and lowest.
+    judge_scores: dict = field(default_factory=dict)
 
 
 # ---- Scorers ----
@@ -173,10 +179,14 @@ def recording_handler(inner, result, rows_by_input, judge_context, thresholds):
             except ValueError:
                 return output  # the SDK reports it as an invalid judge output
             score = numeric_score(raw)
+            if score is not None:
+                result.judge_scores.setdefault(threshold[0], []).append(score)
             if score is not None and score < threshold[1]:
                 scenario = ((row or {}).get("metadata") or {}).get("scenario", "")
                 result.misses.append(Miss(scenario, f"{threshold[0]} ≥ {threshold[1]}",
-                                          f"{score:.2f}: {' '.join(str(reason).split())[:200]}"))
+                                          f"{score:.2f}: {' '.join(str(reason).split())[:200]}",
+                                          answer=str(user_input).rsplit("RESPONSE TO EVALUATE:\n", 1)[-1],
+                                          reasoning=str(reason)))
         return output
 
     return ProviderHandler(recorded, provides_for=inner.provides_for, capture_content=inner.capture_content)
@@ -203,14 +213,26 @@ def spec_for(config_key):
     return next(s for s in AI_CONFIGS + AGENT_CONFIGS if s["config"]["config_key"] == config_key)
 
 
-def generation_for(target, variation):
-    """The variation as demo_resources.py defines it, over what LaunchDarkly has."""
+def generation_for(target, variation, replace=()):
+    """The variation as demo_resources.py defines it, over what LaunchDarkly has.
+
+    replace is (old, new) pairs applied to its prompt, to try a change, such as
+    a negative control, without editing demo_resources.py.
+    """
     model = variation["model"]
     generation = {"model": model["modelName"], "parameters": dict(model.get("parameters", {}))}
     if "instructions" in variation:
         generation["instructions"] = fill_snippets(variation["instructions"])
     else:
         generation["messages"] = [{**m, "content": fill_snippets(m["content"])} for m in variation["messages"]]
+    for old, new in replace:
+        prompt = json.dumps(generation.get("instructions", generation.get("messages")))
+        if json.dumps(old)[1:-1] not in prompt:
+            raise SystemExit(f"error: --replace {old!r} is not in {target['config']}'s prompt")
+        if "instructions" in generation:
+            generation["instructions"] = generation["instructions"].replace(old, new)
+        else:
+            generation["messages"] = [{**m, "content": m["content"].replace(old, new)} for m in generation["messages"]]
     if "output_format" in target:
         generation["output_format"] = target["output_format"]
     return generation
@@ -251,7 +273,7 @@ async def run_target(evals, target, variation_key, args):
             key=result.key,
             dataset=rows,
             ai_config=AIConfig(key=target["config"], variation=variation_key),
-            generation=generation_for(target, variation),
+            generation=generation_for(target, variation, args.replace or ()),
             handler=recording_handler(
                 create_langchain_messages_handler(bedrock_model), result, {r["input"]: r for r in rows},
                 JUDGE_CONTEXT.get(target["config"]), await judge_thresholds(evals, spec)),
@@ -290,6 +312,9 @@ def markdown(results):
         run = f"[{r.key}]({r.url})" if r.url else r.key
         lines.append(f"| `{r.config}` | `{r.variation}` | `{r.dataset}` | {passed} | {verdict} | {run} |")
     for r in results:
+        for judge, scores in r.judge_scores.items():
+            lines.append(f"\n`{r.config}/{r.variation}` {judge}: mean {sum(scores) / len(scores):.2f}, "
+                         f"lowest {min(scores):.2f}, over {len(scores)} rows")
         if r.row_errors:
             lines += ["", f"**{r.config}/{r.variation} row errors:**", ""]
             lines += [f"- `{e}`" for e in r.row_errors]
@@ -331,6 +356,8 @@ if __name__ == "__main__":
     parser.add_argument("--config", action="append", help="only this config; repeat for more")
     parser.add_argument("--variation", help="this variation instead of the one the default rule serves")
     parser.add_argument("--quick", action="store_true", help="only the rows named in quick")
+    parser.add_argument("--replace", nargs=2, action="append", metavar=("OLD", "NEW"),
+                        help="replace OLD with NEW in the prompt; repeat for more")
     parser.add_argument("--label", default="local", help="goes in each run's key, such as pr-12")
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--summary-file", default=os.getenv("GITHUB_STEP_SUMMARY"))
