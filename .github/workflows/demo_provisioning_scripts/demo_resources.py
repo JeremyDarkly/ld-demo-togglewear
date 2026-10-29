@@ -1952,8 +1952,10 @@ PLAYGROUNDS = [
 # config as this file defines it, over the rows of its dataset in datasets/,
 # on Bedrock like the store. The project it runs in only holds the judges and
 # the evaluations it creates. scorers are ci_eval.py's own checks of each
-# answer; the config's attached judges run as well. quick names the rows a
-# --quick run takes, by their metadata scenario.
+# answer; the config's attached judges run as well. quick is the rows a
+# --quick run takes: their metadata scenarios, or how many from the top.
+# variations defaults to the one the default rule serves. user_message is
+# added to a prompt that has none of its own, filled in from the row.
 CI_EVALS = [
     # The store has it answer by filling in DECISION_SCHEMA
     # (pages/api/order-review/index.ts), so CI asks for the same. LangChain
@@ -1974,6 +1976,20 @@ CI_EVALS = [
      'scorers': ['decision-matches-points'],
      'quick': ['ordinary-member', 'just-under-value', 'high-value-platinum',
                'value-and-quantity', 'blocked-zip-gold', 'blocked-zip-small']},
+    # Both of the guarded rollout's models. The scorer checks what the page
+    # acts on, the size and the pairing; the judges score the note.
+    {'config': 'personal-stylist',
+     'dataset': 'personal_stylist.jsonl',
+     'variations': ['claude-sonnet-4-6', 'claude-opus-5-5'],
+     'scorers': ['stylist-reply-usable'],
+     'quick': 6},
+    # Both variations shoppers get. In the store it calls its tools; here it
+    # is handed what they returned, as in its playground.
+    {'config': 'swag-assistant',
+     'dataset': 'swag_assistant.jsonl',
+     'variations': ['standard', 'member-concierge'],
+     'user_message': _SWAG_USER,
+     'quick': 6},
 ]
 
 

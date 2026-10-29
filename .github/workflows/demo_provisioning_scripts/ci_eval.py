@@ -97,6 +97,19 @@ def answer_of(output):
     return answer if isinstance(answer, dict) else None
 
 
+def row_label(metadata, row_input):
+    """How a row is named in the summary: its scenario, or who and what it is about."""
+    metadata = metadata or {}
+    if metadata.get("scenario"):
+        return metadata["scenario"]
+    named = [metadata[k] for k in ("shopper", "product") if metadata.get(k)]
+    question = " ".join(str(row_input).split())[:60]
+    # A row about a product is named by it; otherwise its question says which it is.
+    if "product" in metadata:
+        return " / ".join(named)
+    return f"{' / '.join(named)}: {question}" if named else question
+
+
 def score_decision(row, output):
     """1.0 when the decision is the one the row's risk points call for.
 
@@ -109,24 +122,101 @@ def score_decision(row, output):
     answer = answer_of(output) or {}
     decision, score = answer.get("decision"), answer.get("score")
     if current is not None and (decision != expected or score != points):
-        current.misses.append(Miss(metadata.get("scenario", ""), f"{expected}, {points} points",
+        current.misses.append(Miss(row_label(metadata, row.input), f"{expected}, {points} points",
                                    f"{decision}, {score} points" if answer else f"no decision: {str(output)[:120]}"))
     return 1.0 if decision == expected else 0.0
 
 
-SCORERS = {"decision-matches-points": score_decision}
+def stylist_reply(output):
+    """The reply as the page reads it (pickedFrom in pages/api/personal-stylist/index.ts)."""
+    text = output if isinstance(output, str) else json.dumps(output)
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end < start:
+        return None
+    try:
+        reply = json.loads(text[start:end + 1])
+    except json.JSONDecodeError:
+        return None
+    return reply if isinstance(reply, dict) else None
+
+
+def score_stylist_reply(row, output):
+    """1.0 when the page can use the whole reply: a note, a pairing from the
+    catalog it was given, and a size the product comes in.
+
+    The page drops a size or a pairing it can't use and keeps the note, so a
+    reply that fails here still shows, with part of it missing.
+    """
+    variables = row.variables or {}
+    sizes = json.loads(variables.get("product_facts") or "{}").get("sizes") or []
+    catalog = {p["slug"] for p in json.loads(variables.get("catalog") or "[]")}
+    reply = stylist_reply(output)
+    problems = []
+    if reply is None:
+        problems.append("not JSON")
+    else:
+        note = reply.get("note")
+        if not isinstance(note, str) or not note.strip():
+            problems.append("no note")
+        elif len(note.split()) > 50:
+            problems.append(f"note is {len(note.split())} words")
+        if reply.get("pairing") not in catalog:
+            problems.append(f"pairing {reply.get('pairing')!r} isn't in its catalog")
+        if len(sizes) > 1 and reply.get("size") not in sizes:
+            problems.append(f"size {reply.get('size')!r} isn't one of {', '.join(sizes)}")
+    if problems and current is not None:
+        current.misses.append(Miss(row_label(row.metadata, row.input), "a reply the page can use",
+                                   "; ".join(problems), answer=str(output)))
+    # Over 50 words is listed, but the page still shows it.
+    return 0.0 if [p for p in problems if "words" not in p] else 1.0
+
+
+SCORERS = {"decision-matches-points": score_decision, "stylist-reply-usable": score_stylist_reply}
 
 
 # ---- What the judges see ----
 #
-# The store gives a judge more than the agent's input in places, and the
-# rubric relies on it. Keyed by config: a function of the row's metadata that
-# returns what to add to the judge's message history.
-JUDGE_CONTEXT = {
+# Each route in the store builds its own message history for the judges,
+# and their rubrics rely on it. Keyed by config: a function of the dataset row
+# and the answer that returns (message history, response), as that route
+# builds them. A config with none gets the row's input and the answer.
+
+def _order_decision_view(row, answer):
     # pages/api/order-review/index.ts adds the total, which the Decision
     # Policy judge reads from the last line.
-    "fraud-decision-agent":
-        lambda m: f"\n\nRisk points the specialists' tools found: {m['risk_points']}.",
+    points = row["metadata"]["risk_points"]
+    return f"{row['input']}\n\nRisk points the specialists' tools found: {points}.", answer
+
+
+def _stylist_view(row, answer):
+    # pages/api/personal-stylist/index.ts gives the judges the facts in the
+    # chat's "data:" form, and the reply as the page shows it.
+    v = row["variables"]
+    product = json.loads(v["product_facts"])
+    history = "\n".join([f"request: The stylist note for {product['name']}",
+                         f"data: product {v['product_facts']}",
+                         f"data: orders {v['order_history']}",
+                         f"data: catalog {v['catalog']}"])
+    reply = stylist_reply(answer) or {}
+    names = {p["slug"]: p["name"] for p in json.loads(v["catalog"])}
+    size = reply.get("size") if len(product.get("sizes") or []) > 1 else None
+    response = "\n".join([f"Size: {size or 'one size'}",
+                          f"Pairing: {names.get(reply.get('pairing'), 'none')}",
+                          f"Note: {reply.get('note', '')}"])
+    return history, response
+
+
+def _swag_view(row, answer):
+    # pages/api/swag-assistant/index.ts: the conversation, then each tool call
+    # and what it returned, which tool_results already has as "tool:" lines.
+    tools = row["variables"].get("tool_results", "")
+    return "\n".join([f"user: {row['input']}"] + ([tools] if tools else [])), answer
+
+
+JUDGE_VIEWS = {
+    "fraud-decision-agent": _order_decision_view,
+    "personal-stylist": _stylist_view,
+    "swag-assistant": _swag_view,
 }
 
 # How the store's AI SDK (Node, Judge.evaluate) asks a judge: the conversation
@@ -146,19 +236,29 @@ JUDGE_SCHEMA = {
 }
 
 
-def judge_request(user_input, variables):
-    return f"MESSAGE HISTORY:\n{variables.get('input', '')}\n\nRESPONSE TO EVALUATE:\n{user_input}"
+def judge_request(history, response):
+    return f"MESSAGE HISTORY:\n{history}\n\nRESPONSE TO EVALUATE:\n{response}"
 
 
-def recording_handler(inner, result, rows_by_input, judge_context, thresholds):
+def row_key(row_input, variables, names):
+    """Which row a judge call is for. Inputs repeat (four rows are the stylist
+    note for the hoodie), so the row's own variables are part of it."""
+    return json.dumps([row_input, {k: (variables or {}).get(k) for k in sorted(names)}])
+
+
+def recording_handler(inner, result, rows, judge_view, thresholds):
     """Wrap the handler to ask judges as the store does, and record low judge scores."""
+    names = {k for r in rows for k in r["variables"]}
+    by_key = {row_key(r["input"], r["variables"], names): r for r in rows}
 
     async def recorded(config, user_input=None, tool_handlers=None, variables=None, history=None):
         judging = bool(variables) and "formatting_instructions" in variables
-        row = rows_by_input.get((variables or {}).get("input", "")) if judging else None
+        row = by_key.get(row_key(variables.get("input", ""), variables, names)) if judging else None
         if judging:
-            extra = judge_context(row.get("metadata") or {}) if row and judge_context else ""
-            user_input = judge_request(user_input, {**variables, "input": variables.get("input", "") + extra})
+            if row is None:
+                raise RuntimeError("judge call for a row ci_eval.py can't find")
+            view = judge_view or (lambda r, answer: (r["input"], answer))
+            user_input = judge_request(*view(row, user_input))
             config = {**config, "outputFormat": JUDGE_SCHEMA}
         try:
             output = await inner(config, user_input, tool_handlers, variables, history)
@@ -182,8 +282,7 @@ def recording_handler(inner, result, rows_by_input, judge_context, thresholds):
             if score is not None:
                 result.judge_scores.setdefault(threshold[0], []).append(score)
             if score is not None and score < threshold[1]:
-                scenario = ((row or {}).get("metadata") or {}).get("scenario", "")
-                result.misses.append(Miss(scenario, f"{threshold[0]} ≥ {threshold[1]}",
+                result.misses.append(Miss(row_label(row.get("metadata"), row["input"]), f"{threshold[0]} ≥ {threshold[1]}",
                                           f"{score:.2f}: {' '.join(str(reason).split())[:200]}",
                                           answer=str(user_input).rsplit("RESPONSE TO EVALUATE:\n", 1)[-1],
                                           reasoning=str(reason)))
@@ -225,6 +324,10 @@ def generation_for(target, variation, replace=()):
         generation["instructions"] = fill_snippets(variation["instructions"])
     else:
         generation["messages"] = [{**m, "content": fill_snippets(m["content"])} for m in variation["messages"]]
+    # A prompt with no user message of its own, which the store fills in
+    # with the conversation, gets the entry's user_message for the row.
+    if "user_message" in target:
+        generation["messages"] = generation["messages"] + [{"role": "user", "content": target["user_message"]}]
     for old, new in replace:
         prompt = json.dumps(generation.get("instructions", generation.get("messages")))
         if json.dumps(old)[1:-1] not in prompt:
@@ -242,7 +345,9 @@ def rows_for(target, quick):
     """The dataset's rows, in the shape run() takes."""
     with open(os.path.join(HERE, "datasets", target["dataset"]), encoding="utf-8") as f:
         rows = [json.loads(line) for line in f if line.strip()]
-    if quick and target.get("quick"):
+    if quick and isinstance(target.get("quick"), int):
+        rows = rows[:target["quick"]]
+    elif quick and target.get("quick"):
         rows = [r for r in rows if r.get("metadata", {}).get("scenario") in target["quick"]]
     return [{"input": r["input"], "expectedOutput": r.get("expected_output", ""),
              "variables": r.get("variables", {}), "metadata": r.get("metadata", {})} for r in rows]
@@ -275,8 +380,8 @@ async def run_target(evals, target, variation_key, args):
             ai_config=AIConfig(key=target["config"], variation=variation_key),
             generation=generation_for(target, variation, args.replace or ()),
             handler=recording_handler(
-                create_langchain_messages_handler(bedrock_model), result, {r["input"]: r for r in rows},
-                JUDGE_CONTEXT.get(target["config"]), await judge_thresholds(evals, spec)),
+                create_langchain_messages_handler(bedrock_model), result, rows,
+                JUDGE_VIEWS.get(target["config"]), await judge_thresholds(evals, spec)),
             # The store's Order Review agents call their tools before they're
             # handed on; the datasets carry what the tools found.
             tools=[],
@@ -336,8 +441,8 @@ async def main(args):
     try:
         for target in targets:
             spec = spec_for(target["config"])
-            variation = args.variation or spec["fallthrough"]
-            results.append(await run_target(evals, target, variation, args))
+            for variation in [args.variation] if args.variation else target.get("variations", [spec["fallthrough"]]):
+                results.append(await run_target(evals, target, variation, args))
     finally:
         await shutdown()
     text = markdown(results)
