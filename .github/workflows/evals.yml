@@ -1,0 +1,270 @@
+name: Offline Evals
+
+# Evaluates the store's AI Configs against their datasets with
+# demo_provisioning_scripts/ci_eval.py, as demo_resources.py defines them, on
+# Bedrock. Advisory: it reports scores and links to each run in LaunchDarkly,
+# and fails only when a run can't be completed. Never make it a required
+# check.
+#
+#   Manual run    The targets chosen, quick or full. Gated by authorize.yaml
+#                 like every other workflow here.
+#   Push to main  Only the targets whose config, judges, snippets or dataset
+#                 changed, on their quick rows, and the quick baseline is
+#                 updated.
+#   Pull request  The same, compared with main's quick baseline, in one
+#                 comment on the PR. Branches in this repository only: a fork
+#                 gets no secrets.
+#   Nightly       Every target on every row, and the full baseline is updated.
+#
+# The automatic triggers skip authorize.yaml, since whoever pushed starts
+# them, so they only run once the repository variable EVALS_ON_CHANGES is
+# "true". Turn it on only with the evals environment holding credentials that
+# can't touch anyone's demo:
+#
+#   LD_CI_API_KEY        secret    a LaunchDarkly token limited to the CI project
+#   LD_CI_SDK_KEY        secret    the CI project's production SDK key
+#   EVALS_AWS_ROLE_ARN   secret    a role GitHub assumes through OIDC that can
+#                                  only invoke the store's Bedrock models. A
+#                                  secret, not a variable, because the ARN
+#                                  names the AWS account and the logs are
+#                                  public.
+#   LD_CI_PROJECT_KEY    variable  the CI project's key
+#
+# Never LD_EAP_API_KEY or AWS_ACCESS_KEY here: they build and delete
+# environments, and a pull request runs this repository's code.
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'One AI Config to evaluate, such as fraud-decision-agent (blank for all)'
+        required: false
+      variation:
+        description: 'One variation of it (blank for those CI_EVALS names)'
+        required: false
+      mode:
+        description: 'quick or full'
+        required: true
+        default: quick
+        type: choice
+        options: [quick, full]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/demo_provisioning_scripts/demo_resources.py
+      - .github/workflows/demo_provisioning_scripts/datasets/**
+      - .github/workflows/demo_provisioning_scripts/ci_eval.py
+      - .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
+      - .github/workflows/evals.yml
+  pull_request:
+    paths:
+      - .github/workflows/demo_provisioning_scripts/demo_resources.py
+      - .github/workflows/demo_provisioning_scripts/datasets/**
+      - .github/workflows/demo_provisioning_scripts/ci_eval.py
+      - .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
+      - .github/workflows/evals.yml
+  schedule:
+    - cron: '0 9 * * *'
+
+permissions:
+  contents: read
+
+# A new push to a pull request replaces its run. Runs on main queue instead,
+# so each one's results reach the baseline.
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  authorize:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/authorize.yaml
+
+  evals:
+    needs: [authorize]
+    # always(), or a skipped authorize would skip this too.
+    if: >-
+      always() && (
+        needs.authorize.result == 'success' ||
+        (needs.authorize.result == 'skipped' && vars.EVALS_ON_CHANGES == 'true' &&
+         (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)))
+    runs-on: ubuntu-latest
+    environment: evals
+    permissions:
+      contents: read
+      id-token: write        # the AWS role, through OIDC
+      actions: read          # main's baseline artifact
+      pull-requests: write   # the comment on the PR
+    env:
+      LD_API_KEY: ${{ secrets.LD_CI_API_KEY }}
+      LD_SDK_KEY: ${{ secrets.LD_CI_SDK_KEY }}
+      LD_PROJECT_KEY: ${{ vars.LD_CI_PROJECT_KEY }}
+      AWS_REGION: us-east-1
+      SCRIPTS: .github/workflows/demo_provisioning_scripts
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # --changed reads demo_resources.py and the datasets at the base.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
+
+      - name: Install dependencies
+        run: pip install -r "$SCRIPTS/requirements-ci-eval.txt"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.EVALS_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # What to run, from the event. Inputs and refs reach the script as
+      # environment variables, never inside it, and a config or variation
+      # that isn't a plain key stops the run.
+      - name: Plan the run
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          INPUT_CONFIG: ${{ inputs.config }}
+          INPUT_VARIATION: ${{ inputs.variation }}
+          INPUT_MODE: ${{ inputs.mode }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.sha }}
+        run: |
+          args=()
+          case "$EVENT" in
+            workflow_dispatch)
+              for value in "$INPUT_CONFIG" "$INPUT_VARIATION"; do
+                if [ -n "$value" ] && ! [[ "$value" =~ ^[a-z0-9-]+$ ]]; then
+                  echo "::error::Config and variation are keys: lowercase letters, digits and dashes."
+                  exit 1
+                fi
+              done
+              if [ -n "$INPUT_VARIATION" ] && [ -z "$INPUT_CONFIG" ]; then
+                echo "::error::A variation needs its config too."
+                exit 1
+              fi
+              mode="$INPUT_MODE"
+              [ -n "$INPUT_CONFIG" ] && args+=(--config "$INPUT_CONFIG")
+              [ -n "$INPUT_VARIATION" ] && args+=(--variation "$INPUT_VARIATION")
+              label="manual-${SHA:0:7}"
+              ;;
+            push)
+              mode=quick
+              args+=(--changed "$PUSH_BEFORE")
+              label="main-${SHA:0:7}"
+              ;;
+            pull_request)
+              mode=quick
+              args+=(--changed "$PR_BASE")
+              label="pr-$PR_NUMBER-${SHA:0:7}"
+              ;;
+            schedule)
+              mode=full
+              label="nightly-${SHA:0:7}"
+              ;;
+          esac
+          [ "$mode" = quick ] && args+=(--quick)
+          # Only main's runs update its baseline, one per mode.
+          [ "$REF" = refs/heads/main ] && update=true || update=false
+          {
+            echo "mode=$mode"
+            echo "label=$label"
+            echo "update=$update"
+            echo "args=${args[*]}"
+          } >> "$GITHUB_OUTPUT"
+
+      # The latest baseline main saved for this mode, if any. A missing one
+      # is reported in the summary, not an error.
+      - name: Download main's baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: eval-baseline-${{ steps.plan.outputs.mode }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p baseline
+          id=$(gh api "repos/$REPO/actions/artifacts?name=$NAME&per_page=50" \
+            --jq '[.artifacts[] | select(.expired | not) | select(.workflow_run.head_branch == "main")][0].id // empty')
+          if [ -n "$id" ]; then
+            gh api "repos/$REPO/actions/artifacts/$id/zip" > baseline.zip
+            unzip -o -q baseline.zip -d baseline
+          else
+            echo "No baseline from main for $NAME yet."
+          fi
+
+      - name: Run the evals
+        id: run
+        env:
+          ARGS: ${{ steps.plan.outputs.args }}
+          LABEL: ${{ steps.plan.outputs.label }}
+        run: |
+          read -r -a args <<< "$ARGS"
+          status=0
+          python "$SCRIPTS/ci_eval.py" "${args[@]}" --label "$LABEL" \
+            --json-out results.json \
+            --baseline baseline/baseline.json --baseline-out baseline.json \
+            --summary-file summary.md || status=$?
+          # On the summary page even when a run couldn't be completed, which
+          # is the only time this step fails.
+          [ -f summary.md ] && cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Save the baseline
+        if: steps.plan.outputs.update == 'true' && steps.run.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-baseline-${{ steps.plan.outputs.mode }}
+          path: baseline.json
+          retention-days: 90
+
+      - name: Save this run's results
+        if: always() && steps.run.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-results-${{ steps.plan.outputs.label }}
+          path: |
+            results.json
+            summary.md
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # One comment per PR, edited on every run rather than added to.
+      - name: Comment on the pull request
+        if: always() && github.event_name == 'pull_request' && steps.run.outcome != 'skipped'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          marker='<!-- togglewear-offline-evals -->'
+          {
+            echo "$marker"
+            if [ -s summary.md ]; then
+              head -c 60000 summary.md
+            else
+              echo "## Offline evals"
+              echo
+              echo "The run didn't finish."
+            fi
+            echo
+            echo "Advisory only. [Workflow run]($RUN_URL)"
+          } > comment.md
+          id=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@comment.md > /dev/null
+          else
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@comment.md > /dev/null
+          fi

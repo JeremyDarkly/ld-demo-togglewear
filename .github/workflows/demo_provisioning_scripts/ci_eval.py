@@ -19,9 +19,11 @@ Needs requirements-ci-eval.txt, LD_API_KEY, LD_PROJECT_KEY and LD_SDK_KEY in
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -67,6 +69,10 @@ class Result:
     variation: str
     dataset: str
     rows: int = 0
+    # quick or full, and the dataset file's hash: a run is only compared row
+    # by row with a baseline run of the same mode over the same rows.
+    mode: str = ""
+    dataset_sha: str = ""
     key: str = ""
     passed: bool | None = None
     url: str = ""
@@ -453,7 +459,8 @@ async def run_target(evals, target, variation_key, args):
     spec = spec_for(target["config"])
     variation = next(v for v in spec["variations"] if v["ai_config_version_key"] == variation_key)
     rows = rows_for(target, args.quick)
-    result = Result(target["config"], variation_key, target["dataset"], rows=len(rows))
+    result = Result(target["config"], variation_key, target["dataset"], rows=len(rows),
+                    mode="quick" if args.quick else "full", dataset_sha=dataset_sha(target["dataset"]))
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     result.key = f"ci-{args.label}-{target['config']}-{variation_key}-{stamp}"
     print(f"running {target['config']}/{variation_key} on {len(rows)} rows of {target['dataset']}", flush=True)
@@ -488,6 +495,119 @@ async def run_target(evals, target, variation_key, args):
     return result
 
 
+def dataset_sha(name):
+    with open(os.path.join(HERE, "datasets", name), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()[:12]
+
+
+# ---- What changed ----
+#
+# --changed BASE evaluates only what a change could affect: each target
+# whose definition differs from the one in demo_resources.py at BASE. A
+# target's definition is everything that decides its result: its CI_EVALS
+# entry, the variation, its judges' configs, the prompt snippets, the
+# optimization its statements come from, and its dataset file.
+
+def git(*args):
+    return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True)
+
+
+def repo_path(name):
+    top = git("rev-parse", "--show-toplevel").stdout.strip()
+    return os.path.relpath(os.path.join(HERE, name), top)
+
+
+def definition(resources, config, variation_key, dataset_text):
+    configs = resources.get("AI_CONFIGS", []) + resources.get("AGENT_CONFIGS", [])
+    spec = next((s for s in configs if s["config"]["config_key"] == config), None)
+    target = next((t for t in resources.get("CI_EVALS", []) if t["config"] == config), None)
+    if spec is None or target is None:
+        return None
+    judges = [next((s for s in configs if s["config"]["config_key"] == j["judgeConfigKey"]), None)
+              for j in spec.get("judges", [])]
+    optimization = next((o for o in resources.get("AGENT_OPTIMIZATIONS", [])
+                         if o["key"] == target.get("statements")), None)
+    return json.dumps({
+        "target": target,
+        "variation": next((v for v in spec["variations"] if v["ai_config_version_key"] == variation_key), None),
+        "judges": judges, "attached": spec.get("judges", []),
+        "snippets": resources.get("PROMPT_SNIPPETS", []),
+        "optimization": optimization, "dataset": dataset_text,
+    }, sort_keys=True, default=str)
+
+
+def changed_since(base, pairs):
+    """The (target, variation) pairs whose definition differs at base, and
+    whether the runner itself changed, in which case every pair is."""
+    if git("cat-file", "-e", f"{base}^{{commit}}").returncode != 0:
+        return pairs, True  # an unknown base, such as the first push of a branch
+    # :(top) because git reads a path argument from the directory it runs in.
+    code = git("diff", "--name-only", base, "HEAD", "--",
+               *(f":(top){repo_path(name)}" for name in ("ci_eval.py", "requirements-ci-eval.txt"))).stdout.strip()
+    if code:
+        return pairs, True
+    shown = git("show", f"{base}:{repo_path('demo_resources.py')}")
+    base_resources = {}
+    if shown.returncode == 0:
+        exec(compile(shown.stdout, "demo_resources.py@base", "exec"), base_resources)
+    import demo_resources
+    changed = []
+    for target, variation in pairs:
+        name = os.path.join("datasets", target["dataset"])
+        with open(os.path.join(HERE, name), encoding="utf-8") as f:
+            now_text = f.read()
+        then = git("show", f"{base}:{repo_path(name)}")
+        now = definition(vars(demo_resources), target["config"], variation, now_text)
+        before = definition(base_resources, target["config"], variation,
+                            then.stdout if then.returncode == 0 else None)
+        if now != before:
+            changed.append((target, variation))
+    return changed, False
+
+
+# ---- Compared with a baseline ----
+
+def miss_key(miss):
+    return (miss["row"], miss["expected"]) if isinstance(miss, dict) else (miss.row, miss.expected)
+
+
+def comparison(results, baseline):
+    """Markdown comparing each result with the baseline run of the same
+    config, variation and mode, or None with no baseline at all."""
+    if baseline is None:
+        return None
+    lines = ["", "### Compared with `main`", ""]
+    for r in results:
+        if r.error:
+            continue
+        then = next((b for b in baseline if (b["config"], b["variation"], b.get("mode"))
+                     == (r.config, r.variation, r.mode) and not b.get("error")), None)
+        name = f"`{r.config}/{r.variation}`"
+        if then is None:
+            lines.append(f"- {name}: no result on `main` to compare with yet.")
+            continue
+        passed = f"{then['summary'].get('passed')}/{then['summary'].get('total')} → " \
+                 f"{r.summary.get('passed')}/{r.summary.get('total')}"
+        means = []
+        for judge, scores in sorted(r.judge_scores.items()):
+            before = then.get("judge_scores", {}).get(judge)
+            if before:
+                delta = sum(scores) / len(scores) - sum(before) / len(before)
+                means.append(f"{judge} {sum(before) / len(before):.2f} → {sum(scores) / len(scores):.2f}"
+                             + (f" ({delta:+.2f})" if abs(delta) >= 0.005 else ""))
+        lines.append(f"- {name}: rows passed {passed}" + (f"; {'; '.join(means)}" if means else ""))
+        if then.get("dataset_sha") != r.dataset_sha:
+            lines.append("  - The dataset changed, so rows aren't compared one by one.")
+            continue
+        listed_then = {miss_key(m) for m in then.get("misses", [])}
+        listed_now = {miss_key(m) for m in r.misses}
+        for row, expected in sorted(listed_now - listed_then):
+            lines.append(f"  - Newly listed: {row}, {expected}")
+        for row, expected in sorted(listed_then - listed_now):
+            lines.append(f"  - No longer listed: {row}, {expected}")
+    return "\n".join(lines) + "\n"
+
+
 def markdown(results):
     lines = ["## Offline evals", "",
              "| Config | Variation | Dataset | Rows passed | Verdict | Run |",
@@ -517,28 +637,66 @@ def markdown(results):
     return "\n".join(lines) + "\n"
 
 
-async def main(args):
-    targets = [t for t in CI_EVALS if not args.config or t["config"] in args.config]
-    if not targets:
-        sys.exit(f"error: no CI_EVALS entry for {', '.join(args.config)}")
-    evals = init_evaluations(project_key=os.environ["LD_PROJECT_KEY"], api_key=os.environ["LD_API_KEY"],
-                             sdk_key=os.environ["LD_SDK_KEY"])
-    results = []
-    try:
-        for target in targets:
-            spec = spec_for(target["config"])
-            for variation in [args.variation] if args.variation else target.get("variations", [spec["fallthrough"]]):
-                results.append(await run_target(evals, target, variation, args))
-    finally:
-        await shutdown()
-    text = markdown(results)
+def load_baseline(path):
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def write_summary(text, args):
     print(text)
     if args.summary_file:
         with open(args.summary_file, "a", encoding="utf-8") as f:
             f.write(text)
+
+
+async def main(args):
+    targets = [t for t in CI_EVALS if not args.config or t["config"] in args.config]
+    if not targets:
+        sys.exit(f"error: no CI_EVALS entry for {', '.join(args.config)}")
+    pairs = [(t, v) for t in targets
+             for v in ([args.variation] if args.variation
+                       else t.get("variations", [spec_for(t["config"])["fallthrough"]]))]
+    if args.changed:
+        pairs, everything = changed_since(args.changed, pairs)
+        if everything:
+            # The runner itself changed, so its result could differ for any
+            # target: all of them, on their quick rows.
+            args.quick = True
+        if not pairs:
+            write_summary("## Offline evals\n\nNo AI Config, judge, prompt snippet or dataset that CI "
+                          f"evaluates changed since `{args.changed[:7]}`, so nothing was evaluated.\n", args)
+            for out in (args.json_out, args.baseline_out):
+                if out:
+                    with open(out, "w", encoding="utf-8") as f:
+                        json.dump([] if out == args.json_out else load_baseline(args.baseline) or [], f)
+            return 0
+    baseline = load_baseline(args.baseline)
+    evals = init_evaluations(project_key=os.environ["LD_PROJECT_KEY"], api_key=os.environ["LD_API_KEY"],
+                             sdk_key=os.environ["LD_SDK_KEY"])
+    results = []
+    try:
+        for target, variation in pairs:
+            results.append(await run_target(evals, target, variation, args))
+    finally:
+        await shutdown()
+    text = markdown(results)
+    if args.baseline:
+        text += comparison(results, baseline) or (
+            "\n### Compared with `main`\n\nNo result from `main` to compare with yet.\n")
+    write_summary(text, args)
+    saved = [r.__dict__ | {"misses": [m.__dict__ for m in r.misses]} for r in results]
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8") as f:
-            json.dump([r.__dict__ | {"misses": [m.__dict__ for m in r.misses]} for r in results], f, indent=2)
+            json.dump(saved, f, indent=2)
+    if args.baseline_out:
+        # A run on main may evaluate only what changed, so the baseline keeps
+        # every other target's latest result and replaces this run's.
+        ran = {(r["config"], r["variation"], r["mode"]) for r in saved if not r["error"]}
+        kept = [b for b in baseline or [] if (b["config"], b["variation"], b.get("mode")) not in ran]
+        with open(args.baseline_out, "w", encoding="utf-8") as f:
+            json.dump(kept + [r for r in saved if not r["error"]], f, indent=2)
     return 1 if any(r.error for r in results) else 0
 
 
@@ -553,4 +711,10 @@ if __name__ == "__main__":
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--summary-file", default=os.getenv("GITHUB_STEP_SUMMARY"))
     parser.add_argument("--json-out")
+    parser.add_argument("--changed", metavar="BASE",
+                        help="only what changed since this commit; everything, quick, if ci_eval.py did")
+    parser.add_argument("--baseline", metavar="FILE",
+                        help="a --baseline-out from main to compare with; a missing file is noted, not an error")
+    parser.add_argument("--baseline-out", metavar="FILE",
+                        help="write the baseline with this run's results in place of their earlier ones")
     sys.exit(asyncio.run(main(parser.parse_args())))

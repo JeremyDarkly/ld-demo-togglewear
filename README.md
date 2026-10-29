@@ -362,6 +362,7 @@ The Create and Rebuild workflows also report their progress to the demo portal's
 └── .github/workflows/
     ├── cloud_demo_environment_*.yaml   The workflows above
     ├── authorize.yaml                  Stops any run Melanie or Kevin didn't start
+    ├── evals.yml                       The offline evals (see Making changes)
     ├── deploy_files/deploy.yaml        The Kubernetes manifest
     ├── update_k8s_deploy_file.py
     └── demo_provisioning_scripts/
@@ -372,7 +373,8 @@ The Create and Rebuild workflows also report their progress to the demo portal's
         ├── LDPlatform.py       The LaunchDarkly API client
         ├── results_generator.py, LDGeneratorsRunner.py   Build-time results
         ├── run_optimization.py Reruns an agent optimization on Bedrock
-        ├── datasets/           The four playground datasets
+        ├── ci_eval.py, requirements-ci-eval.txt   The offline evals
+        ├── datasets/           The four playground datasets, which the evals use too
         └── optimizations/      Recorded optimization runs the build replays
 ```
 
@@ -405,6 +407,21 @@ The Create and Rebuild workflows also report their progress to the demo portal's
    ```
 
    This needs `LD_API_KEY` and a valid `LD_SDK_KEY` for the project in `.env`, and AWS credentials with Bedrock.
+4. Check it with the offline evals (below) before pushing.
+
+**Checking a change with the offline evals.** `ci_eval.py` runs an AI Config, as `demo_resources.py` defines it, over its dataset in `datasets/` on Bedrock, with the judges attached to it and checks of its own, and records each run as an evaluation in LaunchDarkly. Which configs it covers, and how each is scored, is the `CI_EVALS` table in `demo_resources.py`. The results are advisory: they're scores to read, not a pass or fail.
+
+```bash
+cd .github/workflows/demo_provisioning_scripts
+pip install -r requirements-ci-eval.txt     # its own: the AI SDK's evaluations API isn't released yet
+python ci_eval.py --config fraud-decision-agent --quick
+python ci_eval.py --config fraud-decision-agent \
+    --replace "- 70 points or more: decline" "- 95 points or more: decline"   # try a prompt change
+```
+
+It needs `LD_API_KEY`, `LD_PROJECT_KEY` and `LD_SDK_KEY` for a project built from `demo_resources.py` in `.env`, and AWS credentials that can invoke the store's Bedrock models. Point it at a test project, not a demo: it only reads the project's judges, but every run adds an evaluation to its list, and they can't be deleted. `--json-out` keeps every listed answer and the judge's full reasoning, which is how to tell a judge's mistake from the agent's.
+
+The **Offline Evals** workflow (`evals.yml`) runs the same thing: by hand from the Actions tab, and, once the repository variable `EVALS_ON_CHANGES` is `true`, on pull requests and pushes to `main` that change a config, judge, snippet or dataset it covers, and every night in full. Each run compares itself with `main`'s last result. Its credentials, all in the `evals` environment, are listed at the top of the workflow, and must never be the build's: a pull request runs the branch's code.
 
 **Changing the fraud rules.** The thresholds are in `lib/fraudAgent.ts`: review at 40 points, decline at 70, and 45 points each for a total over $800 or five of one item. When you change them, also update:
 
