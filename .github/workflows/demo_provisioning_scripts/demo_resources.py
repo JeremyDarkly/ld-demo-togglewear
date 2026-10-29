@@ -1946,6 +1946,37 @@ PLAYGROUNDS = [
 ]
 
 
+# ---- Offline evaluations in CI ----
+#
+# Not built into a project: ci_eval.py reads this table and evaluates each
+# config as this file defines it, over the rows of its dataset in datasets/,
+# on Bedrock like the store. The project it runs in only holds the judges and
+# the evaluations it creates. scorers are ci_eval.py's own checks of each
+# answer; the config's attached judges run as well. quick names the rows a
+# --quick run takes, by their metadata scenario.
+CI_EVALS = [
+    # The store has it answer by filling in DECISION_SCHEMA
+    # (pages/api/order-review/index.ts), so CI asks for the same. LangChain
+    # needs a title on it for Bedrock, as the name of the tool it fills in.
+    {'config': 'fraud-decision-agent',
+     'dataset': 'order_decision.jsonl',
+     'output_format': {
+         'title': 'record_decision',
+         'description': 'Record the decision on the order.',
+         'type': 'object',
+         'properties': {
+             'decision': {'type': 'string', 'enum': ['approve', 'review', 'decline']},
+             'score': {'type': 'number', 'description': 'The total risk points, at most 100.'},
+             'summary': {'type': 'string',
+                         'description': 'One or two sentences to the shopper, shown at checkout.'},
+         },
+         'required': ['decision', 'score', 'summary']},
+     'scorers': ['decision-matches-points'],
+     'quick': ['ordinary-member', 'just-under-value', 'high-value-platinum',
+               'value-and-quantity', 'blocked-zip-gold', 'blocked-zip-small']},
+]
+
+
 # ---- Agent optimizations ----
 #
 # LDPlatform.create_agent_optimization. An optimization runs an agent over a
