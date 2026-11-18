@@ -3,8 +3,12 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import ArchitectureTab from "@/components/hood/ArchitectureTab";
@@ -110,6 +114,175 @@ export function useUnderTheHood() {
   return hood;
 }
 
+// The panel's width and text size, for anyone who needs it bigger or wants
+// more of the store. Local rather than session storage: a preference, not a
+// demo's state, so it holds across tabs and days.
+const SIZE_KEY = "togglewear.hood.size";
+const ZOOM_KEY = "togglewear.hood.zoom";
+
+// Docked only from 1024px (globals.css); narrower, the panel covers the
+// store and there is nothing to resize.
+const DOCKED = "(min-width: 1024px)";
+const MIN_SIZE = 380;
+const MAX_SHARE = 0.7;
+const SIZE_STEP = 24;
+
+const ZOOMS = [0.8, 0.9, 1, 1.1, 1.25, 1.5];
+
+function clampSize(px: number) {
+  return Math.round(Math.min(Math.max(px, MIN_SIZE), window.innerWidth * MAX_SHARE));
+}
+
+function readNumber(key: string) {
+  try {
+    const value = Number(window.localStorage.getItem(key));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveNumber(key: string, value: number | null) {
+  try {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, String(value));
+  } catch {
+    // Still applies for this page load.
+  }
+}
+
+// Overrides --hood-size from globals.css while the panel is docked, so the
+// store makes the same room it always has. Dragging turns off --hood-width's
+// easing, or the store would trail behind the pointer.
+function usePanelSize() {
+  const [size, setSize] = useState<number | null>(() => readNumber(SIZE_KEY));
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const docked = window.matchMedia(DOCKED);
+    const apply = () => {
+      if (size === null || !docked.matches) root.style.removeProperty("--hood-size");
+      else root.style.setProperty("--hood-size", `${clampSize(size)}px`);
+    };
+    apply();
+    docked.addEventListener("change", apply);
+    window.addEventListener("resize", apply);
+    return () => {
+      docked.removeEventListener("change", apply);
+      window.removeEventListener("resize", apply);
+      root.style.removeProperty("--hood-size");
+    };
+  }, [size]);
+
+  const resize = useCallback((px: number | null) => {
+    const next = px === null ? null : clampSize(px);
+    setSize(next);
+    saveNumber(SIZE_KEY, next);
+  }, []);
+
+  return resize;
+}
+
+// The handle on the panel's left edge: drag it, or focus it and use the
+// arrow keys. A double-click puts the width back.
+function ResizeHandle({
+  panel,
+  onResize,
+}: {
+  panel: RefObject<HTMLElement | null>;
+  onResize: (px: number | null) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+
+  const start = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.documentElement.style.transition = "none";
+    document.body.style.userSelect = "none";
+    setDragging(true);
+  };
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragging) onResize(window.innerWidth - event.clientX);
+  };
+  const end = () => {
+    if (!dragging) return;
+    document.documentElement.style.removeProperty("transition");
+    document.body.style.removeProperty("user-select");
+    setDragging(false);
+  };
+  const key = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const width = panel.current?.offsetWidth;
+    if (!width) return;
+    if (event.key === "ArrowLeft") onResize(width + SIZE_STEP);
+    else if (event.key === "ArrowRight") onResize(width - SIZE_STEP);
+    else if (event.key === "Home") onResize(null);
+    else return;
+    event.preventDefault();
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize Under the hood. Arrow keys change its width, Home resets it."
+      tabIndex={0}
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onDoubleClick={() => onResize(null)}
+      onKeyDown={key}
+      className="group absolute inset-y-0 left-0 z-10 hidden w-3 -translate-x-1/2 cursor-col-resize touch-none focus-visible:outline-none [@media(min-width:1024px)]:block"
+    >
+      <span
+        className={`absolute inset-y-0 left-1/2 w-[3px] -translate-x-1/2 transition-colors ${
+          dragging ? "bg-base-lime" : "bg-transparent group-hover:bg-base-lime/70 group-focus-visible:bg-base-lime"
+        }`}
+      />
+      <span className="absolute left-1/2 top-1/2 h-10 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-grays-03 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+    </div>
+  );
+}
+
+function ZoomControls({ zoom, onZoom }: { zoom: number; onZoom: (zoom: number) => void }) {
+  const at = ZOOMS.indexOf(zoom);
+  const button =
+    "rounded-full px-2 py-0.5 font-sohne text-xsmall text-grays-03 transition-colors hover:bg-grays-06 hover:text-grays-white disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white";
+  return (
+    <span role="group" aria-label="Text size" className="flex items-center gap-0.5">
+      <button
+        type="button"
+        aria-label="Smaller text"
+        disabled={at <= 0}
+        onClick={() => onZoom(ZOOMS[at - 1])}
+        className={button}
+      >
+        A−
+      </button>
+      <button
+        type="button"
+        aria-label="Reset text size"
+        title="Reset to 100%"
+        onClick={() => onZoom(1)}
+        className={`${button} min-w-[46px] tabular-nums`}
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <button
+        type="button"
+        aria-label="Larger text"
+        disabled={at >= ZOOMS.length - 1}
+        onClick={() => onZoom(ZOOMS[at + 1])}
+        className={button}
+      >
+        A+
+      </button>
+    </span>
+  );
+}
+
 function HoodPanel({
   open,
   tab,
@@ -121,6 +294,17 @@ function HoodPanel({
   onTab: (tab: HoodTab) => void;
   onClose: () => void;
 }) {
+  const panel = useRef<HTMLElement>(null);
+  const resize = usePanelSize();
+  const [zoom, setZoom] = useState(() => {
+    const saved = readNumber(ZOOM_KEY);
+    return saved !== null && ZOOMS.includes(saved) ? saved : 1;
+  });
+  const changeZoom = (next: number) => {
+    setZoom(next);
+    saveNumber(ZOOM_KEY, next === 1 ? null : next);
+  };
+
   // Mounted off-screen, then moved in on the next frame so the slide has a
   // starting point to transition from.
   const [entered, setEntered] = useState(false);
@@ -154,6 +338,7 @@ function HoodPanel({
 
   return (
     <aside
+      ref={panel}
       aria-label="Under the hood"
       inert={!open}
       // Below the generator (z-60), which can be opened from inside it, and
@@ -164,6 +349,7 @@ function HoodPanel({
         shown ? "translate-x-0" : "translate-x-full"
       }`}
     >
+      <ResizeHandle panel={panel} onResize={resize} />
       <header className="flex shrink-0 flex-col gap-4 bg-grays-ld-black px-6 pb-0 pt-5">
         <div className="flex items-center justify-between gap-3">
           <span className="flex items-center gap-2.5">
@@ -172,22 +358,25 @@ function HoodPanel({
               Under the hood
             </span>
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close Under the hood"
-            className="text-grays-03 transition-colors hover:text-grays-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M4 4l8 8M12 4l-8 8"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
-          </button>
+          <span className="flex items-center gap-3">
+            <ZoomControls zoom={zoom} onZoom={changeZoom} />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close Under the hood"
+              className="text-grays-03 transition-colors hover:text-grays-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path
+                  d="M4 4l8 8M12 4l-8 8"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              </svg>
+            </button>
+          </span>
         </div>
 
         <div role="tablist" aria-label="Under the hood" className="-mb-px flex gap-1">
@@ -217,6 +406,7 @@ function HoodPanel({
         id={`hood-panel-${tab}`}
         aria-labelledby={`hood-tab-${tab}`}
         className="flex min-h-0 flex-1 flex-col"
+        style={zoom === 1 ? undefined : { zoom }}
       >
         {tab === "live" && <LiveTab />}
         {tab === "code" && <CodeTab />}
