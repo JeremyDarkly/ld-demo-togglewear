@@ -131,7 +131,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3 rounded-[16px] border border-grays-hairline p-4">
+    <section className="flex flex-col gap-3 rounded-[16px] border border-grays-02 bg-grays-white p-4 shadow-[0_2px_6px_rgba(25,25,25,0.08)]">
       <div className="flex flex-col gap-1">
         <h3 className="font-sohne text-main font-medium text-grays-ld-black">{title}</h3>
         <p className="font-sohne text-small text-grays-04">{description}</p>
