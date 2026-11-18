@@ -96,6 +96,61 @@ function toolbarControls() {
   return (window as Window & { ldToolbar?: ToolbarControls }).ldToolbar;
 }
 
+// What switching the toolbar on or off means for the flags, since an
+// override that outranks LaunchDarkly looks like a broken environment to
+// anyone who forgets it is there. Shown from either switch.
+export const TOOLBAR_WINS = "Toolbar changes win over LaunchDarkly until you turn it off.";
+
+const NOTICES = {
+  on: {
+    title: "Developer toolbar on",
+    body: "Flags you change in the toolbar win over LaunchDarkly. If you change one of those flags in LaunchDarkly, it won't show here until you turn the toolbar off. All other flags still follow LaunchDarkly.",
+    ms: 15_000,
+  },
+  off: {
+    title: "Developer toolbar off",
+    body: "Your toolbar changes are cleared. Flags follow LaunchDarkly again.",
+    ms: 10_000,
+  },
+};
+
+type Notice = { kind: keyof typeof NOTICES; id: number };
+
+// Top right, clear of the toolbar (bottom-left), the swag assistant
+// (bottom-right) and Under the hood. Holds still while the pointer is on it.
+function ToolbarNotice({ notice, onClose }: { notice: Notice; onClose: () => void }) {
+  const [held, setHeld] = useState(false);
+  const { title, body, ms } = NOTICES[notice.kind];
+
+  useEffect(() => {
+    if (held) return;
+    const timer = window.setTimeout(onClose, ms);
+    return () => window.clearTimeout(timer);
+  }, [held, ms, onClose]);
+
+  return (
+    <div
+      role="status"
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      className="animate-fade-in fixed right-[calc(24px_+_var(--hood-width))] top-24 z-50 flex w-[min(360px,calc(100vw_-_48px))] items-start gap-3 rounded-2xl bg-grays-ld-black p-4 text-grays-white shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
+    >
+      <div className="flex-1">
+        <p className="font-sohne text-small font-medium">{title}</p>
+        <p className="mt-1 font-sohne text-xsmall text-grays-03">{body}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        className="-mr-1 -mt-1 rounded-full px-2 py-0.5 font-sohne text-small text-grays-03 transition-colors hover:bg-grays-06 hover:text-grays-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 export function DeveloperToolbarProvider({ children }: { children: ReactNode }) {
   const [toolbarOn, setToolbarState] = useState(false);
   // Mounted the first time it is switched on and never unmounted after that:
@@ -131,9 +186,13 @@ export function DeveloperToolbarProvider({ children }: { children: ReactNode }) 
 
   // Closing it puts every flag back to what LaunchDarkly serves, straight
   // away rather than on the next reload.
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const closeNotice = useCallback(() => setNotice(null), []);
+
   const setToolbarOn = useCallback((on: boolean) => {
     setToolbarState(on);
     rememberToolbar(on);
+    setNotice({ kind: on ? "on" : "off", id: Date.now() });
     if (on) {
       toolbarControls()?.enable();
       return;
@@ -146,6 +205,7 @@ export function DeveloperToolbarProvider({ children }: { children: ReactNode }) 
   return (
     <DeveloperToolbarContext.Provider value={{ toolbarOn, setToolbarOn }}>
       {children}
+      {notice && <ToolbarNotice key={notice.id} notice={notice} onClose={closeNotice} />}
     </DeveloperToolbarContext.Provider>
   );
 }
