@@ -99,7 +99,22 @@ function toolbarControls() {
 // What switching the toolbar on or off means for the flags, since an
 // override that outranks LaunchDarkly looks like a broken environment to
 // anyone who forgets it is there. Shown from either switch.
-export const TOOLBAR_WINS = "Toolbar changes win over LaunchDarkly until you turn it off.";
+const TOOLBAR_WINS = "Toolbar changes win over LaunchDarkly until you turn it off.";
+
+// The same reminder, kept under each switch for as long as the toolbar is on.
+export function ToolbarWinsNote() {
+  return (
+    <p className="animate-fade-in flex items-center gap-2.5 rounded-xl border-l-4 border-base-lime bg-base-lime/25 px-3 py-2 font-sohne text-xsmall font-medium text-grays-ld-black">
+      <span
+        aria-hidden
+        className="shrink-0 rounded-full bg-base-lime px-1.5 py-0.5 font-sohne-mono text-xsmall-mono"
+      >
+        {"</>"}
+      </span>
+      {TOOLBAR_WINS}
+    </p>
+  );
+}
 
 const NOTICES = {
   on: {
@@ -116,32 +131,51 @@ const NOTICES = {
 
 type Notice = { kind: keyof typeof NOTICES; id: number };
 
+const FADE_OUT_MS = 300;
+
 // Top right, clear of the toolbar (bottom-left), the swag assistant
-// (bottom-right) and Under the hood. Holds still while the pointer is on it.
+// (bottom-right) and Under the hood. Lime-edged so it stands out against the
+// black header it overlaps. Holds still while the pointer is on it, and
+// fades out rather than vanishing.
 function ToolbarNotice({ notice, onClose }: { notice: Notice; onClose: () => void }) {
   const [held, setHeld] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const { title, body, ms } = NOTICES[notice.kind];
 
   useEffect(() => {
-    if (held) return;
-    const timer = window.setTimeout(onClose, ms);
+    if (held || leaving) return;
+    const timer = window.setTimeout(() => setLeaving(true), ms);
     return () => window.clearTimeout(timer);
-  }, [held, ms, onClose]);
+  }, [held, leaving, ms]);
+
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = window.setTimeout(onClose, FADE_OUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [leaving, onClose]);
 
   return (
     <div
       role="status"
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
-      className="animate-fade-in fixed right-[calc(24px_+_var(--hood-width))] top-24 z-50 flex w-[min(360px,calc(100vw_-_48px))] items-start gap-3 rounded-2xl bg-grays-ld-black p-4 text-grays-white shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
+      className={`animate-fade-in fixed right-[calc(24px_+_var(--hood-width))] top-24 z-50 flex w-[min(380px,calc(100vw_-_48px))] items-start gap-3 rounded-2xl border-2 border-base-lime bg-grays-ld-black p-4 text-grays-white shadow-[0_8px_32px_rgba(221,255,70,0.18),0_8px_24px_rgba(0,0,0,0.3)] transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none ${
+        leaving ? "-translate-y-1 opacity-0" : "opacity-100"
+      }`}
     >
+      <span
+        aria-hidden
+        className="mt-0.5 flex shrink-0 items-center rounded-full bg-base-lime px-2 py-1 font-sohne-mono text-xsmall-mono text-grays-ld-black"
+      >
+        {"</>"}
+      </span>
       <div className="flex-1">
         <p className="font-sohne text-small font-medium">{title}</p>
-        <p className="mt-1 font-sohne text-xsmall text-grays-03">{body}</p>
+        <p className="mt-1 font-sohne text-xsmall text-grays-02">{body}</p>
       </div>
       <button
         type="button"
-        onClick={onClose}
+        onClick={() => setLeaving(true)}
         aria-label="Close"
         className="-mr-1 -mt-1 rounded-full px-2 py-0.5 font-sohne text-small text-grays-03 transition-colors hover:bg-grays-06 hover:text-grays-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white"
       >
