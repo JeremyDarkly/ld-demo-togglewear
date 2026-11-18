@@ -19,6 +19,9 @@ type Variant = {
   cta: string;
   href: string;
   image: string;
+  // Read out by screen readers: what the photo shows, since it is the
+  // product the copy is selling.
+  imageAlt: string;
 };
 
 const VARIANTS: Record<LoyaltyTier, Variant> = {
@@ -32,6 +35,7 @@ const VARIANTS: Record<LoyaltyTier, Variant> = {
     // member's copy is actually promising.
     href: categoryHref(),
     image: "/images/hero-default.png",
+    imageAlt: "A model wearing the black ToggleWear hoodie with the hood up",
   },
   gold: {
     eyebrow: "New drip drop.",
@@ -40,6 +44,7 @@ const VARIANTS: Record<LoyaltyTier, Variant> = {
     cta: "Shop new arrivals",
     href: categoryHref("new"),
     image: "/images/hero-loyalty.png",
+    imageAlt: "A model in a lime tie-dye ToggleWear bucket hat and sunglasses",
   },
   // Jen has not designed this one. The copy promises early access and member
   // pricing, which both exist, and deliberately not free shipping or a
@@ -58,6 +63,7 @@ const VARIANTS: Record<LoyaltyTier, Variant> = {
     cta: "Shop the drop",
     href: categoryHref("new"),
     image: "/images/hero-platinum-vr.png",
+    imageAlt: "A person wearing a LaunchDarkly VR headset and holding a controller",
   },
 };
 
@@ -74,6 +80,7 @@ const ROLE_VARIANTS: Partial<Record<ShopperRole, Variant>> = {
     cta: "Shop new arrivals",
     href: categoryHref("new"),
     image: "/images/hero-beta-visor.png",
+    imageAlt: "A model wearing a cream LaunchDarkly visor",
   },
   developer: {
     eyebrow: "Staff preview.",
@@ -82,6 +89,7 @@ const ROLE_VARIANTS: Partial<Record<ShopperRole, Variant>> = {
     cta: "Shop tech",
     href: categoryHref("tech"),
     image: "/images/hero-developer-stickers.png",
+    imageAlt: "A laptop covered in LaunchDarkly stickers, including one that says In my AI era",
   },
 };
 
@@ -94,7 +102,7 @@ export default function Hero({
   tier?: LoyaltyTier;
   role?: ShopperRole;
 }) {
-  const { eyebrow, headline, body, cta, href, image } =
+  const { eyebrow, headline, body, cta, href, image, imageAlt } =
     (tier === "none" && ROLE_VARIANTS[role]) || VARIANTS[tier];
 
   return (
@@ -144,7 +152,7 @@ export default function Hero({
           <div className="relative aspect-[700/606] w-full overflow-hidden rounded-[30px] bg-grays-03 xl:aspect-auto xl:h-full">
             <Image
               src={image}
-              alt=""
+              alt={imageAlt}
               fill
               priority
               sizes="(min-width: 1280px) 700px, 100vw"

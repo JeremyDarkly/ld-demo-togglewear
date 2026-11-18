@@ -196,7 +196,7 @@ export default function StylistNote({
           )}
           {/* Which model wrote it, which is how a guarded rollout from one
               model to the other can be watched from the page itself. */}
-          <div className="flex items-center gap-2 font-sohne text-xsmall text-grays-03">
+          <div className="flex items-center gap-2 font-sohne text-xsmall text-grays-04">
             <span>{state.note.servedBy.model}</span>
             <span className="flex items-center gap-0.5">
               {(["positive", "negative"] as const).map((kind) => (

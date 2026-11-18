@@ -131,7 +131,7 @@ function ReplyFooter({
 }) {
   if (message.scripted) {
     return (
-      <p className="font-sohne text-xsmall text-grays-03">
+      <p className="font-sohne text-xsmall text-grays-04">
         Scripted reply · the AI Config is off
       </p>
     );
@@ -139,7 +139,7 @@ function ReplyFooter({
   if (!message.servedBy || !message.replyId) return null;
 
   return (
-    <div className="flex items-center gap-2 font-sohne text-xsmall text-grays-03">
+    <div className="flex items-center gap-2 font-sohne text-xsmall text-grays-04">
       <span>
         {message.servedBy.variation} · {message.servedBy.model}
       </span>
@@ -450,7 +450,7 @@ export default function ChatPanel({
           maxLength={2000}
           // Scales with the messages, since a 14px field under 16px replies
           // would be the one thing in the panel that got smaller.
-          className={`h-10 min-w-0 flex-1 rounded-[10px] border border-grays-02 bg-grays-white px-3 font-sohne text-grays-ld-black placeholder:text-grays-03 focus:border-grays-ld-black focus:outline-none ${
+          className={`h-10 min-w-0 flex-1 rounded-[10px] border border-grays-02 bg-grays-white px-3 font-sohne text-grays-ld-black placeholder:text-grays-04 focus:border-grays-ld-black focus:outline-none ${
             expanded ? "text-main" : "text-small"
           }`}
         />

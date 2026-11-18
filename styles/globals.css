@@ -194,5 +194,18 @@
       transform: none;
       transition: none;
     }
+
+    /* Everything else, including anything added later without a
+       motion-reduce: class: animations and transitions still finish, so
+       whatever waits on them (the toolbar message's fade-out) still happens,
+       just without the movement. */
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

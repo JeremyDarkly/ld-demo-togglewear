@@ -132,7 +132,7 @@ export default function SmartPicks({
           </div>
           {/* Which model chose them, which is how the adaptive trigger's
               switch to the fallback can be watched from the panel itself. */}
-          <p className="font-sohne text-xsmall text-grays-03">{state.servedBy.model}</p>
+          <p className="font-sohne text-xsmall text-grays-04">{state.servedBy.model}</p>
         </>
       )}
     </section>

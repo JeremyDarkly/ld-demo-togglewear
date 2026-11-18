@@ -125,7 +125,7 @@ export default function CodeTab() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search, for example: python track, relay, judges"
           aria-label="Search code examples"
-          className="w-full rounded-full border border-grays-02 px-4 py-2 font-sohne text-small text-grays-ld-black placeholder:text-grays-03 focus-visible:border-grays-ld-black focus-visible:outline-none"
+          className="w-full rounded-full border border-grays-02 px-4 py-2 font-sohne text-small text-grays-ld-black placeholder:text-grays-04 focus-visible:border-grays-ld-black focus-visible:outline-none"
         />
         {terms.length === 0 && (
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Sections">

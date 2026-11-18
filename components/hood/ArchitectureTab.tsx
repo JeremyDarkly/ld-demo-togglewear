@@ -138,7 +138,7 @@ function Figure({ src, alt }: { src: string; alt: string }) {
   return (
     <figure className="flex flex-col gap-1.5">
       <img src={src} alt={alt} loading="lazy" className="w-full rounded-[12px]" />
-      <figcaption className="font-sohne text-[11px] text-grays-03">From LaunchDarkly&apos;s docs</figcaption>
+      <figcaption className="font-sohne text-[11px] text-grays-04">From LaunchDarkly&apos;s docs</figcaption>
     </figure>
   );
 }
@@ -385,7 +385,7 @@ function Flows() {
               const actor = ACTORS[step.actor];
               return (
                 <li key={i} className="flex gap-3">
-                  <span className="w-4 shrink-0 pt-0.5 text-right font-sohne-mono text-xsmall-mono text-grays-03">
+                  <span className="w-4 shrink-0 pt-0.5 text-right font-sohne-mono text-xsmall-mono text-grays-04">
                     {i + 1}
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col gap-1">

@@ -157,8 +157,8 @@ export default function ShipmentDialog({
                         stage.current
                           ? "font-medium text-grays-ld-black"
                           : stage.reached
-                            ? "text-grays-04"
-                            : "text-grays-03"
+                            ? "text-grays-05"
+                            : "text-grays-04"
                       }`}
                     >
                       {stage.label}

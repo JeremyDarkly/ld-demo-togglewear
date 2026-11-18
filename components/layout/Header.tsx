@@ -45,9 +45,23 @@ export default function Header({
   const current = pathname === "/products" ? query.category : undefined;
 
   return (
-    // relative positions the search panel against the bar, and z-50 keeps the
-    // whole header above the dim that panel lays over the page, so the bar and
-    // the field below it read as one piece of chrome.
+    <>
+    {/* The first thing Tab reaches on every page, and hidden until then: it
+        takes keyboard and screen reader users past the header's dozen stops
+        to the page itself, at #content just below. */}
+    <a
+      href="#content"
+      onClick={(event) => {
+        event.preventDefault();
+        document.getElementById("content")?.focus();
+      }}
+      className="sr-only rounded-full bg-base-lime px-4 py-2 font-sohne text-small font-medium text-grays-ld-black focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:outline-none focus:ring-2 focus:ring-grays-ld-black focus:ring-offset-2"
+    >
+      Skip to content
+    </a>
+    {/* relative positions the search panel against the bar, and z-50 keeps the
+        whole header above the dim that panel lays over the page, so the bar and
+        the field below it read as one piece of chrome. */}
     <header className="relative z-50 w-full">
       <AnnouncementBar persona={persona} />
 
@@ -187,5 +201,7 @@ export default function Header({
         <SearchPanel variant={variant} onClose={() => setSearchOpen(false)} />
       )}
     </header>
+    <div id="content" tabIndex={-1} className="outline-none" />
+    </>
   );
 }

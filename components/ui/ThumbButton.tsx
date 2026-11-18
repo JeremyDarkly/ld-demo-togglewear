@@ -28,7 +28,7 @@ export default function ThumbButton({
       className={`rounded-[4px] p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black ${
         chosen
           ? "text-grays-ld-black"
-          : "text-grays-03 enabled:hover:text-grays-ld-black disabled:opacity-40"
+          : "text-grays-04 enabled:hover:text-grays-ld-black disabled:opacity-40"
       }`}
     >
       <svg

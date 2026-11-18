@@ -71,7 +71,7 @@ function Chevron({ open }: { open: boolean }) {
   return (
     <svg
       viewBox="0 0 12 12"
-      className={`h-3 w-3 shrink-0 text-grays-03 transition-transform ${open ? "rotate-180" : ""}`}
+      className={`h-3 w-3 shrink-0 text-grays-04 transition-transform ${open ? "rotate-180" : ""}`}
       aria-hidden="true"
     >
       <path d="M3 4.5 6 7.5l3-3" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
@@ -106,7 +106,7 @@ function Row({
       <StatusMark status={step?.status} />
       <span
         className={`shrink-0 font-sohne text-small font-medium ${
-          step ? "text-grays-ld-black" : "text-grays-03"
+          step ? "text-grays-ld-black" : "text-grays-04"
         }`}
       >
         {name}
@@ -115,7 +115,7 @@ function Row({
         {open ? "" : line}
       </span>
       {step?.ms !== undefined && (
-        <span title={step.model} className="shrink-0 font-sohne text-xsmall text-grays-03">
+        <span title={step.model} className="shrink-0 font-sohne text-xsmall text-grays-04">
           {(step.ms / 1000).toFixed(1)}s
         </span>
       )}
@@ -140,7 +140,7 @@ function Row({
       {open && step?.text && (
         <div className="ml-[26px] flex animate-fade-in flex-col gap-1 font-sohne text-xsmall">
           <p className="text-grays-04">{step.text}</p>
-          {step.model && <p className="text-grays-03">{step.model}</p>}
+          {step.model && <p className="text-grays-04">{step.model}</p>}
         </div>
       )}
     </li>

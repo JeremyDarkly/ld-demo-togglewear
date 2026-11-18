@@ -7,6 +7,12 @@ import {
   type ReactNode,
 } from "react";
 import { lineId, type CartLine } from "@/lib/cart";
+import { productBySlug } from "@/lib/products";
+import { announce } from "@/components/ui/Announcer";
+
+function itemName(slug: string) {
+  return productBySlug(slug)?.name ?? "Item";
+}
 
 // Jen's cart is drawn with two items in it. The cart starts empty all the
 // same, because what is in it is now something LaunchDarkly targets, and a
@@ -152,11 +158,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       return [...prev, { slug, size, quantity }];
     });
+    const sized = /one size/i.test(size) ? "" : `, size ${size},`;
+    announce(`${itemName(slug)}${sized} added to cart`);
   }, []);
 
   const remove = useCallback((slug: string, size: string) => {
     const id = lineId(slug, size);
     setLines((prev) => prev.filter((l) => lineId(l.slug, l.size) !== id));
+    announce(`${itemName(slug)} removed from cart`);
   }, []);
 
   const setQuantity = useCallback(

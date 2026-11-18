@@ -11,6 +11,7 @@ import { SwagAssistantProvider } from "@/components/ui/SwagAssistantProvider";
 import LaunchDarklyProvider from "@/components/ui/LaunchDarklyProvider";
 import DemoGenerator from "@/components/generator/DemoGenerator";
 import { UnderTheHoodProvider } from "@/components/hood/UnderTheHood";
+import { Announcer } from "@/components/ui/Announcer";
 import "@/styles/globals.css";
 
 // next/font is only allowed in _app, not _document, so the CSS variable the
@@ -103,6 +104,7 @@ export default function App({ Component, pageProps }: AppProps) {
                         {/* Outside the keyed wrapper, so moving between
                             pages does not close it. */}
                         <DemoGenerator />
+                        <Announcer />
                       </UnderTheHoodProvider>
                     </SwagAssistantProvider>
                   </DeveloperToolbarProvider>
