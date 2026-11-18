@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { openDemoGenerator } from "@/components/generator/DemoGenerator";
 import { IncidentRow, OutageToggle } from "@/components/ui/AccountMenu";
-import { TOOLBAR_WINS, useDeveloperToolbar } from "@/components/ui/DeveloperToolbar";
+import { ToolbarWinsNote, useDeveloperToolbar } from "@/components/ui/DeveloperToolbar";
 import { useIncidents } from "@/components/ui/IncidentProvider";
 import { apiHeaders } from "@/lib/api";
 import type { ResetResult } from "@/lib/demoReset";
@@ -200,9 +200,7 @@ export default function DemoToolsTab() {
         <IncidentRow label="LaunchDarkly toolbar" title="Opens LaunchDarkly's developer toolbar">
           <OutageToggle on={toolbarOn} onChange={setToolbarOn} tone="plain" />
         </IncidentRow>
-        {toolbarOn && (
-          <p className="animate-fade-in font-sohne text-xsmall text-grays-04">{TOOLBAR_WINS}</p>
-        )}
+        {toolbarOn && <ToolbarWinsNote />}
       </Section>
 
       <Section

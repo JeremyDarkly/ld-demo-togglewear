@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 
 import { useCart } from "@/components/cart/CartProvider";
-import { TOOLBAR_WINS, useDeveloperToolbar } from "@/components/ui/DeveloperToolbar";
+import { ToolbarWinsNote, useDeveloperToolbar } from "@/components/ui/DeveloperToolbar";
 import { useIncidents } from "@/components/ui/IncidentProvider";
 import ProfileIllustration from "@/components/ui/ProfileIllustration";
 import { useShopper } from "@/components/ui/ShopperProvider";
@@ -325,9 +325,7 @@ export default function AccountMenu({ onClose }: { onClose: () => void }) {
         >
           <OutageToggle on={toolbarOn} onChange={setToolbarOn} tone="plain" />
         </IncidentRow>
-        {toolbarOn && (
-          <p className="animate-fade-in font-sohne text-xsmall text-grays-04">{TOOLBAR_WINS}</p>
-        )}
+        {toolbarOn && <ToolbarWinsNote />}
       </div>
 
       {/* A guest has no account to view and nothing to sign out of, so the
