@@ -81,7 +81,7 @@ export default function ArchitectureTab() {
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-3 rounded-[16px] border border-grays-hairline p-4">
+    <section className="flex flex-col gap-3 rounded-[16px] border border-grays-02 bg-grays-white p-4 shadow-[0_2px_6px_rgba(25,25,25,0.08)]">
       <h3 className="font-sohne text-main font-medium text-grays-ld-black">{title}</h3>
       {children}
     </section>
@@ -163,6 +163,8 @@ function Platform() {
         <DocsLink href={`${DOCS}/home/getting-started/architecture`}>LaunchDarkly architecture</DocsLink>
       </Card>
 
+      <SafetyNets />
+
       <Card title="What your app sends back">
         <Bullets
           items={[
@@ -215,6 +217,167 @@ function Platform() {
         <DocsLink href={`${DOCS}/sdk/relay-proxy`}>The Relay Proxy</DocsLink>
       </Card>
     </>
+  );
+}
+
+// The six layers from launchdarkly.com/how-it-works/platform-architecture, in
+// the order they take over. Breaking something takes down whatever is
+// serving and hands over to the next row, so a customer can watch the app
+// keep running through all six.
+const NETS = [
+  {
+    name: "Multi-region failover",
+    detail: "If a region goes down, SDKs reconnect to another region by themselves.",
+  },
+  {
+    name: "Polling fallback",
+    detail: "If streaming isn't available, SDKs fetch flags from the CDN until it's back.",
+  },
+  {
+    name: "CDN backup",
+    detail: "A new copy of the app starts from complete flag state held at 100+ edge locations.",
+  },
+  {
+    name: "Relay Proxy or persistent store (optional)",
+    detail: "Runs in your own network with the latest state, and serves even when fully disconnected.",
+  },
+  {
+    name: "Local copy",
+    detail: "Running apps serve the last-known values from memory, and mobile apps from the device.",
+  },
+  {
+    name: "Code defaults",
+    detail: "If nothing is reachable, every flag serves the default written in the code.",
+  },
+];
+
+const BREAKS = [
+  "Take a region down",
+  "Stop streaming",
+  "Start a new copy of the app",
+  "Cut the app off from LaunchDarkly",
+  "Take the Relay Proxy down",
+  "Restart with nothing reachable",
+];
+
+const SERVING = [
+  "Everything is healthy. Changes stream from the primary region and reach every app in under 200ms.",
+  "The primary region is down. SDKs moved to the second region on their own.",
+  "Streaming is down. SDKs are polling the CDN for flags instead.",
+  "The new copy started from the flag state the CDN already had ready.",
+  "LaunchDarkly can't be reached. The Relay Proxy in your network is serving the latest state.",
+  "The Relay Proxy is down. The app keeps serving the values it already has in memory.",
+  "Nothing is reachable. Every flag serves its default from the code.",
+];
+
+function SafetyNets() {
+  const [broken, setBroken] = useState(0);
+  const done = broken === NETS.length;
+
+  return (
+    <Card title="Six safety nets: why flags keep working">
+      <Text>
+        Each layer backs up the one before it, and each one takes over and recovers by itself. Break
+        things one at a time to see who serves flags next.
+      </Text>
+
+      <ol className="flex flex-col gap-1.5">
+        {NETS.map(({ name, detail }, i) => {
+          const state = i < broken - 1 ? "down" : i === broken - 1 ? "serving" : "ready";
+          return (
+            <li
+              key={name}
+              className={`flex items-start gap-3 rounded-[12px] border-2 px-3 py-2.5 shadow-sm transition-colors ${
+                state === "serving"
+                  ? "border-grays-ld-black bg-base-lime/40"
+                  : state === "down"
+                    ? "border-grays-02 bg-grays-01 shadow-none"
+                    : "border-grays-02 bg-grays-white"
+              }`}
+            >
+              <span
+                className={`flex size-6 shrink-0 items-center justify-center rounded-full font-sohne-mono text-xsmall font-medium ${
+                  state === "serving"
+                    ? "bg-grays-ld-black text-base-lime"
+                    : state === "down"
+                      ? "bg-grays-02 text-grays-04"
+                      : "bg-grays-ld-black text-grays-white"
+                }`}
+                aria-hidden="true"
+              >
+                {i + 1}
+              </span>
+              <span className="flex flex-1 flex-col gap-0.5">
+                <span
+                  className={`font-sohne text-small font-medium ${
+                    state === "down" ? "text-grays-04 line-through" : "text-grays-ld-black"
+                  }`}
+                >
+                  {name}
+                </span>
+                <span className="font-sohne text-xsmall text-grays-04">{detail}</span>
+              </span>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 font-sohne text-[11px] font-medium uppercase tracking-wide ${
+                  state === "serving"
+                    ? "bg-grays-ld-black text-base-lime"
+                    : state === "down"
+                      ? "bg-grays-02 text-grays-05"
+                      : "border border-grays-02 bg-grays-01 text-grays-05"
+                }`}
+              >
+                {state === "serving" ? "Serving now" : state === "down" ? "Down" : "Standing by"}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="flex flex-col gap-3 rounded-[12px] bg-grays-ld-black p-3">
+        <p role="status" className="font-sohne text-small text-grays-white">
+          {SERVING[broken]}{" "}
+          <span className="font-medium text-base-lime">The app is still running.</span>
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setBroken((n) => (done ? 0 : n + 1))}
+            className="rounded-full bg-base-lime px-3 py-1.5 font-sohne text-xsmall font-medium text-grays-ld-black hover:bg-grays-white"
+          >
+            {done ? "Bring everything back" : BREAKS[broken]}
+          </button>
+          {broken > 0 && !done && (
+            <button
+              type="button"
+              onClick={() => setBroken(0)}
+              className="rounded-full px-3 py-1.5 font-sohne text-xsmall font-medium text-grays-02 hover:text-grays-white"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { value: "<200ms", label: "for a change to reach every connected app" },
+          { value: "25ms", label: "for an SDK to start up" },
+          { value: "0 bytes", label: "of targeting rules sent to the browser" },
+        ].map(({ value, label }) => (
+          <div
+            key={value}
+            className="flex flex-col gap-0.5 rounded-[12px] border-2 border-t-[6px] border-grays-02 border-t-base-lime bg-grays-white p-3 shadow-sm"
+          >
+            <span className="font-sora text-[20px] font-bold leading-tight text-grays-ld-black">{value}</span>
+            <span className="font-sohne text-[11px] text-grays-04">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      <DocsLink href="https://launchdarkly.com/how-it-works/platform-architecture/">
+        Platform architecture
+      </DocsLink>
+    </Card>
   );
 }
 
