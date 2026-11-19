@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useCart } from "@/components/cart/CartProvider";
@@ -6,6 +6,7 @@ import { useUnderTheHood } from "@/components/hood/UnderTheHood";
 import AccountMenu from "@/components/ui/AccountMenu";
 import SearchPanel from "@/components/ui/SearchPanel";
 import { useShopper } from "@/components/ui/ShopperProvider";
+import { isEventStore } from "@/lib/eventStore";
 import { categoryHref, type ProductFilter } from "@/lib/products";
 import AnnouncementBar, { type AnnouncementPersona } from "./AnnouncementBar";
 
@@ -38,6 +39,9 @@ export default function Header({
   // the variant is read here rather than passed down from each page.
   const { variant } = useShopper();
   const { open: hoodOpen, toggle: toggleHood } = useUnderTheHood();
+  // Read after hydration: the server does not know which host it is behind.
+  const [eventStore, setEventStore] = useState(false);
+  useEffect(() => setEventStore(isEventStore()), []);
 
   // Which link is lit follows the URL rather than being fixed in the list,
   // which had New Drops highlighted on every page including the cart.
@@ -68,6 +72,25 @@ export default function Header({
       <div className="w-full bg-grays-black-01">
         <div className="mx-auto flex h-20 max-w-[1440px] items-center justify-between px-6 md:px-10 xl:px-16">
           <div className="flex items-center gap-4">
+            {/* For the booth, like the </> button at the other end: a demo
+                control rather than the shop's, so it is muted the same way. */}
+            {eventStore && (
+              <Link
+                href="/screensaver"
+                aria-label="Screensaver"
+                title="Screensaver: play the booth video full screen"
+                className="text-grays-02 hover:text-grays-white"
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none">
+                  <rect x="2" y="3.5" width="16" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M8.5 6.75v4.5L12.25 9z" fill="currentColor" />
+                  <path d="M7 17.5h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </Link>
+            )}
+            {eventStore && (
+              <span aria-hidden="true" className="mr-3 h-5 w-px bg-grays-05 md:mr-5" />
+            )}
             <button
               type="button"
               aria-label="Menu"
