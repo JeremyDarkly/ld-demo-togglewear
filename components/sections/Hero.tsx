@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { categoryHref } from "@/lib/products";
 import type { LoyaltyTier, ShopperRole } from "@/lib/shopper";
+import EventLinks from "./EventLinks";
 
 // Figma component "hero" (63:4062), which has two variants: Default and
 // "Loyal Gold Member". Both the copy and the image change between them.
@@ -125,25 +126,28 @@ export default function Hero({
             </p>
           </div>
 
-          <Link
-            href={href}
-            className="flex h-12 w-fit items-center justify-center gap-2.5 rounded-[12px] border border-grays-ld-black bg-base-lime pl-4 pr-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white focus-visible:ring-offset-2 focus-visible:ring-offset-grays-ld-black"
-          >
-            <span className="pb-px font-sohne text-main-medium font-medium text-grays-ld-black">
-              {cta}
-            </span>
-            {/* A wide arrow glyph that the design crops down to a 28px box.
-                max-w-none is required: preflight's img{max-width:100%} would
-                otherwise clamp it to the container and squash it, since the
-                SVG sets preserveAspectRatio="none". */}
-            <span className="relative block size-7 shrink-0 overflow-hidden">
-              <img
-                src="/icons/arrow-button.svg"
-                alt=""
-                className="absolute left-[-24.89px] top-[7.78px] h-[11.714px] w-[46.73px] max-w-none"
-              />
-            </span>
-          </Link>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+            <Link
+              href={href}
+              className="flex h-12 w-fit items-center justify-center gap-2.5 rounded-[12px] border border-grays-ld-black bg-base-lime pl-4 pr-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white focus-visible:ring-offset-2 focus-visible:ring-offset-grays-ld-black"
+            >
+              <span className="pb-px font-sohne text-main-medium font-medium text-grays-ld-black">
+                {cta}
+              </span>
+              {/* A wide arrow glyph that the design crops down to a 28px box.
+                  max-w-none is required: preflight's img{max-width:100%} would
+                  otherwise clamp it to the container and squash it, since the
+                  SVG sets preserveAspectRatio="none". */}
+              <span className="relative block size-7 shrink-0 overflow-hidden">
+                <img
+                  src="/icons/arrow-button.svg"
+                  alt=""
+                  className="absolute left-[-24.89px] top-[7.78px] h-[11.714px] w-[46.73px] max-w-none"
+                />
+              </span>
+            </Link>
+            <EventLinks />
+          </div>
         </div>
 
         {/* No bottom padding at xl: the design runs the panel flush to the
