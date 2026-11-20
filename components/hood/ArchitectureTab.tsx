@@ -200,7 +200,7 @@ const AFTER_APPROVE = [
   },
   {
     name: "Auto-release",
-    detail: "Once the code is merged and deployed, each flag follows the project's flag release plan: Test first, then Production in stages, watching error rates the whole way.",
+    detail: "Once the code is merged and deployed, each flag follows the project's release plans, explained below.",
   },
   {
     name: "Auto-rollback",
@@ -216,10 +216,30 @@ function ReleaseAutopilot() {
   return (
     <>
       <Card title="Release Autopilot: a flag for every risky change">
+        <div className="flex flex-col gap-1 rounded-[12px] border border-grays-hairline bg-grays-01 px-3 py-2.5">
+          <span className="font-sohne-mono text-[11px] uppercase tracking-[0.5px] text-grays-04">
+            The short version
+          </span>
+          <p className="font-sohne text-small font-medium text-grays-ld-black">
+            Release Autopilot makes the safe way to ship the default way. Every risky change gets a
+            flag, a gradual rollout, an automatic rollback and a cleanup, without anyone having to
+            remember to do it.
+          </p>
+        </div>
         <Text>
-          The LaunchDarkly GitHub app reads every pull request, decides which changes need a flag,
-          and offers to add them. After approval it creates the flags, wraps the code, rolls each
-          change out safely, rolls it back if something breaks, and cleans the flag up at the end.
+          Most teams agree risky changes belong behind a flag, but flags still get skipped. Someone
+          has to notice the change is risky, create the flag, wrap the code, plan the rollout, and
+          remember to remove the flag months later. When a deadline is close, that is the work that
+          gets dropped.
+        </Text>
+        <Text>
+          Release Autopilot does that work. It is the LaunchDarkly GitHub app, and it reviews each
+          pull request the way a careful teammate would: it reads the change, works out which parts
+          could hurt customers, and comments with the flags it recommends and why.
+        </Text>
+        <Text>
+          People stay in charge. Every plan waits for a human to approve, refine or reject it, and
+          automatic releasing is a separate setting a team can leave off.
         </Text>
         <Text>
           Below is a real run on ToggleWear: one pull request with three unrelated features, and the
