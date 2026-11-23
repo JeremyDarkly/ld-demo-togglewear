@@ -15,6 +15,8 @@ Tables:
     AI_TOOLS        -> LDPlatform.create_ai_tool(**spec)
     AI_CONFIGS      -> create_ai_config(**spec["config"]), its variations,
                        tools, judges, targeting, then switched on
+    RELEASE_PLANS, FLAG_RELEASE_PLANS, RELEASE_DEMO_FLAGS
+                    -> event projects only, see their section at the end
 
 Entries with {"custom": "<method name>"} defer to a hand-written method on
 DemoBuilder for cases that don't fit the generic shape.
@@ -2003,4 +2005,113 @@ AGENT_OPTIMIZATIONS = [
      ],
      'judges': [],
      'max_attempts': 4},
+]
+
+
+# ---- Release plans, event projects only ----
+#
+# The Release Autopilot view in the event stores' Architecture tab sends
+# demoers to Project settings > Release settings and to a flag's Release tab,
+# so an eventsN-togglewear project is built with the plans it describes and a
+# demo flag whose staged Production release is already under way. No other
+# project gets them. Allocations are in thousandths of a percent; the last
+# step of a phase finishes at 100% without being listed.
+_EVERYONE = {'contextKind': 'user', 'attribute': 'kind', 'op': 'in', 'values': ['user']}
+_WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
+# LDPlatform.create_release_plan(environment, plan)
+RELEASE_PLANS = [
+    {'environment': 'test',
+     'plan': {
+         'key': 'test-quick-release',
+         'name': 'Test: quick release',
+         'description': 'Ramps 25% then 50% two minutes apart, then finishes at 100%, '
+                        'so a demo can watch it move.',
+         'releaseMethod': 'progressive_release',
+         'progressiveRelease': {
+             'randomizationUnit': 'user',
+             'advancementMode': 'automatic',
+             'phases': [
+                 {'description': 'Everyone in Test',
+                  'clauses': [_EVERYONE],
+                  'steps': [{'allocation': 25000, 'durationMillis': 120000},
+                            {'allocation': 50000, 'durationMillis': 120000}]},
+             ],
+         },
+     }},
+    {'environment': 'production',
+     'plan': {
+         'key': 'production-guarded-release',
+         'name': 'Production: guarded release',
+         'description': 'Three stages, a week each step: ToggleWear staff, then beta testers, '
+                        'then everyone at 5%, 25% and 50% before all shoppers. Rolls back by '
+                        'itself if server or browser errors get worse.',
+         'releaseMethod': 'progressive_release',
+         'progressiveRelease': {
+             'randomizationUnit': 'user',
+             'advancementMode': 'automatic',
+             'phases': [
+                 {'description': 'ToggleWear staff',
+                  'clauses': [_EVERYONE,
+                              {'contextKind': 'user', 'attribute': 'email', 'op': 'endsWith',
+                               'values': ['@togglewear.com']}],
+                  'steps': [{'allocation': 50000, 'durationMillis': _WEEK_MS}]},
+                 {'description': 'Beta testers',
+                  'clauses': [_EVERYONE,
+                              {'contextKind': 'user', 'attribute': 'role', 'op': 'in',
+                               'values': ['beta']}],
+                  'steps': [{'allocation': 50000, 'durationMillis': _WEEK_MS}]},
+                 {'description': 'Everyone',
+                  'clauses': [_EVERYONE],
+                  'steps': [{'allocation': 5000, 'durationMillis': _WEEK_MS},
+                            {'allocation': 25000, 'durationMillis': _WEEK_MS},
+                            {'allocation': 50000, 'durationMillis': _WEEK_MS}]},
+             ],
+             # Created by LaunchDarkly with every project.
+             'metrics': {
+                 'ld_autogen__otel-default-http-error-rate': {'isGroup': False, 'autoRollback': True},
+                 'ld_autogen__telemetry-default-error-rate': {'isGroup': False, 'autoRollback': True},
+             },
+         },
+     }},
+]
+
+# LDPlatform.create_flag_release_plan(plan), after the plans it names.
+FLAG_RELEASE_PLANS = [
+    {'key': 'test-then-production',
+     'name': 'Test, then production',
+     'description': 'Releases in Test first, then starts Production once Test finishes.',
+     'executionMode': 'sequential',
+     'default': True,
+     'environments': [
+         {'environmentKey': 'test', 'environmentReleasePlanKey': 'test-quick-release',
+          'triggerType': 'flag_eval'},
+         {'environmentKey': 'production', 'environmentReleasePlanKey': 'production-guarded-release',
+          'triggerType': 'promotion'},
+     ]},
+]
+
+# create_flag(**spec["flag"]), then LDPlatform.start_flag_release(key, **spec["release"]).
+# The flag is the first one Release Autopilot recommends on the showcase pull
+# request. No ToggleWear code reads it, so its release changes nothing in the
+# store.
+RELEASE_DEMO_FLAGS = [
+    {'flag': {
+        'flag_key': 'gift-card-redemption',
+        'flag_name': 'Gift card redemption',
+        'description': 'Release Autopilot demo: the gift card field and redeem endpoint from the '
+                       'showcase pull request. No ToggleWear code reads this flag, so its release '
+                       'changes nothing in the store.',
+        'variations': [{'value': True, 'name': 'Gift cards on'},
+                       {'value': False, 'name': 'Gift cards off'}],
+        'tags': ['release-autopilot-demo'],
+        'temporary': True,
+     },
+     'release': {
+        'environment': 'production',
+        'plan': 'production-guarded-release',
+        'original_value': False,
+        'target_value': True,
+        'comment': 'Release Autopilot demo: a staged release that runs for weeks',
+     }},
 ]

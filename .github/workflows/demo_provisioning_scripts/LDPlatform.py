@@ -1778,6 +1778,75 @@ class LDPlatform:
             print(f"Release pipeline: empty response (status {response.status_code})")
         return response
 
+    ##################################################
+    # Release plans
+    ##################################################
+    def _post_release_api(self, path, payload, what):
+        response = self.getrequest(
+            "POST",
+            "https://app.launchdarkly.com/api/v2/projects/" + self.project_key + path,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": self.api_key,
+                "LD-API-Version": "beta",
+            },
+        )
+        if response.status_code == 409 or response.status_code < 300:
+            return response
+        try:
+            message = json.loads(response.text).get("message", response.text[:300])
+        except json.JSONDecodeError:
+            message = f"HTTP {response.status_code}"
+        print(f"Error creating {what}: {message}")
+        return response
+
+    def create_release_plan(self, env_key, plan):
+        return self._post_release_api(
+            "/environments/" + env_key + "/release-plans", plan, "release plan " + plan["key"]
+        )
+
+    def create_flag_release_plan(self, plan):
+        return self._post_release_api(
+            "/flag-release-plans", plan, "flag release plan " + plan["key"]
+        )
+
+    # Serves original_value to everyone, then starts a release on the plan
+    # towards target_value. A new project has no evaluations or metric events
+    # yet, so the health checks that would hold the start back are bypassed.
+    def start_flag_release(self, flag_key, environment, plan, original_value, target_value, comment):
+        flag = self._get_flag_json(flag_key)
+        if flag is None:
+            print(f"Error starting release on {flag_key}: flag not found")
+            return None
+        ids = {v["value"]: v["_id"] for v in flag["variations"]}
+        indexes = {v["value"]: i for i, v in enumerate(flag["variations"])}
+        self.getrequest(
+            "PATCH",
+            "https://app.launchdarkly.com/api/v2/flags/" + self.project_key + "/" + flag_key,
+            json={
+                "comment": comment,
+                "patch": [
+                    {"op": "replace", "path": f"/environments/{environment}/fallthrough/variation",
+                     "value": indexes[original_value]},
+                    {"op": "replace", "path": f"/environments/{environment}/on", "value": True},
+                ],
+            },
+            headers={"Content-Type": "application/json", "Authorization": self.api_key},
+        )
+        return self._post_release_api(
+            f"/flags/{flag_key}/environments/{environment}/releases",
+            {
+                "releasePlanKey": plan,
+                "originalVariationId": ids[original_value],
+                "targetVariationId": ids[target_value],
+                "bypassHealthChecks": ["flag_evaluations_any", "flag_evaluations_with_context",
+                                       "metric_events_any", "metric_events_with_context"],
+                "comment": comment,
+            },
+            "release on " + flag_key,
+        )
+
     def create_shortcut(self, name, key, icon, tags, env_key, sort_by="name"):
         payload = {
             "name": name,

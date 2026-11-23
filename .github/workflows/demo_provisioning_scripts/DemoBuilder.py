@@ -38,7 +38,14 @@ from demo_resources import (
     DATASETS,
     PLAYGROUNDS,
     AGENT_OPTIMIZATIONS,
+    RELEASE_PLANS,
+    FLAG_RELEASE_PLANS,
+    RELEASE_DEMO_FLAGS,
 )
+
+# The shared booth environments, events1-togglewear and up, which is also what
+# lib/eventStore.ts shows the Release Autopilot view on.
+EVENT_PROJECT = re.compile(r"^events\d+-togglewear$")
 
 
 class DemoBuilder:
@@ -80,6 +87,7 @@ class DemoBuilder:
         self.create_metrics()
         self.create_metric_groups()
         self.create_flags()
+        self.create_release_plans()
         # After the segments, which the Swag Assistant's member rule matches.
         self.create_ai_configs()
         # After the agents, since a graph's nodes have to exist.
@@ -210,6 +218,21 @@ class DemoBuilder:
                 getattr(self.ldproject, method)(*args, **kwargs)
         print("Done")
         self.flags_created = True
+
+    # Event projects only (definitions live in the release plan tables in
+    # demo_resources.py)
+    def create_release_plans(self):
+        if not EVENT_PROJECT.match(self.project_key):
+            return
+        print("Creating release plans...")
+        for spec in RELEASE_PLANS:
+            self.ldproject.create_release_plan(spec["environment"], spec["plan"])
+        for plan in FLAG_RELEASE_PLANS:
+            self.ldproject.create_flag_release_plan(plan)
+        for spec in RELEASE_DEMO_FLAGS:
+            self.ldproject.create_flag(**spec["flag"])
+            self.ldproject.start_flag_release(spec["flag"]["flag_key"], **spec["release"])
+        print("Done")
 
     # Create all the segments (definitions live in the SEGMENTS table above)
     def create_segments(self):
