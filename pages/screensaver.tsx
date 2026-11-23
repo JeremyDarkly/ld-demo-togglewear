@@ -4,18 +4,30 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { isEventStore } from "@/lib/eventStore";
 
-// The booth's attract loop: a video full screen on the stores' laptops between
-// visitors, opened from the icon at the left of the header. Swapping the video
-// is a matter of replacing this file in public; until it is there, the page
-// shows the logo on black instead of a broken player.
-const VIDEO_SRC = "/videos/screensaver.mp4";
+// The booth's screensaver, full screen on the stores' laptops between
+// visitors, opened from the icon at the left of the header. The design team's
+// two portrait posters take turns, one at a time. Their background is
+// base-lime, so the page around them is too.
+const SLIDES = [
+  {
+    src: "/images/screensaver/control-missing-piece.png",
+    alt: "LaunchDarkly. Control: the missing piece of your AI SDLC.",
+  },
+  {
+    src: "/images/screensaver/auto-magic-control.png",
+    alt: "LaunchDarkly. Auto-magic control: auto-flag, auto-release, auto-rollback, auto-cleanup.",
+  },
+];
 
-// How long the buttons stay after the last movement, so the loop plays clean.
+// How long each poster shows before the other fades in.
+const SLIDE_MS = 8000;
+
+// How long the buttons stay after the last movement, so the screen stays clean.
 const IDLE_MS = 3000;
 
 export default function Screensaver() {
   const router = useRouter();
-  const [missing, setMissing] = useState(false);
+  const [active, setActive] = useState(0);
   const [controls, setControls] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -23,6 +35,14 @@ export default function Screensaver() {
   useEffect(() => {
     if (!isEventStore()) router.replace("/");
   }, [router]);
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setActive((i) => (i + 1) % SLIDES.length),
+      SLIDE_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let timer = window.setTimeout(() => setControls(false), IDLE_MS);
@@ -53,7 +73,7 @@ export default function Screensaver() {
   };
 
   const button =
-    "flex h-12 items-center rounded-[12px] px-5 font-sohne text-main-medium font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-white focus-visible:ring-offset-2 focus-visible:ring-offset-grays-ld-black";
+    "flex h-12 items-center rounded-[12px] px-5 font-sohne text-main-medium font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grays-ld-black focus-visible:ring-offset-2 focus-visible:ring-offset-base-lime";
 
   return (
     <>
@@ -61,44 +81,45 @@ export default function Screensaver() {
         <title>ToggleWear</title>
       </Head>
       {/* Above everything else on the page, Under the hood and the swag
-          assistant included, which would otherwise sit over the video. */}
+          assistant included, which would otherwise sit over the posters. */}
       <div
-        className={`fixed inset-0 z-[80] flex items-center justify-center bg-grays-ld-black ${
+        className={`fixed inset-0 z-[80] flex flex-col bg-base-lime ${
           controls ? "" : "cursor-none"
         }`}
       >
-        {missing ? (
-          <div className="flex items-center gap-4 font-sora text-[56px] font-bold tracking-[-1.12px] text-grays-white">
-            <img src="/icons/ld-logo-white.svg" alt="" width={52} height={52} />
-            ToggleWear
-          </div>
-        ) : (
-          <video
-            src={VIDEO_SRC}
-            autoPlay
-            loop
-            muted
-            playsInline
-            onError={() => setMissing(true)}
-            className="h-full w-full object-contain"
-          />
-        )}
-
+        {/* The buttons keep their own strip even while hidden, so on a
+            portrait screen, where a poster fills the width, they never land
+            on its logo. */}
         <div
-          className={`absolute right-6 top-6 flex gap-3 transition-opacity duration-300 ${
+          className={`flex shrink-0 justify-end gap-3 px-6 pt-6 transition-opacity duration-300 ${
             controls ? "opacity-100" : "pointer-events-none opacity-0"
           }`}
         >
           <button
             type="button"
             onClick={toggleFullscreen}
-            className={`${button} border border-grays-white text-grays-white hover:bg-grays-white/10`}
+            className={`${button} border border-grays-ld-black text-grays-ld-black hover:bg-grays-ld-black/10`}
           >
             {fullscreen ? "Exit fullscreen" : "Fullscreen"}
           </button>
-          <Link href="/" className={`${button} bg-base-lime text-grays-ld-black`}>
+          <Link href="/" className={`${button} bg-grays-ld-black text-grays-white`}>
             Back to ToggleWear
           </Link>
+        </div>
+
+        <div className="relative min-h-0 flex-1">
+          {SLIDES.map((slide, i) => (
+            <img
+              key={slide.src}
+              src={slide.src}
+              alt={slide.alt}
+              width={1080}
+              height={1920}
+              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-1000 ${
+                i === active ? "opacity-100" : "opacity-0"
+              }`}
+            />
+          ))}
         </div>
       </div>
     </>
