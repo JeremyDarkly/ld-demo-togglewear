@@ -1,0 +1,7 @@
+# For ci_eval.py only. The AI SDK's evaluations API isn't released yet, so
+# it comes from the SDK's repository, pinned to a commit so runs repeat.
+launchdarkly-ai-server @ git+https://github.com/launchdarkly/python-ai-sdk.git@920cdfe8171515ad89a8d82486c763a964e9789a#subdirectory=packages/client
+launchdarkly-ai-langchain-messages @ git+https://github.com/launchdarkly/python-ai-sdk.git@920cdfe8171515ad89a8d82486c763a964e9789a#subdirectory=packages/langchain-messages
+launchdarkly-server-sdk==9.18.4
+langchain-aws==1.8.0
+python-dotenv==1.1.0

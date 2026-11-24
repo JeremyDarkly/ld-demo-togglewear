@@ -1951,6 +1951,63 @@ PLAYGROUNDS = [
 ]
 
 
+# ---- Offline evaluations in CI ----
+#
+# Not built into a project: ci_eval.py reads this table and evaluates each
+# config as this file defines it, over the rows of its dataset in datasets/,
+# on Bedrock like the store. The project it runs in only holds the judges and
+# the evaluations it creates. scorers are ci_eval.py's own checks of each
+# answer; the config's attached judges run as well. quick is the rows a
+# --quick run takes: their metadata scenarios, or how many from the top.
+# variations defaults to the one the default rule serves. user_message is
+# added to a prompt that has none of its own, filled in from the row.
+# statements names an agent optimization whose acceptance statements are
+# judged too.
+CI_EVALS = [
+    # The store has it answer by filling in DECISION_SCHEMA
+    # (pages/api/order-review/index.ts), so CI asks for the same. LangChain
+    # needs a title on it for Bedrock, as the name of the tool it fills in.
+    {'config': 'fraud-decision-agent',
+     'dataset': 'order_decision.jsonl',
+     'output_format': {
+         'title': 'record_decision',
+         'description': 'Record the decision on the order.',
+         'type': 'object',
+         'properties': {
+             'decision': {'type': 'string', 'enum': ['approve', 'review', 'decline']},
+             'score': {'type': 'number', 'description': 'The total risk points, at most 100.'},
+             'summary': {'type': 'string',
+                         'description': 'One or two sentences to the shopper, shown at checkout.'},
+         },
+         'required': ['decision', 'score', 'summary']},
+     'scorers': ['decision-matches-points'],
+     'quick': ['ordinary-member', 'just-under-value', 'high-value-platinum',
+               'value-and-quantity', 'blocked-zip-gold', 'blocked-zip-small']},
+    # No judges attached, so the case-note-quality optimization's acceptance
+    # statements stand in for them, each at its own threshold.
+    {'config': 'case-note-agent',
+     'dataset': 'case_note.jsonl',
+     'scorers': ['case-note-covers-the-case'],
+     'statements': 'case-note-quality',
+     'quick': ['high-value-platinum', 'value-and-quantity', 'blocked-zip-gold',
+               'blocked-zip-small']},
+    # Both of the guarded rollout's models. The scorer checks what the page
+    # acts on, the size and the pairing; the judges score the note.
+    {'config': 'personal-stylist',
+     'dataset': 'personal_stylist.jsonl',
+     'variations': ['claude-sonnet-4-6', 'claude-opus-5-5'],
+     'scorers': ['stylist-reply-usable'],
+     'quick': 6},
+    # Both variations shoppers get. In the store it calls its tools; here it
+    # is handed what they returned, as in its playground.
+    {'config': 'swag-assistant',
+     'dataset': 'swag_assistant.jsonl',
+     'variations': ['standard', 'member-concierge'],
+     'user_message': _SWAG_USER,
+     'quick': 6},
+]
+
+
 # ---- Agent optimizations ----
 #
 # LDPlatform.create_agent_optimization. An optimization runs an agent over a
