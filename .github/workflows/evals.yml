@@ -6,8 +6,8 @@ name: Offline Evals
 # and fails only when a run can't be completed. Never make it a required
 # check.
 #
-#   Manual run    The targets chosen, quick or full. Gated by authorize.yaml
-#                 like every other workflow here.
+#   Manual run    The targets chosen, quick or full. GitHub lets only people
+#                 with write access to the repository start one.
 #   Push to main  Only the targets whose config, judges, snippets or dataset
 #                 changed, on their quick rows, and the quick baseline is
 #                 updated.
@@ -16,10 +16,13 @@ name: Offline Evals
 #                 gets no secrets.
 #   Nightly       Every target on every row, and the full baseline is updated.
 #
-# The automatic triggers skip authorize.yaml, since whoever pushed starts
-# them, so they only run once the repository variable EVALS_ON_CHANGES is
-# "true". Turn it on only with the evals environment holding credentials that
-# can't touch anyone's demo:
+# Unlike the build workflows, this doesn't call authorize.yaml: who may run
+# the evals is decided by the repository's own access, not by a list of
+# accounts in this repository. What keeps that safe is the credentials, which
+# can only reach the CI project and Bedrock. The automatic triggers start for
+# whoever pushed, so they only run once the repository variable
+# EVALS_ON_CHANGES is "true". Turn it on only with the evals environment
+# holding credentials that can't touch anyone's demo:
 #
 #   LD_CI_API_KEY        secret    a LaunchDarkly token limited to the CI project
 #   LD_CI_SDK_KEY        secret    the CI project's production SDK key
@@ -76,24 +79,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  authorize:
-    if: github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/authorize.yaml
-    # authorize.yaml also checks a username, which this workflow doesn't
-    # take, so it gets a fixed name that passes. Only the check on who
-    # started the run applies here.
-    with:
-      name: offline-evals
-
   evals:
-    needs: [authorize]
-    # always(), or a skipped authorize would skip this too.
+    # A manual run always goes ahead. The automatic ones wait for
+    # EVALS_ON_CHANGES, and a pull request from a fork never runs, since it
+    # gets no secrets.
     if: >-
-      always() && (
-        needs.authorize.result == 'success' ||
-        (needs.authorize.result == 'skipped' && vars.EVALS_ON_CHANGES == 'true' &&
-         (github.event_name != 'pull_request' ||
-          github.event.pull_request.head.repo.full_name == github.repository)))
+      github.event_name == 'workflow_dispatch' ||
+      (vars.EVALS_ON_CHANGES == 'true' &&
+       (github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     environment: evals
     permissions:
