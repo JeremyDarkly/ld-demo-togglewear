@@ -79,6 +79,11 @@ jobs:
   authorize:
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/authorize.yaml
+    # authorize.yaml also checks a username, which this workflow doesn't
+    # take, so it gets a fixed name that passes. Only the check on who
+    # started the run applies here.
+    with:
+      name: offline-evals
 
   evals:
     needs: [authorize]
