@@ -1288,6 +1288,64 @@ _ORDER_JUDGE_OPENING = (
     "summary the shopper sees at checkout.\n\n"
 )
 
+# Each judge's rubric, shared with its Llama companion in AI_CONFIGS so the
+# two are always asked the same question.
+_ACCURACY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
+    _JUDGE_OPENING
+    + _snippet('togglewear-store-policies') + "\n\n"
+    + "Score how accurate the response is against that data and those policies.\n\n"
+      "1.0: every product, price, size, material, discount and policy it states "
+      "matches.\n"
+      "0.7: accurate, with a small imprecision that would not mislead the shopper.\n"
+      "0.4: one fact is wrong, such as a price, size or discount.\n"
+      "0.0: it invents products or perks, or gets several facts wrong.\n\n"
+      "A reply that states no facts, such as a polite refusal of an off-topic "
+      "question, scores 1.0. Explain your score in one or two sentences.")}]
+_RELEVANCE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
+    _JUDGE_OPENING
+    + "Score how directly the response answers the shopper's latest message, given "
+      "the conversation before it. For a stylist note, score how well it helps this "
+      "shopper decide on this product: a size, the fit and a pairing that goes with "
+      "it.\n\n"
+      "1.0: answers exactly what was asked, with nothing the shopper has to dig past.\n"
+      "0.7: answers it, with some padding or a detail that was not asked for.\n"
+      "0.4: only partly answers it, or answers a different question.\n"
+      "0.0: ignores the question.\n\n"
+      "Declining a question that has nothing to do with shopping at ToggleWear counts "
+      "as relevant. Explain your score in one or two sentences.")}]
+_DECISION_POLICY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
+    _ORDER_JUDGE_OPENING
+    + "Score whether the decision in the response is the one the risk points call "
+      "for. Work it out in this order before scoring:\n"
+      "1. Take the order's total risk points from the last line of the message "
+      "history, which the specialists' tools found.\n"
+      "2. Find the decision those points call for: 70 points or more is \"decline\", "
+      "40 or more is \"review\", under 40 is \"approve\". Nothing else about the order "
+      "changes it.\n"
+      "3. Compare that with the \"decision\" field in the response, word for word. "
+      "\"review\" is not \"decline\", and \"decline\" is not \"review\".\n\n"
+      "1.0: the decision field is the decision the points call for, and its score is "
+      "their total.\n"
+      "0.7: the decision field is right, but its score is not the total.\n"
+      "0.0: the decision field is not the decision the points call for, whatever its "
+      "score or summary says.\n\n"
+      "In your explanation, give the total, the decision it calls for and the decision "
+      "in the response, in one or two sentences.")}]
+_SHOPPER_MESSAGE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
+    _ORDER_JUDGE_OPENING
+    + "Score only the summary, the message the shopper sees at checkout. It should "
+      "say plainly what happens to their order next, match the decision, say what "
+      "caught a held or declined order in everyday words, and for a held or declined "
+      "order make clear they have not been charged. It should not mention risk "
+      "points, thresholds, scores or the agents.\n\n"
+      "1.0: all of that, in one or two friendly sentences.\n"
+      "0.7: right, but vague about what happens next or longer than it needs to be.\n"
+      "0.4: it mentions points, thresholds or agents, or leaves out that a held or "
+      "declined order was not charged.\n"
+      "0.0: it contradicts the decision, or would mislead the shopper about their "
+      "order.\n\n"
+      "Explain your score in one or two sentences.")}]
+
 # The models, all on Bedrock, through the US cross-region inference profiles
 # (the us. prefix) that Bedrock requires for them. Each is LaunchDarkly's own
 # built-in model config for that profile, which carries Bedrock's US price, so
@@ -1396,6 +1454,32 @@ AI_TOOLS = [
                 'required': []}},
 ]
 
+# A judge's companion for the offline evals in CI (see JUDGE_COMPANIONS): the
+# same rubric on Llama 4 Maverick, a different vendor's model, so a score both
+# give is about the reply rather than one model's habits. Its own metric key,
+# since ci_eval.py tells judges apart by it.
+def _llama_companion(judge_key, judge_name, variation_key, metric_key, judged, tags, messages):
+    return {'config': {'config_key': f'{judge_key}-llama',
+                       'config_name': f'{judge_name} (Llama, CI only)',
+                       'description': f'The {judge_name} rubric on Llama 4 Maverick, scoring '
+                                      f'{judged} in the offline evals in CI beside the original, '
+                                      'to compare the two. Attached to nothing, so the store '
+                                      'never runs it.',
+                       'tags': tags + ['ci'],
+                       'mode': 'judge',
+                       'evaluation_metric_key': f'{metric_key}-llama',
+                       'is_inverted': False},
+            'variations': [
+                {'ai_config_version_key': f'{variation_key}-llama',
+                 'ai_model_config_key': _LLAMA,
+                 'ai_config_version_name': 'Llama 4 Maverick',
+                 'model': {'modelName': _LLAMA_ID,
+                           'parameters': {'maxTokens': 500, 'temperature': 0.0}},
+                 'messages': messages}],
+            'environment': 'production',
+            'fallthrough': f'{variation_key}-llama'}
+
+
 # AI Configs — each one is created, then its variations, then the tools and
 # judges on every variation, then its targeting, and finally switched on.
 #
@@ -1432,17 +1516,7 @@ AI_CONFIGS = [
           'ai_config_version_name': 'Claude Haiku 4.5',
           'model': {'modelName': _HAIKU_ID,
                     'parameters': {'maxTokens': 500, 'temperature': 0.0}},
-          'messages': [{'role': 'system', 'content': (
-              _JUDGE_OPENING
-              + _snippet('togglewear-store-policies') + "\n\n"
-              + "Score how accurate the response is against that data and those policies.\n\n"
-                "1.0: every product, price, size, material, discount and policy it states "
-                "matches.\n"
-                "0.7: accurate, with a small imprecision that would not mislead the shopper.\n"
-                "0.4: one fact is wrong, such as a price, size or discount.\n"
-                "0.0: it invents products or perks, or gets several facts wrong.\n\n"
-                "A reply that states no facts, such as a polite refusal of an off-topic "
-                "question, scores 1.0. Explain your score in one or two sentences.")}]}],
+          'messages': _ACCURACY_JUDGE_MESSAGES}],
      'environment': 'production',
      'fallthrough': 'accuracy-judge'},
     {'config': {'config_key': 'togglewear-relevance-judge',
@@ -1462,18 +1536,7 @@ AI_CONFIGS = [
           'ai_config_version_name': 'Claude Haiku 4.5',
           'model': {'modelName': _HAIKU_ID,
                     'parameters': {'maxTokens': 500, 'temperature': 0.0}},
-          'messages': [{'role': 'system', 'content': (
-              _JUDGE_OPENING
-              + "Score how directly the response answers the shopper's latest message, given "
-                "the conversation before it. For a stylist note, score how well it helps this "
-                "shopper decide on this product: a size, the fit and a pairing that goes with "
-                "it.\n\n"
-                "1.0: answers exactly what was asked, with nothing the shopper has to dig past.\n"
-                "0.7: answers it, with some padding or a detail that was not asked for.\n"
-                "0.4: only partly answers it, or answers a different question.\n"
-                "0.0: ignores the question.\n\n"
-                "Declining a question that has nothing to do with shopping at ToggleWear counts "
-                "as relevant. Explain your score in one or two sentences.")}]}],
+          'messages': _RELEVANCE_JUDGE_MESSAGES}],
      'environment': 'production',
      'fallthrough': 'relevance-judge'},
 
@@ -1500,24 +1563,7 @@ AI_CONFIGS = [
           'ai_config_version_name': 'Claude Sonnet 4.6',
           'model': {'modelName': _SONNET_ID,
                     'parameters': {'maxTokens': 500, 'temperature': 0.0}},
-          'messages': [{'role': 'system', 'content': (
-              _ORDER_JUDGE_OPENING
-              + "Score whether the decision in the response is the one the risk points call "
-                "for. Work it out in this order before scoring:\n"
-                "1. Take the order's total risk points from the last line of the message "
-                "history, which the specialists' tools found.\n"
-                "2. Find the decision those points call for: 70 points or more is \"decline\", "
-                "40 or more is \"review\", under 40 is \"approve\". Nothing else about the order "
-                "changes it.\n"
-                "3. Compare that with the \"decision\" field in the response, word for word. "
-                "\"review\" is not \"decline\", and \"decline\" is not \"review\".\n\n"
-                "1.0: the decision field is the decision the points call for, and its score is "
-                "their total.\n"
-                "0.7: the decision field is right, but its score is not the total.\n"
-                "0.0: the decision field is not the decision the points call for, whatever its "
-                "score or summary says.\n\n"
-                "In your explanation, give the total, the decision it calls for and the decision "
-                "in the response, in one or two sentences.")}]}],
+          'messages': _DECISION_POLICY_JUDGE_MESSAGES}],
      'environment': 'production',
      'fallthrough': 'decision-policy-judge'},
     {'config': {'config_key': 'togglewear-shopper-message-judge',
@@ -1536,22 +1582,27 @@ AI_CONFIGS = [
           'ai_config_version_name': 'Claude Haiku 4.5',
           'model': {'modelName': _HAIKU_ID,
                     'parameters': {'maxTokens': 500, 'temperature': 0.0}},
-          'messages': [{'role': 'system', 'content': (
-              _ORDER_JUDGE_OPENING
-              + "Score only the summary, the message the shopper sees at checkout. It should "
-                "say plainly what happens to their order next, match the decision, say what "
-                "caught a held or declined order in everyday words, and for a held or declined "
-                "order make clear they have not been charged. It should not mention risk "
-                "points, thresholds, scores or the agents.\n\n"
-                "1.0: all of that, in one or two friendly sentences.\n"
-                "0.7: right, but vague about what happens next or longer than it needs to be.\n"
-                "0.4: it mentions points, thresholds or agents, or leaves out that a held or "
-                "declined order was not charged.\n"
-                "0.0: it contradicts the decision, or would mislead the shopper about their "
-                "order.\n\n"
-                "Explain your score in one or two sentences.")}]}],
+          'messages': _SHOPPER_MESSAGE_JUDGE_MESSAGES}],
      'environment': 'production',
      'fallthrough': 'shopper-message-judge'},
+
+    # Each judge's companion, on Llama 4 Maverick with the same rubric. CI
+    # only: ci_eval.py runs each beside its judge to compare the two, and
+    # nothing attaches them, so the store never runs them. After the
+    # originals, with the rest of the judges ahead of the configs.
+    _llama_companion('togglewear-accuracy-judge', 'ToggleWear Accuracy Judge', 'accuracy-judge',
+                     '$ld:ai:judge:accuracy', 'Swag Assistant replies and Personal Stylist notes',
+                     ['ai-config', 'judge', 'togglewear'], _ACCURACY_JUDGE_MESSAGES),
+    _llama_companion('togglewear-relevance-judge', 'ToggleWear Relevance Judge', 'relevance-judge',
+                     '$ld:ai:judge:relevance', 'Swag Assistant replies and Personal Stylist notes',
+                     ['ai-config', 'judge', 'togglewear'], _RELEVANCE_JUDGE_MESSAGES),
+    _llama_companion('togglewear-decision-policy-judge', 'ToggleWear Decision Policy Judge',
+                     'decision-policy-judge', '$ld:ai:judge:decision-policy', 'Order Review decisions',
+                     ['ai-config', 'judge', 'order-review', 'togglewear'], _DECISION_POLICY_JUDGE_MESSAGES),
+    _llama_companion('togglewear-shopper-message-judge', 'ToggleWear Shopper Message Judge',
+                     'shopper-message-judge', '$ld:ai:judge:shopper-message',
+                     'Order Review decisions\' messages to the shopper',
+                     ['ai-config', 'judge', 'order-review', 'togglewear'], _SHOPPER_MESSAGE_JUDGE_MESSAGES),
 
     # ---- The Swag Assistant ----
     #
@@ -2104,7 +2155,8 @@ PLAYGROUNDS = [
 # config as this file defines it, over the rows of its dataset in datasets/,
 # on Bedrock like the store. The project it runs in only holds the judges and
 # the evaluations it creates. scorers are ci_eval.py's own checks of each
-# answer; the config's attached judges run as well. quick is the rows a
+# answer; the config's attached judges run as well, each followed by its
+# companions in JUDGE_COMPANIONS, below, which only compare. quick is the rows a
 # --quick run takes: their metadata scenarios, or how many from the top.
 # Each variation the config's targeting serves is evaluated: its fallthrough,
 # each rule's, both sides of a guarded rollout and an adaptive trigger's
@@ -2154,6 +2206,20 @@ CI_EVALS = [
      'user_message': _SWAG_USER,
      'quick': 6},
 ]
+
+# Judge key -> the companion judges ci_eval.py runs right after it, on every
+# row it scores, to compare a second model's verdict with the judge's. The
+# judge alone decides a row: each companion is held to the same threshold in
+# the summary's "Rows each judge passed", but to 0 in LaunchDarkly, so a noisy
+# companion never fails a row. The companions are in AI_CONFIGS, attached to
+# nothing, so every project built from this file has them and the store never
+# runs them.
+JUDGE_COMPANIONS = {
+    'togglewear-accuracy-judge': ['togglewear-accuracy-judge-llama'],
+    'togglewear-relevance-judge': ['togglewear-relevance-judge-llama'],
+    'togglewear-decision-policy-judge': ['togglewear-decision-policy-judge-llama'],
+    'togglewear-shopper-message-judge': ['togglewear-shopper-message-judge-llama'],
+}
 
 
 # ---- Agent optimizations ----
