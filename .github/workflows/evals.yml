@@ -57,15 +57,33 @@ on:
       - .github/workflows/demo_provisioning_scripts/demo_resources.py
       - .github/workflows/demo_provisioning_scripts/datasets/**
       - .github/workflows/demo_provisioning_scripts/ci_eval.py
+      - .github/workflows/demo_provisioning_scripts/swag_tools.py
       - .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
       - .github/workflows/evals.yml
+      # What the Swag Assistant's stand-in tools answer from (SOURCES in
+      # swag_tools.py).
+      - scripts/swag-tools.mjs
+      - lib/swagAssistantTools.ts
+      - lib/products.ts
+      - lib/account.ts
+      - lib/shopper.ts
+      - lib/sizeGuide.ts
   pull_request:
     paths:
       - .github/workflows/demo_provisioning_scripts/demo_resources.py
       - .github/workflows/demo_provisioning_scripts/datasets/**
       - .github/workflows/demo_provisioning_scripts/ci_eval.py
+      - .github/workflows/demo_provisioning_scripts/swag_tools.py
       - .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
       - .github/workflows/evals.yml
+      # What the Swag Assistant's stand-in tools answer from (SOURCES in
+      # swag_tools.py).
+      - scripts/swag-tools.mjs
+      - lib/swagAssistantTools.ts
+      - lib/products.ts
+      - lib/account.ts
+      - lib/shopper.ts
+      - lib/sizeGuide.ts
   schedule:
     - cron: '0 9 * * *'
 
@@ -118,6 +136,18 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r "$SCRIPTS/requirements-ci-eval.txt"
+
+      # The Swag Assistant's stand-in tools call the store's real ones
+      # (swag_tools.py), which Node runs as TypeScript, with no npm install.
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Stops the run before any model call if the stand-ins answer anything
+      # differently from the store's tools. No credentials needed.
+      - name: Check the stand-in tools against the store's
+        run: python "$SCRIPTS/swag_tools.py"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6

@@ -5,7 +5,9 @@
 For each entry in CI_EVALS, and each variation its config's targeting serves,
 the AI SDK generates an answer for every row of its dataset in datasets/, on
 Bedrock with your AWS credentials, then runs the entry's scorers and the
-judges attached to the variation. The variation's model, parameters and
+judges attached to the variation, and any of the entry's own. An entry with
+tools gives the model stand-ins to call (swag_tools.py), and the judges see
+the calls the SDK recorded. The variation's model, parameters and
 prompt come from demo_resources.py rather than from LaunchDarkly, so a commit
 is evaluated before any project has it. The project in .env only has to hold
 the judges, and the evaluations land there.
@@ -19,7 +21,8 @@ exits non-zero only when a run can't be completed. It writes a Markdown
 summary to --summary-file, $GITHUB_STEP_SUMMARY in GitHub Actions.
 
 Needs requirements-ci-eval.txt, LD_API_KEY, LD_PROJECT_KEY and LD_SDK_KEY in
-.env or the environment, and AWS credentials with Bedrock.
+.env or the environment, AWS credentials with Bedrock, and Node 22.18 or later
+for the stand-in tools.
 """
 
 import argparse
@@ -315,8 +318,8 @@ def _stylist_view(row, answer, **_):
 
 # One call in the trajectory the SDK puts in a judge's message_history
 # (render_trajectory in launchdarkly_ai_server/trajectory.py).
-TRAJECTORY_CALL = re.compile(r"^\d+\. (\S+)\n   arguments: (.*?)\n   (result|error): (.*?)(?=\n\d+\. |\n\(\d+ further|\Z)",
-                             re.M | re.S)
+TRAJECTORY_CALL = re.compile(r"^\d+\. (\S+)\n   arguments: (.*?)\n   (result|error): (.*?)"
+                             r"(?=\n\d+\. |\n\(\d+ further|\Z)", re.M | re.S)
 TRUNCATED = "… (truncated)"
 
 
