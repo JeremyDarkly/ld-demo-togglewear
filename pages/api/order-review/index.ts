@@ -32,7 +32,7 @@ import {
   type FraudDecision,
 } from "@/lib/fraudAgent";
 import { guard, LIMITS, text } from "@/lib/apiGuard";
-import { contextFromRequest } from "@/lib/ldServer";
+import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { startAgentRun, type AgentRun as TracedRun } from "@/lib/llmTrace";
 import {
   ORDER_REVIEW_AGENTS,
@@ -45,6 +45,11 @@ import {
 } from "@/lib/orderReview";
 import { orderReviewTools } from "@/lib/orderReviewTools";
 import { servedByFor } from "@/lib/swagAssistant";
+import {
+  isErrorResult,
+  toolCallReporter,
+  type ReportToolCall,
+} from "@/lib/toolCallErrors";
 
 // The fraud review at checkout, run by the Order Review agent graph.
 //
@@ -107,11 +112,12 @@ const DECISION_SCHEMA = {
 // user message, and its tools, the first of which it has to call. With an
 // answer schema, the agent answers by filling it in, and its text is that
 // answer as JSON.
-async function runAgent(
+export async function runAgent(
   config: LDAIAgentConfig,
   input: string,
   registry: ToolRegistry,
   agentRun: TracedRun,
+  reportToolCall: ReportToolCall,
   answerSchema?: Record<string, unknown>,
 ): Promise<AgentRun> {
   const modelName = config.model?.name ?? "";
@@ -175,11 +181,19 @@ async function runAgent(
     for (const call of calls) {
       toolCalls.push(call.name);
       const tool = toolsByName.get(call.name);
-      const text = await agentRun.tool(call, async () => {
-        const output = tool ? await tool.invoke(call.args) : `No tool named ${call.name}`;
-        return typeof output === "string" ? output : JSON.stringify(output);
-      });
-      messages.push(new ToolMessage({ content: text, tool_call_id: call.id ?? "" }));
+      // Reported whatever happens, a throw included, before the throw ends
+      // the agent's run.
+      let failed = true;
+      try {
+        const text = await agentRun.tool(call, async () => {
+          const output = tool ? await tool.invoke(call.args) : `No tool named ${call.name}`;
+          return typeof output === "string" ? output : JSON.stringify(output);
+        });
+        failed = !tool || isErrorResult(text);
+        messages.push(new ToolMessage({ content: text, tool_call_id: call.id ?? "" }));
+      } finally {
+        reportToolCall(call.name, failed);
+      }
     }
   }
 }
@@ -244,6 +258,7 @@ async function runGraph(
 
   const graphTracker = graph.createTracker();
   const tools = orderReviewTools(order, context);
+  const client = await getServerClient();
   const started = Date.now();
   const path: string[] = [];
   const tokens: LDTokenUsage = { total: 0, input: 0, output: 0 };
@@ -272,6 +287,7 @@ async function runGraph(
     const config = node.getConfig();
     const tracker = config.createTracker();
     const { variationKey, modelName } = tracker.getTrackData();
+    const reportToolCall = toolCallReporter(client, context, tracker.getTrackData());
     const step: AgentStep = {
       key: key as OrderReviewAgentKey,
       status: "running",
@@ -284,7 +300,7 @@ async function runGraph(
     try {
       const result = await tracker.trackMetricsOf(
         (r: AgentRun) => r.metrics,
-        () => runAgent(config, input, tools.registry, agentRun, answerSchema),
+        () => runAgent(config, input, tools.registry, agentRun, reportToolCall, answerSchema),
       );
       // The start of what it did say, so the error in Observability shows
       // what went wrong rather than only that something did.

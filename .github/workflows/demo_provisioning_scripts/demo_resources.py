@@ -311,6 +311,24 @@ METRICS = [
      'unit_aggregation_type': 'sum',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'togglewear']},
+    # Sent by the store itself (lib/toolCallErrors.ts) rather than the AI SDK,
+    # once per tool call the Swag Assistant or an Order Review agent makes:
+    # 1 when the tool did not exist, threw or answered with an error, 0
+    # otherwise. Each call is its own event, so the average is the failure
+    # rate.
+    {'metric_key': 'ai-tool-call-error',
+     'metric_name': 'AI Tool Call Error',
+     'event_key': 'ai-tool-call-error',
+     'metric_description': 'Whether each tool call an AI Config made failed, 1 or 0: the tool '
+                           'did not exist, threw or answered with an error. The average is the '
+                           'share of tool calls that fail.',
+     'numeric': True,
+     'unit': 'failures',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
     # Whether the shopper took the Personal Stylist's advice, which no judge
     # can score: the storefront sends it (lib/events.ts) when the product
     # goes in the cart in the size the stylist picked, or its pairing does.
