@@ -715,7 +715,8 @@ def dataset_sha(name):
 # target's definition is everything that decides its result: its CI_EVALS
 # entry, the variation, its judges' configs, the prompt snippets, the
 # optimization its statements come from, its dataset file and, for an entry
-# with tools, the stand-ins and the store code they answer from.
+# with tools, the stand-ins, the loader they run under, the store code they
+# answer from and the tools' AI_TOOLS entries.
 
 def git(*args):
     return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True)
@@ -747,6 +748,9 @@ def definition(resources, config, dataset, variation_key, dataset_text, tool_sou
         "snippets": resources.get("PROMPT_SNIPPETS", []),
         "optimization": optimization, "dataset": dataset_text,
         "tool_sources": tool_sources if target.get("tools") else None,
+        # The schemas and descriptions eval_tools() hands the model.
+        "tool_specs": [t for t in resources.get("AI_TOOLS", []) if t["tool_key"] in swag_tools.TOOL_KEYS]
+        if target.get("tools") else None,
     }, sort_keys=True, default=str)
 
 

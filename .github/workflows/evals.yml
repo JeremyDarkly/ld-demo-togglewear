@@ -60,9 +60,11 @@ on:
       - .github/workflows/demo_provisioning_scripts/swag_tools.py
       - .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
       - .github/workflows/evals.yml
-      # What the Swag Assistant's stand-in tools answer from (SOURCES in
-      # swag_tools.py).
+      # What the Swag Assistant's stand-in tools run under and answer from
+      # (SOURCES in swag_tools.py).
       - scripts/swag-tools.mjs
+      - scripts/tool-call-errors-register.mjs
+      - scripts/tool-call-errors-hooks.mjs
       - lib/swagAssistantTools.ts
       - lib/products.ts
       - lib/account.ts
@@ -76,9 +78,11 @@ on:
       - .github/workflows/demo_provisioning_scripts/swag_tools.py
       - .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
       - .github/workflows/evals.yml
-      # What the Swag Assistant's stand-in tools answer from (SOURCES in
-      # swag_tools.py).
+      # What the Swag Assistant's stand-in tools run under and answer from
+      # (SOURCES in swag_tools.py).
       - scripts/swag-tools.mjs
+      - scripts/tool-call-errors-register.mjs
+      - scripts/tool-call-errors-hooks.mjs
       - lib/swagAssistantTools.ts
       - lib/products.ts
       - lib/account.ts

@@ -31,10 +31,14 @@ NODE = ["node", "--no-warnings", "--import", "./scripts/tool-call-errors-registe
 
 TOOL_KEYS = ["search-products", "get-product-details", "get-member-perks", "get-order-status"]
 
-# What the stand-ins answer from, beyond this file: a change to any of them
-# changes what a tool returns, so ci_eval.py --changed reruns the entry.
-SOURCES = ["scripts/swag-tools.mjs", "lib/swagAssistantTools.ts", "lib/products.ts", "lib/account.ts",
-           "lib/shopper.ts", "lib/sizeGuide.ts"]
+# The stand-ins themselves, the Node loader the bridge runs under, and the
+# store code they answer from: a change to any of them changes what a tool
+# returns, so ci_eval.py --changed reruns the entry. The tools' schemas and
+# descriptions are AI_TOOLS', which ci_eval.py's definition() carries.
+SOURCES = [".github/workflows/demo_provisioning_scripts/swag_tools.py", "scripts/swag-tools.mjs",
+           "scripts/tool-call-errors-register.mjs", "scripts/tool-call-errors-hooks.mjs",
+           "lib/swagAssistantTools.ts", "lib/products.ts", "lib/account.ts", "lib/shopper.ts",
+           "lib/sizeGuide.ts"]
 
 SHOPPER = contextvars.ContextVar("swag_shopper", default=None)
 # The row's calls as the stand-ins answered them, in full: the SDK cuts a
@@ -43,35 +47,43 @@ CALLS = contextvars.ContextVar("swag_calls", default=None)
 
 
 async def call_real_tools(calls):
-    """[{"shopper", "tool", "args"}] -> each one's {"output"} or {"error"}, from the real tools."""
-    process = await asyncio.create_subprocess_exec(
-        *NODE, cwd=ROOT, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE)
-    sent = "".join(json.dumps(c) + "\n" for c in calls).encode()
-    stdout, stderr = await process.communicate(sent)
-    replies = [json.loads(line) for line in stdout.decode().splitlines() if line.strip()]
+    """[{"shopper", "tool", "args"}] -> each one's {"output"} or {"error"}, from the real tools.
+
+    Raises RuntimeError("swag tool bridge failed: ...") when the bridge
+    itself fails: Node can't start, exits non-zero, or answers out of form.
+    """
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *NODE, cwd=ROOT, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE)
+        sent = "".join(json.dumps(c) + "\n" for c in calls).encode()
+        stdout, stderr = await process.communicate(sent)
+        replies = [json.loads(line) for line in stdout.decode().splitlines() if line.strip()]
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"swag tool bridge failed: {type(error).__name__}: {error}") from error
     if process.returncode or len(replies) != len(calls):
-        raise RuntimeError(f"scripts/swag-tools.mjs exited {process.returncode}: {stderr.decode()[-300:]}")
+        raise RuntimeError(f"swag tool bridge failed: scripts/swag-tools.mjs exited {process.returncode} "
+                           f"with {len(replies)} of {len(calls)} replies: {stderr.decode()[-300:]}")
+    if not all(isinstance(r, dict) and ("output" in r or "error" in r) for r in replies):
+        raise RuntimeError(f"swag tool bridge failed: a reply had neither output nor error: {stdout.decode()[:300]}")
     return replies
 
 
 def stand_in(key):
     """The implementation ci_eval.py gives the SDK for one tool.
 
-    It never raises, since a raise errors the whole row: a call it can't make
-    comes back as {"error"}, as the real tools answer a bad slug.
+    The real tools' own error answers, such as a bad slug, come back as
+    {"error"}, as the store hands them to the model. A failure of the bridge,
+    or a row with no shopper, raises instead: that errors the row, and
+    ci_eval.py lists it under row errors rather than scoring it.
     """
 
     async def call(arguments=None):
         shopper = SHOPPER.get()
         if not shopper:
-            output = {"error": "ci_eval.py set no shopper for this row (metadata.shopper)"}
-        else:
-            try:
-                reply = (await call_real_tools([{"shopper": shopper, "tool": key, "args": arguments or {}}]))[0]
-                output = reply["output"] if "output" in reply else {"error": reply["error"]}
-            except Exception as error:
-                output = {"error": f"{type(error).__name__}: {error}"}
+            raise RuntimeError("ci_eval.py set no shopper for this row (metadata.shopper)")
+        reply = (await call_real_tools([{"shopper": shopper, "tool": key, "args": arguments or {}}]))[0]
+        output = reply["output"] if "output" in reply else {"error": reply["error"]}
         calls = CALLS.get()
         if calls is not None:
             calls.append((key, arguments or {}, output))
