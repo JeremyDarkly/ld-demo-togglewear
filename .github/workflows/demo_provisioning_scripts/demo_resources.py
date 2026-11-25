@@ -301,6 +301,21 @@ METRICS = [
      'unit_aggregation_type': 'average',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'judge', 'togglewear']},
+    # Sent by the store (lib/aiServer.ts) after every judge reply, on the
+    # judge's own AI Config: 1 when the reply could not be parsed and its score
+    # was lost, 0 when it parsed. The AI SDK records nothing for a lost score,
+    # so the average is the only way to see a judge model that keeps breaking.
+    {'metric_key': 'judge-parse-error',
+     'metric_name': 'Judge Parse Error',
+     'event_key': 'judge-parse-error',
+     'metric_description': 'Share of judge replies that could not be parsed, so their score was '
+                           'lost: 1 for a reply that did not parse, 0 for one that did, averaged.',
+     'numeric': True,
+     'unit': 'rate',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'tags': ['ai-config', 'togglewear']},
     {'metric_key': 'ai-completion-errors',
      'metric_name': 'AI Completion Errors',
      'event_key': '$ld:ai:generation:error',
