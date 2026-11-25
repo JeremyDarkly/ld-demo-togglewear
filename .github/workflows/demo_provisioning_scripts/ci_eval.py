@@ -25,14 +25,18 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from math import isfinite
 
 from dotenv import load_dotenv
 from langchain_aws import ChatBedrockConverse
+from launchdarkly_ai_langchain_agents import create_langchain_agents_handler
 from launchdarkly_ai_langchain_messages import create_langchain_messages_handler
-from launchdarkly_ai_server import AIConfig, Judge, ProviderHandler, Scorer, init_evaluations, shutdown
-from launchdarkly_ai_server.judge_scoring import numeric_score, parse_judge_response
+from launchdarkly_ai_server import (AIConfig, EvaluationsError, Judge, ProviderHandler, Scorer, init_evaluations,
+                                   parse_json_with_possible_fences, shutdown)
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -95,13 +99,13 @@ current = None
 
 
 def answer_of(output):
-    """The answer filled in to output_format, as a dict, or None."""
+    """The answer filled in to output_format, as a dict, or None.
+
+    It may come as JSON text, which the model may put in a fence.
+    """
     if isinstance(output, dict):
         return output
-    try:
-        answer = json.loads(output or "")
-    except (TypeError, json.JSONDecodeError):
-        return None
+    answer = parse_json_with_possible_fences(output) if isinstance(output, str) else None
     return answer if isinstance(answer, dict) else None
 
 
@@ -327,6 +331,26 @@ JUDGE_SCHEMA = {
 }
 
 
+def numeric_score(score):
+    """The score as a float, or None when it isn't a finite number. A bool isn't one."""
+    if isinstance(score, bool) or not isinstance(score, (int, float)):
+        return None
+    return float(score) if isfinite(score) else None
+
+
+def parse_judge_response(raw):
+    """(score, reasoning) from a judge's answer, as the SDK reads it.
+
+    The SDK's own parser is in an internal module, so this does what it does
+    with the JSON parser it exports. Raises ValueError when the answer isn't a
+    JSON object.
+    """
+    parsed = raw if isinstance(raw, dict) else parse_json_with_possible_fences(raw) if isinstance(raw, str) else None
+    if not isinstance(parsed, dict) or not parsed:
+        raise ValueError("Invalid JSON from judge")
+    return parsed.get("score"), parsed.get("reasoning") or parsed.get("reason") or ""
+
+
 def judge_request(history, response):
     return f"MESSAGE HISTORY:\n{history}\n\nRESPONSE TO EVALUATE:\n{response}"
 
@@ -379,7 +403,8 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
                                           reasoning=str(reason)))
         return output
 
-    return ProviderHandler(recorded, provides_for=inner.provides_for, capture_content=inner.capture_content)
+    return ProviderHandler(recorded, provides_for=inner.provides_for, capture_content=inner.capture_content,
+                           providers=inner.providers)
 
 
 # ---- Running ----
@@ -397,6 +422,44 @@ def bedrock_model(invocation):
     return ChatBedrockConverse(
         model=model["name"], region_name=os.getenv("AWS_REGION", "us-east-1"),
         **{BEDROCK_PARAMETERS[k]: v for k, v in parameters.items() if k in BEDROCK_PARAMETERS and v is not None})
+
+
+def agent_handler(llm):
+    """The handler for agent-mode configs, which binds their output_format.
+
+    The agents handler only asks for output_format in the system prompt and
+    returns the model's text, so fraud-decision-agent wrote its decision
+    freehand and got the threshold wrong. A config with output_format goes to
+    the messages handler instead, which fills it in with structured output, as
+    the store's order review does. The CI runs pass no tools, so these configs
+    need no tool loop. case-note-agent, which has no output_format, stays on
+    the agents handler.
+    """
+    agents = create_langchain_agents_handler(llm)
+    structured = create_langchain_messages_handler(llm)
+
+    async def call(config, user_input=None, tool_handlers=None, variables=None, history=None):
+        inner = structured if config.get("outputFormat") else agents
+        return await inner(config, user_input, tool_handlers, variables, history)
+
+    return ProviderHandler(call, provides_for=agents.provides_for, capture_content=agents.capture_content,
+                           providers=agents.providers)
+
+
+def ld_get(path):
+    """GET from the LaunchDarkly REST API, for the judge configs the SDK doesn't read for us.
+
+    The SDK's own API client is internal, so this sends the same request it would.
+    """
+    base = (os.getenv("LD_API_BASE_URI") or "https://app.launchdarkly.com").strip().rstrip("/")
+    request = urllib.request.Request(f"{base}/api/v2/{path.lstrip('/')}", headers={
+        "Authorization": os.environ["LD_API_KEY"], "Accept": "application/json", "LD-API-Version": "20240415"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        body = error.read().decode(errors="replace")[:300]
+        raise EvaluationsError(f"LaunchDarkly API GET {path} failed with {error.code}: {body}") from None
 
 
 def spec_for(config_key):
@@ -448,8 +511,7 @@ async def judge_thresholds(evals, spec):
     """evaluationMetricKey -> (judge key, threshold), since a judge call carries only the metric key."""
     thresholds = {}
     for judge in spec.get("judges", []):
-        config = await asyncio.to_thread(
-            evals.api.get, f"projects/{evals.project_key}/ai-configs/{judge['judgeConfigKey']}")
+        config = await asyncio.to_thread(ld_get, f"projects/{evals.project_key}/ai-configs/{judge['judgeConfigKey']}")
         thresholds[config["evaluationMetricKey"]] = (judge["judgeConfigKey"], judge.get("threshold", 0.7))
     return thresholds
 
@@ -466,14 +528,17 @@ async def run_target(evals, target, variation_key, args):
     print(f"running {target['config']}/{variation_key} on {len(rows)} rows of {target['dataset']}", flush=True)
     current = result
     try:
+        thresholds = await judge_thresholds(evals, spec)
         run = await evals.run(
             key=result.key,
             dataset=rows,
             ai_config=AIConfig(key=target["config"], variation=variation_key),
             generation=generation_for(target, variation, args.replace or ()),
-            handler=recording_handler(
-                create_langchain_messages_handler(bedrock_model), result, rows,
-                JUDGE_VIEWS.get(target["config"]), await judge_thresholds(evals, spec)),
+            # The SDK picks the handler by the config's mode: agent_handler
+            # for AGENT_CONFIGS, the messages handler for the rest and for
+            # every judge.
+            handlers=[recording_handler(inner, result, rows, JUDGE_VIEWS.get(target["config"]), thresholds)
+                      for inner in (create_langchain_messages_handler(bedrock_model), agent_handler(bedrock_model))],
             # The store's Order Review agents call their tools before they're
             # handed on; the datasets carry what the tools found.
             tools=[],

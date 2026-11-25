@@ -428,7 +428,7 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 
 ```bash
 cd .github/workflows/demo_provisioning_scripts
-pip install -r requirements-ci-eval.txt     # its own: the AI SDK's evaluations API isn't released yet
+pip install -r requirements-ci-eval.txt     # its own: the AI SDK 1.0.0, for its evaluations API
 python ci_eval.py --config fraud-decision-agent --quick
 python ci_eval.py --config fraud-decision-agent \
     --replace "- 70 points or more: decline" "- 95 points or more: decline"   # try a prompt change
