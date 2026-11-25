@@ -92,6 +92,7 @@ Flags are numbered in the order a demo walks through them, simplest first, and t
 | 12 | New Payment Processor | Kill switch (trigger) | Turn on **Payment outage** in the account menu and place four orders. Each one fails, an alert on `PaymentProcessorError` fires, and its trigger turns the flag off about two minutes later. The next order goes through. Resting state: on. |
 | 13 | Card Testing Protection | Auto-enable trigger | Start the Card Testing generator. Declined $1 charges set off an alert on `CardDeclinedError`, and its trigger turns the flag on about two minutes later. Resting state: off. |
 | 14 | Recommendation Engine | Adaptive trigger | Start the Recommendation Engine generator. Failed recommendations set off the adaptive trigger, which switches the default rule to Best Sellers about two minutes later. Resting state: Personalized Picks. |
+| 15 | Response Code Checks | AI Config metrics | Evaluated on the server. Turn it on and the offline evals' code checks also run on live replies from the Order Review agents and the Personal Stylist, sending each result as a `code-check-*` metric beside the judges' scores. A reply is never changed by a check. Resting state: off. |
 
 **Flag 05's five errors**, each in its own place in the store, so a user can show one at a time:
 
@@ -361,13 +362,14 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 │   ├── shopper.ts            The shoppers and their LaunchDarkly contexts
 │   ├── fraudAgent.ts         The Order Review's risk rules and thresholds
 │   ├── aiServer.ts           The LaunchDarkly AI client and shared AI helpers
+│   ├── codeChecks.ts         The offline evals' code checks, run on live replies behind flag 15
 │   ├── llmTrace.ts           Conversation traces for the AI routes
 │   ├── activity.ts           The server activity the Live tab shows
 │   ├── ldServer.ts           The LaunchDarkly server client
 │   ├── events.ts             The metric events the store sends
 │   └── generator/            What each Cmd+K generator does
 ├── public/                   Images and icons
-├── scripts/                  check-tool-call-errors.mjs: runs the tool loops on a scripted model, no credentials
+├── scripts/                  Checks that need no credentials: check-tool-call-errors.mjs runs the tool loops on a scripted model, check-code-checks.mjs the code checks
 ├── styles/                   Global CSS and the Söhne fonts
 ├── dockerfile                The production image: Next's standalone output on Node 24, no npm
 ├── docs/api_endpoint_usage.csv  Which LaunchDarkly REST endpoints the build calls
@@ -390,6 +392,8 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
         ├── results_generator.py, LDGeneratorsRunner.py   Build-time results
         ├── run_optimization.py Reruns an agent optimization on Bedrock
         ├── ci_eval.py, requirements-ci-eval.txt   The offline evals
+        ├── code_checks.py      Their code checks, which lib/codeChecks.ts mirrors
+        ├── code_check_cases.json, check_code_checks.py   The cases both are tested against
         ├── datasets/           The four playground datasets, which the evals use too
         └── optimizations/      Recorded optimization runs the build replays
 ```
@@ -438,6 +442,13 @@ python ci_eval.py --config fraud-decision-agent \
 It needs `LD_API_KEY`, `LD_PROJECT_KEY` and `LD_SDK_KEY` for a project built from `demo_resources.py` in `.env`, and AWS credentials that can invoke the store's Bedrock models. Point it at a test project, not a demo: it only reads the project's judges, but every run adds an evaluation to its list, and they can't be deleted. `--json-out` keeps every listed answer and the judge's full reasoning, which is how to tell a judge's mistake from the agent's.
 
 The **Offline Evals** workflow (`evals.yml`) runs the same thing: by hand from the Actions tab, and, once the repository variable `EVALS_ON_CHANGES` is `true`, on pull requests and pushes to `main` that change a config, judge, snippet or dataset it covers, and every night in full. Each run compares itself with `main`'s last result. Its credentials, all in the `evals` environment, are listed at the top of the workflow, and must never be the build's: a pull request runs the branch's code. It doesn't go through `authorize.yaml`: anyone with write access to the repository can start it, and its credentials reach only the CI project and Bedrock.
+
+**Changing a code check.** The evals' code checks are in `code_checks.py`, and `lib/codeChecks.ts` runs the same checks on live replies while flag 15 serves true. Change both, add a case to `code_check_cases.json`, and run both against it. Neither needs credentials:
+
+```bash
+python .github/workflows/demo_provisioning_scripts/check_code_checks.py
+node --no-warnings --import ./scripts/code-checks-register.mjs scripts/check-code-checks.mjs
+```
 
 **Changing the fraud rules.** The thresholds are in `lib/fraudAgent.ts`: review at 40 points, decline at 70, and 45 points each for a total over $800 or five of one item. When you change them, also update:
 

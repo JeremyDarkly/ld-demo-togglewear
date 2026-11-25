@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { LDObserve } from "@launchdarkly/observability-node";
+import type { LDClient, LDContext } from "@launchdarkly/node-server-sdk";
 import type { LDAIMetrics } from "@launchdarkly/server-sdk-ai";
 import {
   convertMessagesToLangChain,
@@ -11,7 +12,8 @@ import type { AIMessage } from "@langchain/core/messages";
 import { activityGroup } from "@/lib/activity";
 import { getAiClient, judge, rememberReply, textOf } from "@/lib/aiServer";
 import { guard, LIMITS, text } from "@/lib/apiGuard";
-import { contextFromRequest } from "@/lib/ldServer";
+import { codeChecksOn, runCodeChecks, stylistReplyUsable } from "@/lib/codeChecks";
+import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { startAgentRun } from "@/lib/llmTrace";
 import {
   PERSONAL_STYLIST_KEY,
@@ -64,7 +66,7 @@ function remember(key: string, note: StylistNote) {
 }
 
 type Picked = { text: string; size?: string; pairing?: string };
-type Written = { picked: Picked | null; metrics: LDAIMetrics };
+type Written = { picked: Picked | null; raw: string; metrics: LDAIMetrics };
 
 // The reply is meant to be bare JSON but sometimes arrives fenced or with a
 // sentence around it, so the object is cut out before parsing. With no note
@@ -93,6 +95,24 @@ function pickedFrom(text: string, product: Product, catalog: { slug: string }[])
       : {}),
     ...(typeof pairing === "string" && catalog.some((p) => p.slug === pairing) ? { pairing } : {}),
   };
+}
+
+// The offline evals' check on the reply as the model wrote it, before
+// pickedFrom drops a size or a pairing, while the response-code-checks flag
+// serves true (lib/codeChecks.ts). It only sends events.
+export async function checkReply(
+  client: LDClient | null,
+  context: LDContext,
+  trackData: object,
+  raw: string,
+  product: Pick<Product, "sizes">,
+  catalog: { slug: string }[],
+) {
+  if (!(await codeChecksOn(client, context))) return;
+  runCodeChecks(client, context, trackData, {
+    "stylist-reply-usable": () =>
+      stylistReplyUsable(raw, product.sizes, catalog.map((p) => p.slug)),
+  });
 }
 
 // Next refuses a bigger body with 413 before the handler runs.
@@ -196,9 +216,11 @@ async function handler(
             )) as AIMessage;
             return { response, usage: getAIUsageFromResponse(response) };
           });
-          const picked = pickedFrom(textOf(response), product, catalog);
+          const raw = textOf(response);
+          const picked = pickedFrom(raw, product, catalog);
           return {
             picked,
+            raw,
             metrics: {
               success: picked !== null,
               tokens: getAIUsageFromResponse(response),
@@ -212,6 +234,9 @@ async function handler(
       res.status(502).json({ error: "The stylist could not write a note" });
       return;
     }
+
+    // A cached note returned above, unchecked, as it goes unjudged.
+    await checkReply(await getServerClient(), context, tracker.getTrackData(), written.raw, product, catalog);
 
     if (!written.picked) {
       agentRun.fail(new Error("The personal stylist returned no usable note"));

@@ -25,7 +25,18 @@ import {
 import { activityGroup } from "@/lib/activity";
 import { addUsage, getAiClient, judge, textOf } from "@/lib/aiServer";
 import {
+  caseNoteCoversTheCase,
+  codeChecksOn,
+  decisionMatchesPoints,
+  demoSummaryNamesDecision,
+  runCodeChecks,
+  sendJudgeDisagreement,
+  type CheckResult,
+  type CodeCheckKey,
+} from "@/lib/codeChecks";
+import {
   assessOrder,
+  decisionFor,
   isBlockedZip,
   riskScore,
   type FraudAssessment,
@@ -85,6 +96,12 @@ const MAX_TOOL_ROUNDS = 2;
 const REVIEW_TIMEOUT_MS = 30_000;
 
 const DECISIONS: FraudDecision[] = ["approve", "review", "decline"];
+
+// The judge code-check-judge-disagreement compares decision-matches-points
+// with, since both ask whether the decision follows from the points.
+const DECISION_POLICY_JUDGE_KEY = "togglewear-decision-policy-judge";
+
+type CodeChecks = Partial<Record<CodeCheckKey, () => CheckResult>>;
 
 const nameOf = (key: string) =>
   ORDER_REVIEW_AGENTS.find((agent) => agent.key === key)?.name ?? key;
@@ -241,7 +258,7 @@ function isRequest(body: unknown): body is OrderReviewRequest {
 
 // Runs the graph, answering the shopper through answer as soon as the
 // decision is made. False if the graph is off, so nothing was answered.
-async function runGraph(
+export async function runGraph(
   aiClient: LDAIClient,
   context: LDContext,
   order: OrderReviewRequest,
@@ -259,6 +276,8 @@ async function runGraph(
   const graphTracker = graph.createTracker();
   const tools = orderReviewTools(order, context);
   const client = await getServerClient();
+  // Read once per review, so its agents are all checked or none are.
+  const checking = await codeChecksOn(client, context);
   const started = Date.now();
   const path: string[] = [];
   const tokens: LDTokenUsage = { total: 0, input: 0, output: 0 };
@@ -273,9 +292,13 @@ async function runGraph(
   const run = async (
     key: string,
     input: string,
-    { show = (text: string) => text, answerSchema, judgeInput }: {
+    { show = (text: string) => text, answerSchema, judgeInput, codeChecks }: {
       show?: (text: string) => string;
       answerSchema?: Record<string, unknown>;
+      // The offline evals' checks to run on what the agent wrote, while the
+      // response-code-checks flag serves true (lib/codeChecks.ts). They only
+      // send events: the review never waits on them or reads their results.
+      codeChecks?: (text: string) => CodeChecks;
       // What the judges attached to the agent's variation are shown as the
       // agent's input when they score its answer, without anything waiting
       // on them. No judging without it.
@@ -310,9 +333,24 @@ async function runGraph(
       path.push(key);
       addUsage(tokens, result.metrics.tokens);
       agentRun.finish(result.text, judgeInput !== undefined);
+      const checked =
+        checking && codeChecks
+          ? runCodeChecks(client, context, tracker.getTrackData(), codeChecks(result.text))
+          : null;
       if (judgeInput !== undefined) {
         judge(aiClient, config, context, tracker, judgeInput, result.text)
-          .then(agentRun.scored)
+          .then((results) => {
+            agentRun.scored(results);
+            if (checked) {
+              sendJudgeDisagreement(
+                client,
+                context,
+                tracker.getTrackData(),
+                checked["decision-matches-points"],
+                results.find((r) => r.judgeConfigKey === DECISION_POLICY_JUDGE_KEY),
+              );
+            }
+          })
           .catch((err) => {
             agentRun.scored();
             report(err);
@@ -331,9 +369,14 @@ async function runGraph(
   };
 
   // A handoff succeeded once the agent handed to has finished its part.
-  const handOff = async (from: string, to: string, input: string) => {
+  const handOff = async (
+    from: string,
+    to: string,
+    input: string,
+    options?: Parameters<typeof run>[2],
+  ) => {
     try {
-      const text = await run(to, input);
+      const text = await run(to, input, options);
       graphTracker.trackHandoffSuccess(from, to);
       return text;
     } catch (err) {
@@ -359,13 +402,20 @@ async function runGraph(
     const decider = graph.getChildNodes(specialists[0].getKey())[0];
     if (!decider) throw new Error("The specialists hand to no decision agent");
     const decisionInput = `Order ${order.ref}.\n\nCase summary from Order Intake:\n${summary}\n\n${reports}`;
+    const points = riskScore(tools.signals);
     const verdictText = await run(decider.getKey(), decisionInput, {
       show: (text) => parseDecision(text)?.summary ?? text,
       answerSchema: DECISION_SCHEMA,
       // With the total the tools found, so the Decision Policy judge can
       // check the decision against it rather than adding the points up
       // itself, which it does after it has already scored.
-      judgeInput: `${decisionInput}\n\nRisk points the specialists' tools found: ${riskScore(tools.signals)}.`,
+      judgeInput: `${decisionInput}\n\nRisk points the specialists' tools found: ${points}.`,
+      // The model's own decision, before the blocked-ZIP guard below can
+      // override it.
+      codeChecks: (text) => ({
+        "decision-matches-points": () => decisionMatchesPoints(text, decisionFor(points), points),
+        "demo-summary-names-decision": () => demoSummaryNamesDecision(text),
+      }),
     });
     for (const node of specialists) {
       graphTracker.trackHandoffSuccess(node.getKey(), decider.getKey());
@@ -402,6 +452,14 @@ async function runGraph(
         noteTaker.getKey(),
         `Order ${order.ref} was ${decision === "review" ? "held for review" : "declined"}, ` +
           `with ${score} risk points.\n\nCase summary from Order Intake:\n${summary}\n\n${reports}`,
+        {
+          // The note's text, checked against the final decision and the
+          // points the tools found rather than anything parsed from prose.
+          codeChecks: (note) => ({
+            "case-note-covers-the-case": () =>
+              caseNoteCoversTheCase(note, decision, signals.map((s) => s.points)),
+          }),
+        },
       );
     }
 

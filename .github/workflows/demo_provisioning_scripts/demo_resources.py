@@ -344,6 +344,97 @@ METRICS = [
      'unit_aggregation_type': 'average',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'togglewear']},
+    # The code-check-* events are sent by the store while the response-code-checks
+    # flag serves true, on the track data of the config that answered, with the
+    # check's reasons. 1 when the check failed, 0 when it passed, so each average is
+    # a failure rate. Sent by pages/api/order-review/index.ts, from the Order
+    # Decision agent's answer, through lib/codeChecks.ts.
+    {'metric_key': 'code-check-decision-matches-points',
+     'metric_name': 'Code Check: Decision Matches Points',
+     'event_key': 'code-check-decision-matches-points',
+     'metric_description': ('Whether the Order Decision agent\'s decision was not the one its risk points call for, '
+                           '1 or 0. The average is the share of decisions that fail the check.'),
+     'numeric': True,
+     'unit': 'failures',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
+    # Sent by pages/api/personal-stylist/index.ts, from the model's reply before the
+    # page drops anything it can't use, through lib/codeChecks.ts.
+    {'metric_key': 'code-check-stylist-reply-usable',
+     'metric_name': 'Code Check: Stylist Reply Usable',
+     'event_key': 'code-check-stylist-reply-usable',
+     'metric_description': ('Whether a Personal Stylist reply was missing a note, or named a pairing or a size the '
+                           'page cannot use, 1 or 0. The average is the share of replies that fail.'),
+     'numeric': True,
+     'unit': 'failures',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
+    # Sent by pages/api/order-review/index.ts, from the Case Note agent's note,
+    # through lib/codeChecks.ts.
+    {'metric_key': 'code-check-case-note-covers-the-case',
+     'metric_name': 'Code Check: Case Note Covers the Case',
+     'event_key': 'code-check-case-note-covers-the-case',
+     'metric_description': ('Whether a case note failed the checks code can make: three or four sentences, the '
+                           'decision, each signal\'s points and plain text, 1 or 0.'),
+     'numeric': True,
+     'unit': 'failures',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
+    # Sent by pages/api/order-review/index.ts, from the Order Decision agent's
+    # answer, through lib/codeChecks.ts. Deliberately weak, a proxy to compare with
+    # the others: it only asks whether the summary contains the decision's word.
+    {'metric_key': 'code-check-demo-summary-names-decision',
+     'metric_name': 'Code Check: Summary Names Decision',
+     'event_key': 'code-check-demo-summary-names-decision',
+     'metric_description': ('Whether the Order Decision agent\'s summary left out its decision\'s word, 1 or 0. A '
+                           'deliberately weak check, to compare with the stronger ones.'),
+     'numeric': True,
+     'unit': 'failures',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
+    # Sent by pages/api/order-review/index.ts and pages/api/personal-stylist/index.ts,
+    # through lib/codeChecks.ts, once per reply the code checks ran on: 1 when any
+    # of them threw, 0 otherwise.
+    {'metric_key': 'code-check-error',
+     'metric_name': 'Code Check Error',
+     'event_key': 'code-check-error',
+     'metric_description': ('Whether the code checks threw on a reply, 1 or 0. The average is the share of checked '
+                           'replies where a check could not run.'),
+     'numeric': True,
+     'unit': 'errors',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
+    # Sent by pages/api/order-review/index.ts, through lib/codeChecks.ts, once the
+    # Decision Policy judge has scored a decision decision-matches-points checked:
+    # 1 when they disagree, the judge passing at 0.7 as in ci_eval.py, 0 when they
+    # agree. Not sent when the judge was skipped or errored.
+    {'metric_key': 'code-check-judge-disagreement',
+     'metric_name': 'Code Check Judge Disagreement',
+     'event_key': 'code-check-judge-disagreement',
+     'metric_description': ('Whether decision-matches-points and the Decision Policy judge disagreed on the same '
+                           'decision, 1 or 0. The average is how often a check and a judge differ.'),
+     'numeric': True,
+     'unit': 'disagreements',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'togglewear']},
     # Whether the shopper took the Personal Stylist's advice, which no judge
     # can score: the storefront sends it (lib/events.ts) when the product
     # goes in the cart in the size the stylist picked, or its pairing does.
@@ -892,6 +983,29 @@ FLAGS = [
                 'query': 'environment_id={environment_id} key=recommendations-failed',
                 'threshold_value': 3,
                 'threshold_window': 300}]]},
+
+    # ---- AI Configs: code checks on live replies ----
+    #
+    # Runs the offline evals' deterministic checks (code_checks.py, which
+    # ci_eval.py scores with) on the store's live AI replies too, from
+    # lib/codeChecks.ts, so a check gives the same answer offline and online.
+    # Each check's result goes to LaunchDarkly as a code-check-* event (METRICS
+    # above); nothing changes a reply, a judge's score or a decision. Read on
+    # the server only, so it isn't available to client-side SDKs. Created off,
+    # which serves false: turn it on to start sending the events.
+    {'flag': {'flag_key': 'response-code-checks',
+              'flag_name': '15 - Response Code Checks - Checks on Live AI Replies',
+              'description': 'Runs the offline evals\' code checks on live replies from the Order '
+                             'Review agents and the Personal Stylist, and sends each result as a '
+                             'code-check-* metric event, beside the judges\' scores. Never changes '
+                             'a reply. Evaluated on the server. Resting state: off.',
+              'variations': [{'value': True, 'name': 'Run code checks'},
+                             {'value': False, 'name': 'Skip code checks'}],
+              'tags': ['ai-config', 'togglewear'],
+              'on_variation': 0,
+              'off_variation': 1,
+              'client_side': False},
+     'post': []},
 ]
 
 # Segments — created in every environment listed, with shared rules
