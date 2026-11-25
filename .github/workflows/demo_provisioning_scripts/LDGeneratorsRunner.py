@@ -7,7 +7,7 @@ except ImportError as e:
     if "ldai" in str(e).lower() or "ldai" in repr(e):
         print(
             "Skipping generators: ldai module not found. "
-            "Install with: pip install -r requirements.txt (includes launchdarkly-server-sdk-ai)"
+            "Install with: pip install -r requirements.txt"
         )
         sys.exit(0)
     raise
