@@ -1,0 +1,131 @@
+{
+  "name": "launchdarkly/ai-tooling",
+  "version": "22a512139be96db74a00e0fb3c1794d9083c9689",
+  "summary": "Auto-generated plugin from GitHub (61 skills)",
+  "private": true,
+  "skills": {
+    "agent-graphs": {
+      "path": "skills/agentcontrol/agent-graphs/SKILL.md"
+    },
+    "alert-investigation": {
+      "path": "skills/observability/alert-investigation/SKILL.md"
+    },
+    "built-in-metrics": {
+      "path": "skills/agentcontrol/built-in-metrics/SKILL.md"
+    },
+    "configs-create": {
+      "path": "skills/agentcontrol/configs-create/SKILL.md"
+    },
+    "configs-targeting": {
+      "path": "skills/agentcontrol/configs-targeting/SKILL.md"
+    },
+    "configs-update": {
+      "path": "skills/agentcontrol/configs-update/SKILL.md"
+    },
+    "configs-variations": {
+      "path": "skills/agentcontrol/configs-variations/SKILL.md"
+    },
+    "create-fix-pr": {
+      "path": "skills/observability/create-fix-pr/SKILL.md"
+    },
+    "create-graph": {
+      "path": "skills/observability/create-graph/SKILL.md"
+    },
+    "custom-metrics": {
+      "path": "skills/agentcontrol/custom-metrics/SKILL.md"
+    },
+    "flag-release": {
+      "path": "skills/feature-flags/flag-release/SKILL.md"
+    },
+    "investigate": {
+      "path": "skills/observability/investigate/SKILL.md"
+    },
+    "launchdarkly-approval-requests": {
+      "path": "skills/feature-flags/launchdarkly-approval-requests/SKILL.md"
+    },
+    "launchdarkly-experiment-guide": {
+      "path": "skills/experiments/launchdarkly-experiment-guide/SKILL.md"
+    },
+    "launchdarkly-experiment-hypothesis-builder": {
+      "path": "skills/experiments/launchdarkly-experiment-hypothesis-builder/SKILL.md"
+    },
+    "launchdarkly-experiment-setup": {
+      "path": "skills/experiments/launchdarkly-experiment-setup/SKILL.md"
+    },
+    "launchdarkly-flag-cleanup": {
+      "path": "skills/feature-flags/launchdarkly-flag-cleanup/SKILL.md"
+    },
+    "launchdarkly-flag-create": {
+      "path": "skills/feature-flags/launchdarkly-flag-create/SKILL.md"
+    },
+    "launchdarkly-flag-discovery": {
+      "path": "skills/feature-flags/launchdarkly-flag-discovery/SKILL.md"
+    },
+    "launchdarkly-flag-targeting": {
+      "path": "skills/feature-flags/launchdarkly-flag-targeting/SKILL.md"
+    },
+    "launchdarkly-guarded-rollout": {
+      "path": "skills/feature-flags/launchdarkly-guarded-rollout/SKILL.md"
+    },
+    "launchdarkly-metric-choose": {
+      "path": "skills/metrics/launchdarkly-metric-choose/SKILL.md"
+    },
+    "launchdarkly-metric-create": {
+      "path": "skills/metrics/launchdarkly-metric-create/SKILL.md"
+    },
+    "launchdarkly-metric-instrument": {
+      "path": "skills/metrics/launchdarkly-metric-instrument/SKILL.md"
+    },
+    "migrate": {
+      "path": "skills/agentcontrol/migrate/SKILL.md"
+    },
+    "online-evals": {
+      "path": "skills/agentcontrol/online-evals/SKILL.md"
+    },
+    "should-flag-change": {
+      "path": "skills/feature-flags/should-flag-change/SKILL.md"
+    },
+    "snippets": {
+      "path": "skills/agentcontrol/snippets/SKILL.md"
+    },
+    "tools": {
+      "path": "skills/agentcontrol/tools/SKILL.md"
+    }
+  },
+  "excludes": {
+    "skills": [
+      "aiconfig-agent-graphs",
+      "aiconfig-ai-metrics",
+      "aiconfig-create",
+      "aiconfig-custom-metrics",
+      "aiconfig-migrate",
+      "aiconfig-online-evals",
+      "aiconfig-projects",
+      "aiconfig-snippets",
+      "aiconfig-targeting",
+      "aiconfig-tools",
+      "aiconfig-update",
+      "aiconfig-variations",
+      "apply",
+      "detect",
+      "experiment-orchestration",
+      "flag-and-release-change",
+      "launchdarkly-automations-archival-settings",
+      "launchdarkly-automations-cleanup-settings",
+      "launchdarkly-flag-command",
+      "launchdarkly-flag-drift",
+      "launchdarkly-flag-qualitative-feedback-setup",
+      "launchdarkly-release-autopilot-onboarding",
+      "launchdarkly-release-autopilot-settings",
+      "launchdarkly-release-plans",
+      "legacy-sdk-migrate",
+      "mcp-configure",
+      "observability-plugin-setup",
+      "onboarding",
+      "plan",
+      "projects",
+      "sdk-install",
+      "should-auto-approve"
+    ]
+  }
+}

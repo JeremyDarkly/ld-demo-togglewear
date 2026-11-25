@@ -21,3 +21,6 @@ __pycache__/
 .env
 .env.local
 .env.production
+
+# Claude Code worktrees (local only)
+.claude/worktrees/

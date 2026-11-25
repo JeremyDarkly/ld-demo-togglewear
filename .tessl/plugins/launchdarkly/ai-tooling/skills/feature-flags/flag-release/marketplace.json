@@ -1,0 +1,24 @@
+{
+  "name": "flag-release",
+  "description": "Start the release of an existing LaunchDarkly flag guarding a PR from the project's flag release plan or each environment's release plan, honoring release intent",
+  "version": "0.4.0",
+  "author": "LaunchDarkly",
+  "repository": "https://github.com/launchdarkly/ai-tooling",
+  "skills": ["./"],
+  "tags": [
+    "launchdarkly",
+    "feature-flags",
+    "feature-management",
+    "pull-request",
+    "auto-release",
+    "automated-rollout",
+    "release-plan",
+    "release-intent",
+    "guarded-rollout",
+    "dark-launch",
+    "mcp"
+  ],
+  "requirements": {
+    "mcp-servers": ["@launchdarkly/mcp-server"]
+  }
+}
