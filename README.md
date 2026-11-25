@@ -367,6 +367,7 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 │   ├── events.ts             The metric events the store sends
 │   └── generator/            What each Cmd+K generator does
 ├── public/                   Images and icons
+├── scripts/                  check-tool-call-errors.mjs: runs the tool loops on a scripted model, no credentials
 ├── styles/                   Global CSS and the Söhne fonts
 ├── dockerfile                The production image: Next's standalone output on Node 24, no npm
 ├── docs/api_endpoint_usage.csv  Which LaunchDarkly REST endpoints the build calls

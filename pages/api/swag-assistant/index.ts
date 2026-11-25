@@ -22,7 +22,7 @@ import {
 import { activityGroup } from "@/lib/activity";
 import { addUsage, getAiClient, judge, rememberReply, textOf } from "@/lib/aiServer";
 import { guard, LIMITS } from "@/lib/apiGuard";
-import { contextFromRequest } from "@/lib/ldServer";
+import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { startAgentRun, type AgentRun } from "@/lib/llmTrace";
 import { productBySlug } from "@/lib/products";
 import { TIER_LABELS, isGuest, shopperById } from "@/lib/shopper";
@@ -37,6 +37,11 @@ import {
   swagAssistantTools,
   type SwagAssistantTools,
 } from "@/lib/swagAssistantTools";
+import {
+  isErrorResult,
+  toolCallReporter,
+  type ReportToolCall,
+} from "@/lib/toolCallErrors";
 
 // The swag assistant, answered by the Swag Assistant AI Config.
 //
@@ -45,9 +50,9 @@ import {
 // prompt, which tools it may call and which judges score it. Targeting picks
 // the variation per shopper (Standard for everyone, Member Concierge for
 // Gold and Platinum members), and the metrics recorded here — duration,
-// tokens, success or error, each tool call, each judge's score, and the
-// thumbs in pages/api/swag-assistant/feedback.ts — land on whichever
-// variation answered.
+// tokens, success or error, each tool call and whether it failed, each
+// judge's score, and the thumbs in pages/api/swag-assistant/feedback.ts —
+// land on whichever variation answered.
 //
 // The model runs through LaunchDarkly's LangChain provider, which builds a
 // Bedrock model from the variation. The tool loop is ours: the AI SDK's own
@@ -117,12 +122,13 @@ type Conversation = {
   lookedUp: boolean;
 };
 
-async function converse(
+export async function converse(
   config: LDAICompletionConfig,
   history: BaseMessage[],
   question: string,
   tools: SwagAssistantTools,
   agentRun: AgentRun,
+  reportToolCall: ReportToolCall,
 ): Promise<Conversation> {
   const llm = await createLangChainModel(config);
   const definitions = (config.model?.parameters?.tools as unknown[]) ?? [];
@@ -181,14 +187,22 @@ async function converse(
     for (const call of calls) {
       toolCalls.push(call.name);
       const tool = toolsByName.get(call.name);
-      const text = await agentRun.tool(call, async () => {
-        const output = tool
-          ? await tool.invoke(call.args)
-          : `No tool named ${call.name}`;
-        return typeof output === "string" ? output : JSON.stringify(output);
-      });
-      toolTranscript.push(`${call.name}(${JSON.stringify(call.args)}) -> ${text}`);
-      messages.push(new ToolMessage({ content: text, tool_call_id: call.id ?? "" }));
+      // Reported whatever happens, a throw included, before the throw ends
+      // the conversation.
+      let failed = true;
+      try {
+        const text = await agentRun.tool(call, async () => {
+          const output = tool
+            ? await tool.invoke(call.args)
+            : `No tool named ${call.name}`;
+          return typeof output === "string" ? output : JSON.stringify(output);
+        });
+        failed = !tool || isErrorResult(text);
+        toolTranscript.push(`${call.name}(${JSON.stringify(call.args)}) -> ${text}`);
+        messages.push(new ToolMessage({ content: text, tool_call_id: call.id ?? "" }));
+      } finally {
+        reportToolCall(call.name, failed);
+      }
     }
   }
 }
@@ -313,6 +327,7 @@ async function handler(
 
     const tracker = config.createTracker();
     const tools = swagAssistantTools(context);
+    const reportToolCall = toolCallReporter(await getServerClient(), context, tracker.getTrackData());
     const served = servedBy(tracker);
     const attributes = {
       "ai.config.key": CONFIG_KEY,
@@ -333,7 +348,7 @@ async function handler(
     try {
       result = await tracker.trackMetricsOf(
         (r: Conversation) => r.metrics,
-        () => converse(config, toHistory(turns), question.text, tools, agentRun),
+        () => converse(config, toHistory(turns), question.text, tools, agentRun, reportToolCall),
       );
     } catch (err) {
       agentRun.fail(err);
