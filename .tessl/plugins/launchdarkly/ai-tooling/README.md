@@ -1,0 +1,162 @@
+# LaunchDarkly Agent Skills
+
+LaunchDarkly's public collection of agent skills and playbooks. These skills encode repeatable workflows for working with LaunchDarkly, so coding agents can execute common tasks safely and consistently.
+
+## What Is This Repo?
+
+Agent Skills are modular, text-based playbooks that teach an agent how to perform a workflow. This repo is designed to be a public, open-source home for LaunchDarkly skills and to align with the emerging Agent Skills Open Standard.
+
+## Available Skills
+
+### Feature Flags
+
+| Skill | Description |
+|-------|-------------|
+| `feature-flags/launchdarkly-flag-command` | Resolve `/flag` style requests into fast flag lookup, detail, and disambiguation |
+| `feature-flags/should-flag-change` | Advisory, read-only call on whether a committed change (PR) should ship behind a feature flag, by a fixed decision tree with checked evidence; decides by judgment when it can't run on a checkout |
+| `feature-flags/should-auto-approve` | Advisory, read-only rating of a committed change's review risk (low, medium, high) by a fixed decision graph with checked answers |
+| `feature-flags/launchdarkly-flag-discovery` | Audit flags, find stale/launched flags, and assess removal readiness |
+| `feature-flags/launchdarkly-flag-create` | Create new feature flags in a way that fits existing codebase patterns |
+| `feature-flags/launchdarkly-flag-targeting` | Control targeting, rollouts, rules, and cross-environment config |
+| `feature-flags/launchdarkly-flag-cleanup` | Safely remove flags from code using LaunchDarkly as the source of truth |
+| `feature-flags/launchdarkly-flag-drift` | Detect and reconcile drift between an in-code SDK fallback default and the LaunchDarkly default rule |
+| `feature-flags/launchdarkly-guarded-rollout` | Configure guarded rollouts with progressive traffic, metric monitoring, and rollback |
+| `feature-flags/launchdarkly-approval-requests` | Request, follow up on, and apply approval requests for flag, segment, and AgentControl Config changes |
+| `feature-flags/flag-release` | Start a flag's release for a PR from the project's flag release plan or each environment's release plan, honoring release intent |
+| `feature-flags/flag-and-release-change` | End-to-end PR orchestrator: decide → create + wire the flag → start its release (composes the skills above) |
+| `feature-flags/launchdarkly-flag-qualitative-feedback-setup` | Add a qualitative user feedback widget tied to a flag, adapting to the project's framework and design system |
+
+### Release Autopilot
+
+| Skill | Description |
+|-------|-------------|
+| `release-autopilot/launchdarkly-release-autopilot-onboarding` | Step-by-step setup: pick capabilities, connect the GitHub App, map repos, choose inference, review release setup |
+| `release-autopilot/launchdarkly-release-autopilot-settings` | Turn on GitHub App auto-flagging / auto-releasing, map `owner/name` repos, or diagnose why a PR was not classified (confirm before every write) |
+| `release-autopilot/launchdarkly-automations-cleanup-settings` | Read or change a project's auto-cleanup schedule, repositories, and limits, or explain why cleanup did not open a PR (confirm before every write) |
+| `release-autopilot/launchdarkly-release-plans` | List, create, edit, make default, or delete environment release plans (with starter plans) and flag release plans, and start a flag's release from a plan (confirm before every write) |
+| `release-autopilot/launchdarkly-automations-archival-settings` | Read or change a project's auto-archival grace period, approvals, and limits, or turn it off; a person turns it on (confirm before every write) |
+
+### AgentControl
+
+| Skill | Description |
+|-------|-------------|
+| `agentcontrol/configs-create` | Create configs with variations for agent or completion mode |
+| `agentcontrol/migrate` | Migrate an app with hardcoded LLM prompts (not on AgentControl yet) to the current AI SDKs in five stages |
+| `agentcontrol/legacy-sdk-migrate` | Migrate between LaunchDarkly AI SDKs: from the legacy Python, Node.js, and Go AI SDKs to the current handler-based SDKs (packages, init, `config()` / `Config()`, tools, registries, judges, graphs, fallbacks) |
+| `agentcontrol/configs-update` | Update and delete configs, manage lifecycle |
+| `agentcontrol/configs-variations` | Manage config variations for A/B testing |
+| `agentcontrol/tools` | Create and attach tools for function calling |
+| `agentcontrol/projects` | Create and manage projects to organize configs |
+| `agentcontrol/online-evals` | Attach LLM-as-a-judge evaluators to configs |
+| `agentcontrol/configs-targeting` | Configure targeting rules for config rollouts |
+| `agentcontrol/snippets` | Create and manage reusable prompt snippets across configs |
+| `agentcontrol/agent-graphs` | Create and manage multi-agent graphs with routing and handoffs |
+
+### Experiments
+
+| Skill | Description |
+|-------|-------------|
+| `experiments/launchdarkly-experiment-guide` | Guided experiment setup: find what to test, propose a hypothesis and metric, wire the flag, then draft and create the experiment |
+| `experiments/launchdarkly-experiment-setup` | Set up experiments with metrics, treatments, and data collection |
+| `experiments/launchdarkly-experiment-hypothesis-builder` | Grade or coach a testable hypothesis against the Change / Measurement / Rationale rubric, then hand it off to experiment setup (draft) |
+
+### Metrics
+
+| Skill | Description |
+|-------|-------------|
+| `metrics/launchdarkly-metric-choose` | Select the right metric type for an experiment |
+| `metrics/launchdarkly-metric-create` | Create metrics and instrument tracking events |
+| `metrics/launchdarkly-metric-instrument` | Add tracking calls to code for existing metrics |
+
+### Observability
+
+| Skill | Description |
+|-------|-------------|
+| `observability/investigate` | Find the root cause of a production problem from logs, traces, errors, sessions, and metrics |
+| `observability/alert-investigation` | Investigate a firing or recently fired observability alert |
+| `observability/create-graph` | Build observability dashboards and graphs |
+| `observability/create-fix-pr` | Investigate a root cause and file a minimal fix PR |
+| `observability/observability-plugin-setup` | Turn on observability by adding the plugin to an app's existing LaunchDarkly client and opening a PR |
+
+### AWS DevOps Agent
+
+| Skill | Description |
+|-------|-------------|
+| `aws-devops-agent/experiment-orchestration` | Take a product goal through a LaunchDarkly experiment and a rollout (guarded, if the plan has it) in AWS DevOps Agent. `ldcli aws-devops-agent setup` installs it with the `experiment-orchestrator` custom agent. See [`skills/aws-devops-agent`](skills/aws-devops-agent/README.md). |
+
+## Install as a Claude Code Plugin
+
+This repo is a [Claude Code plugin](https://code.claude.com/docs/en/create-plugins). Installing it gives you all the skills above plus the LaunchDarkly MCP server.
+
+1. Add this repo as a plugin marketplace in Claude Code:
+   ```
+   /plugin marketplace add launchdarkly/ai-tooling
+   ```
+2. Install the plugin:
+   ```
+   /plugin install launchdarkly@launchdarkly-ai-tooling
+   ```
+3. Authenticate the LaunchDarkly MCP server when prompted with your [API access token](https://docs.launchdarkly.com/home/account/api).
+
+Once installed, skills are available as `/launchdarkly:<skill-name>` across all your projects, and the MCP server can read and modify your flags directly.
+
+### Onboarding
+
+| Skill | Description |
+|-------|-------------|
+| `onboarding` | End-to-end LaunchDarkly setup: quiet scripted flow, SDK install, first flag with a live reveal, MCP offered afterwards |
+| `onboarding/mcp-configure` | Configure the LaunchDarkly hosted MCP server (OAuth, no API keys needed) |
+| `onboarding/sdk-install` | Install and initialize the correct SDK via detect, plan, and apply sub-steps |
+
+## Install as a Cursor Plugin
+
+This repo is a [Cursor plugin](https://cursor.com/docs/plugins/building). Installing it gives you all the skills above plus the LaunchDarkly MCP server, so the agent can read and modify your flags directly.
+
+1. Open Cursor and go to **Settings > Plugins**.
+2. Search for **LaunchDarkly** in the marketplace, or install from the repo URL:
+   ```
+   https://github.com/launchdarkly/ai-tooling
+   ```
+Once installed, the skills and MCP server are available across all your projects.
+
+## Quick Start (Local)
+
+```bash
+# Clone the repo
+git clone https://github.com/launchdarkly/ai-tooling.git
+cd ai-tooling
+
+# Copy a skill into your agent's skills path:
+cp -r skills/feature-flags/launchdarkly-flag-cleanup <your-agent-skills-dir>/
+
+```
+
+Then ask your agent something like:
+
+```
+Which feature flags are stale and should be cleaned up?
+```
+
+```
+Create a feature flag for the new checkout flow
+```
+
+```
+Roll out dark-mode to 25% of users in production
+```
+
+```
+Remove the `new-checkout-flow` feature flag from this codebase
+```
+
+## Install via skills.sh CLI
+
+If your agent supports [skills.sh](https://skills.sh), add this repository, `launchdarkly/ai-tooling`, with the install command from the skills.sh documentation.
+
+## Contributing
+
+See `CONTRIBUTING.md` for how to add new skills and the conventions we follow.
+
+## License
+
+Apache-2.0

@@ -1,0 +1,91 @@
+{
+  "name": "launchdarkly/ai-tooling",
+  "version": "22a512139be96db74a00e0fb3c1794d9083c9689",
+  "summary": "Auto-generated plugin from GitHub (61 skills)",
+  "private": true,
+  "skills": {
+    "agent-graphs": {
+      "path": "skills/agentcontrol/agent-graphs/SKILL.md"
+    },
+    "configs-create": {
+      "path": "skills/agentcontrol/configs-create/SKILL.md"
+    },
+    "configs-targeting": {
+      "path": "skills/agentcontrol/configs-targeting/SKILL.md"
+    },
+    "configs-update": {
+      "path": "skills/agentcontrol/configs-update/SKILL.md"
+    },
+    "configs-variations": {
+      "path": "skills/agentcontrol/configs-variations/SKILL.md"
+    },
+    "migrate": {
+      "path": "skills/agentcontrol/migrate/SKILL.md"
+    },
+    "online-evals": {
+      "path": "skills/agentcontrol/online-evals/SKILL.md"
+    },
+    "snippets": {
+      "path": "skills/agentcontrol/snippets/SKILL.md"
+    },
+    "tools": {
+      "path": "skills/agentcontrol/tools/SKILL.md"
+    }
+  },
+  "excludes": {
+    "skills": [
+      "aiconfig-agent-graphs",
+      "aiconfig-ai-metrics",
+      "aiconfig-create",
+      "aiconfig-custom-metrics",
+      "aiconfig-migrate",
+      "aiconfig-online-evals",
+      "aiconfig-projects",
+      "aiconfig-snippets",
+      "aiconfig-targeting",
+      "aiconfig-tools",
+      "aiconfig-update",
+      "aiconfig-variations",
+      "alert-investigation",
+      "apply",
+      "built-in-metrics",
+      "create-fix-pr",
+      "create-graph",
+      "custom-metrics",
+      "detect",
+      "experiment-orchestration",
+      "flag-and-release-change",
+      "flag-release",
+      "investigate",
+      "launchdarkly-approval-requests",
+      "launchdarkly-automations-archival-settings",
+      "launchdarkly-automations-cleanup-settings",
+      "launchdarkly-experiment-guide",
+      "launchdarkly-experiment-hypothesis-builder",
+      "launchdarkly-experiment-setup",
+      "launchdarkly-flag-cleanup",
+      "launchdarkly-flag-command",
+      "launchdarkly-flag-create",
+      "launchdarkly-flag-discovery",
+      "launchdarkly-flag-drift",
+      "launchdarkly-flag-qualitative-feedback-setup",
+      "launchdarkly-flag-targeting",
+      "launchdarkly-guarded-rollout",
+      "launchdarkly-metric-choose",
+      "launchdarkly-metric-create",
+      "launchdarkly-metric-instrument",
+      "launchdarkly-release-autopilot-onboarding",
+      "launchdarkly-release-autopilot-settings",
+      "launchdarkly-release-plans",
+      "legacy-sdk-migrate",
+      "mcp-configure",
+      "observability-plugin-setup",
+      "onboarding",
+      "plan",
+      "projects",
+      "sdk-install",
+      "should-auto-approve",
+      "should-flag-change"
+    ]
+  }
+}
