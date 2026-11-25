@@ -172,8 +172,9 @@ def demo_summary_names_decision(output):
 
     Deliberately weak, a proxy for "the shopper is told the outcome": a wrong
     decision whose summary names that wrong decision passes it, and a right
-    one put another way ("we've held your order") fails it. It runs live
-    only, as a metric to compare with the stronger checks.
+    one put another way ("we've held your order") fails it. It runs live,
+    as a metric, and in ci_eval.py for comparison only, to compare with the
+    stronger checks.
     """
     answer = answer_of(output) or {}
     word = DECISION_WORDS.get(answer.get("decision")) if isinstance(answer.get("decision"), str) else None

@@ -2182,7 +2182,9 @@ CI_EVALS = [
                          'description': 'One or two sentences to the shopper, shown at checkout.'},
          },
          'required': ['decision', 'score', 'summary']},
-     'scorers': ['decision-matches-points'],
+     # demo-summary-names-decision is deliberately weak, there to compare
+     # with the others (ci_eval.py's COMPARISON_ONLY).
+     'scorers': ['decision-matches-points', 'demo-summary-names-decision'],
      'quick': ['ordinary-member', 'just-under-value', 'high-value-platinum',
                'value-and-quantity', 'blocked-zip-gold', 'blocked-zip-small']},
     # No judges attached, so the case-note-quality optimization's acceptance
