@@ -15,7 +15,27 @@
           "online-evals",
           "agent-graphs",
           "snippets",
-          "migrate"
+          "migrate",
+          "built-in-metrics",
+          "custom-metrics",
+          "launchdarkly-flag-create",
+          "launchdarkly-flag-targeting",
+          "launchdarkly-flag-discovery",
+          "launchdarkly-flag-cleanup",
+          "launchdarkly-guarded-rollout",
+          "launchdarkly-approval-requests",
+          "flag-release",
+          "should-flag-change",
+          "launchdarkly-metric-choose",
+          "launchdarkly-metric-create",
+          "launchdarkly-metric-instrument",
+          "launchdarkly-experiment-guide",
+          "launchdarkly-experiment-hypothesis-builder",
+          "launchdarkly-experiment-setup",
+          "investigate",
+          "alert-investigation",
+          "create-graph",
+          "create-fix-pr"
         ]
       }
     }

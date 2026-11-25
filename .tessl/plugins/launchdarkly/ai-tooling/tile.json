@@ -7,6 +7,12 @@
     "agent-graphs": {
       "path": "skills/agentcontrol/agent-graphs/SKILL.md"
     },
+    "alert-investigation": {
+      "path": "skills/observability/alert-investigation/SKILL.md"
+    },
+    "built-in-metrics": {
+      "path": "skills/agentcontrol/built-in-metrics/SKILL.md"
+    },
     "configs-create": {
       "path": "skills/agentcontrol/configs-create/SKILL.md"
     },
@@ -19,11 +25,65 @@
     "configs-variations": {
       "path": "skills/agentcontrol/configs-variations/SKILL.md"
     },
+    "create-fix-pr": {
+      "path": "skills/observability/create-fix-pr/SKILL.md"
+    },
+    "create-graph": {
+      "path": "skills/observability/create-graph/SKILL.md"
+    },
+    "custom-metrics": {
+      "path": "skills/agentcontrol/custom-metrics/SKILL.md"
+    },
+    "flag-release": {
+      "path": "skills/feature-flags/flag-release/SKILL.md"
+    },
+    "investigate": {
+      "path": "skills/observability/investigate/SKILL.md"
+    },
+    "launchdarkly-approval-requests": {
+      "path": "skills/feature-flags/launchdarkly-approval-requests/SKILL.md"
+    },
+    "launchdarkly-experiment-guide": {
+      "path": "skills/experiments/launchdarkly-experiment-guide/SKILL.md"
+    },
+    "launchdarkly-experiment-hypothesis-builder": {
+      "path": "skills/experiments/launchdarkly-experiment-hypothesis-builder/SKILL.md"
+    },
+    "launchdarkly-experiment-setup": {
+      "path": "skills/experiments/launchdarkly-experiment-setup/SKILL.md"
+    },
+    "launchdarkly-flag-cleanup": {
+      "path": "skills/feature-flags/launchdarkly-flag-cleanup/SKILL.md"
+    },
+    "launchdarkly-flag-create": {
+      "path": "skills/feature-flags/launchdarkly-flag-create/SKILL.md"
+    },
+    "launchdarkly-flag-discovery": {
+      "path": "skills/feature-flags/launchdarkly-flag-discovery/SKILL.md"
+    },
+    "launchdarkly-flag-targeting": {
+      "path": "skills/feature-flags/launchdarkly-flag-targeting/SKILL.md"
+    },
+    "launchdarkly-guarded-rollout": {
+      "path": "skills/feature-flags/launchdarkly-guarded-rollout/SKILL.md"
+    },
+    "launchdarkly-metric-choose": {
+      "path": "skills/metrics/launchdarkly-metric-choose/SKILL.md"
+    },
+    "launchdarkly-metric-create": {
+      "path": "skills/metrics/launchdarkly-metric-create/SKILL.md"
+    },
+    "launchdarkly-metric-instrument": {
+      "path": "skills/metrics/launchdarkly-metric-instrument/SKILL.md"
+    },
     "migrate": {
       "path": "skills/agentcontrol/migrate/SKILL.md"
     },
     "online-evals": {
       "path": "skills/agentcontrol/online-evals/SKILL.md"
+    },
+    "should-flag-change": {
+      "path": "skills/feature-flags/should-flag-change/SKILL.md"
     },
     "snippets": {
       "path": "skills/agentcontrol/snippets/SKILL.md"
@@ -46,34 +106,15 @@
       "aiconfig-tools",
       "aiconfig-update",
       "aiconfig-variations",
-      "alert-investigation",
       "apply",
-      "built-in-metrics",
-      "create-fix-pr",
-      "create-graph",
-      "custom-metrics",
       "detect",
       "experiment-orchestration",
       "flag-and-release-change",
-      "flag-release",
-      "investigate",
-      "launchdarkly-approval-requests",
       "launchdarkly-automations-archival-settings",
       "launchdarkly-automations-cleanup-settings",
-      "launchdarkly-experiment-guide",
-      "launchdarkly-experiment-hypothesis-builder",
-      "launchdarkly-experiment-setup",
-      "launchdarkly-flag-cleanup",
       "launchdarkly-flag-command",
-      "launchdarkly-flag-create",
-      "launchdarkly-flag-discovery",
       "launchdarkly-flag-drift",
       "launchdarkly-flag-qualitative-feedback-setup",
-      "launchdarkly-flag-targeting",
-      "launchdarkly-guarded-rollout",
-      "launchdarkly-metric-choose",
-      "launchdarkly-metric-create",
-      "launchdarkly-metric-instrument",
       "launchdarkly-release-autopilot-onboarding",
       "launchdarkly-release-autopilot-settings",
       "launchdarkly-release-plans",
@@ -84,8 +125,7 @@
       "plan",
       "projects",
       "sdk-install",
-      "should-auto-approve",
-      "should-flag-change"
+      "should-auto-approve"
     ]
   }
 }

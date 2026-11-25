@@ -1,0 +1,415 @@
+---
+name: should-flag-change
+description: "Decide whether a committed code change should ship behind a LaunchDarkly feature flag. Use when a developer asks whether a change should be behind a flag, when reviewing a diff or pull request, or when running in CI on a PR. Runs a fixed decision tree over the change and the code around it, with checked evidence, and emits a structured advisory recommendation. Run it on every change, including test-only, docs, dependency and already-flagged ones: those finish in a minute or two, and its verdict, not your own read of the diff, is the decision. Read-only: it never creates or modifies flags."
+license: Apache-2.0
+compatibility: "Advisory and read-only. Needs a git checkout with the change committed (shallow is fine; a --filter partial clone is filled in from its remote), a shell, git and Python 3.10+ (no packages). Reads LaunchDarkly flag state through your LaunchDarkly tools when available, and works without them. When it can't run (no shell, no checkout), it decides by judgment instead, from references/NO_CHECKOUT.md. Returns a structured verdict as a `recommend-flag` block."
+metadata:
+  author: launchdarkly
+  version: "0.5.3"
+  graph: "07355490e985"
+---
+
+# Should This Change Be Behind a Flag?
+
+This skill answers one question about a committed change: should it ship
+behind a LaunchDarkly feature flag? It does not decide by judgment. A fixed
+decision tree asks a series of narrow questions about the change, some
+answered mechanically from git and LaunchDarkly, the rest by you, each by a
+written procedure, from evidence the skill gathers. The same answers always
+give the same result.
+
+Every command below is this skill's command line, `ld-factory.pyz`: one file, beside
+this one. Where it isn't on your `PATH`, run it as `SKILL_DIR/ld-factory.pyz`
+(`SKILL_DIR` is the directory this file is in), or `python3 SKILL_DIR/ld-factory.pyz`.
+It needs `python3` and `git`, nothing else.
+
+**Finish in one run.** Don't stop partway to ask anyone something and wait.
+Everything below, including fetching flags and answering a question a second
+time, happens in the same turn.
+
+**On a pull request, start with this**, filling in the PR's base branch,
+head commit and title, then go by `start`'s exit code (step 1's table). Read
+the rest of this file as each step comes up. First save the PR's body to
+`/tmp/pr-body.txt` (from your PR tools, or `gh pr view <number> --json body
+-q .body` where `gh` works); if you can't get it, leave `--pr-body-file` out
+and the commit message stands in.
+
+```bash
+ld-factory.pyz start <REPO_PATH> --base origin/<base_ref> --head <head_sha> \
+    --pr-title "<PR title>" --pr-body-file /tmp/pr-body.txt
+```
+
+Exit 7: do what it printed under `LAUNCHDARKLY NEEDED` (the flags and the
+calls to make) and run the same `start` again. Exit 0: it printed the first
+question; read the evidence and answer it (step 3).
+
+## Scope
+
+- **Advisory and read-only.** Never create, toggle, or modify a flag, and
+  never edit the repo being checked. Everything the skill writes goes under
+  `~/.cache/should-i-flag/`, or `SHOULD_I_FLAG_RUNS` when it's set:
+  its run folders, and the repo profiles it derives and repairs, in `profiles/`.
+- **Committed changes only**: the branch's commits against its base, the same
+  change a pull request shows. Uncommitted edits and untracked files are not
+  part of it. A long-lived branch is checked as one change, all its commits
+  together (`start` prints the count as `CHANGE`).
+
+## When it can't run: decide by judgment
+
+When the check can't run, follow [references/NO_CHECKOUT.md](references/NO_CHECKOUT.md)
+instead, and say in your summary that you did and why. It can't run when:
+
+- there's no shell, no `python3` or no `git`, or no checkout of the change
+  (for example, only a pasted diff);
+- `ld-factory.pyz` crashes, or reports a setup problem (exit 2) you can't fix by
+  correcting what you passed it or, for a partial clone, by cloning again.
+
+Follow that page from the start, and never mix the two.
+
+## Steps
+
+### 1. Prepare
+
+```bash
+ld-factory.pyz start <REPO_PATH> [--base <REF>] [--head <REF>] \
+    [--pr-title "<title>"] [--pr-body-file <file>] [--client-repo <NAME>=<PATH>] \
+    [--flag-type multivariate|string|number|json]
+```
+
+- `REPO_PATH` defaults to the current directory, `--head` to `HEAD`, `--base`
+  to the remote's default branch (`origin/HEAD`, else `origin/main`).
+- **The whole tree at the change's commit and its base.** The evidence
+  reads files the change doesn't touch: callers, routes, middleware, flag
+  declarations. A shallow clone (`--depth`) is fine, and so is a sparse
+  working tree. In a partial clone (`--filter=blob:none`, `--filter=tree:0`)
+  `start` fetches the files it lacks at those two commits from the clone's
+  remote first (`PARTIAL CLONE`); it adds objects only, never a checkout or a
+  ref. When that fetch can't fill them, it stops with exit 2.
+- **On a pull request** (CI, a PR review), pass the PR's base and head:
+  `--base origin/<base_ref> --head <head_sha>`, and its title and body
+  (write the body to a file first). Without them the commit message stands in
+  for the PR text.
+- `--client-repo` (repeatable) names a checkout of another repository whose
+  code calls this one's interfaces, e.g. the frontend for a backend. Without
+  it, checkouts beside `REPO_PATH` of the other repositories the skill knows
+  are used when present. Only the gate search's caller coverage and the
+  consumer search below read them.
+- `--flag-type`: pass it only when the developer says which type of flag they
+  want (`string`, `number` and `json` are multivariate). If a flag is
+  suggested, it is that type rather than a boolean. It never changes whether
+  one is suggested. Without it, a PR text that says "multivariate" does the same.
+
+It prints `RUN: <folder>` and status lines (`CHECKING`, `CHANGE`,
+`UNCOMMITTED`, `PR TEXT`, `FLAG TYPE`, `PROFILE CHECK`, `LAUNCHDARKLY`, `PARTIAL CLONE`). By exit code:
+
+| Exit | Meaning | What you do |
+|---|---|---|
+| 0 | Ready | It printed the first question (`QUESTION`). Go to step 3: read the evidence, then answer it. |
+| 7 | LaunchDarkly flags are needed | Fetch the flags it printed (also in `RUN/launchdarkly-needed.txt`); [LAUNCHDARKLY.md](references/LAUNCHDARKLY.md) has the details if you need them. Then run the same `start` command again. If you have no way to read LaunchDarkly, run it again with `--no-launchdarkly`. |
+| 8 | The searches come first | It printed `SEARCHES NEEDED`: do step 2's two searches. |
+| 4 | Nothing committed to check | Stop; tell the developer to commit (a WIP commit is fine) and ask again. |
+| 6 | Can't tell which changes are this branch's | Stop and report it: a person needs to decide. |
+| 2 | Setup problem | If it says the clone is partial, do what it says: clone the repository again without `--filter`, keeping its full history (no `--depth`: the diff needs the merge base), check out the same commit, and run the same `start` command again. If you passed something wrong (a ref, a file), fix it and run `start` again; otherwise decide by judgment ([references/NO_CHECKOUT.md](references/NO_CHECKOUT.md), above) and say why. |
+
+`PROFILE CHECK` says whether the profile used for this repo finds the flag
+checks in the changed files. Lines it can't account for (a flag key with no
+check it recognizes, a check for a key LaunchDarkly has no flag for) never stop
+the run: `start` still exits 0, lists them in `RUN/profile_leads.json`, notes
+them in the evidence, and hands the keys to the gate search (step 2) as leads.
+Go on to step 3. For a profile it derived, `start` also writes
+`RUN/profile_repair.txt`, an optional repair: worth it only when the leads are
+many or keep naming the same helper. Then follow it
+([PROFILE_REPAIR.md](references/PROFILE_REPAIR.md)) and run the same `start` command
+again; if the repair doesn't hold, drop it and go on.
+
+### 2. Two searches the evidence can't do (when `next` asks)
+
+The evidence finds a flag when it is evaluated near the changed code or in a
+caller a few levels up. A flag can gate a change from further away: a route
+or layout that only renders the changed code when the flag is on, a helper or
+hook that wraps the flag, a server handler that returns early, a style that
+applies only under a flag's class. P6 and P12 ask about gates, and they see
+what you find here.
+
+`next` asks for these searches (`SEARCHES NEEDED`, exit 8) once the questions
+get past whether the change ships and changes what the product does. A change
+settled before that (nothing ships, no behavior changes, only a flag cleanup
+or a data-prep step) never needs them.
+
+`SEARCHES NEEDED` prints both search files below it (`RUN/gate_search.txt`,
+then `RUN/risk_search.txt`), so there's no need to open them.
+
+You do these searches yourself, reading the code at the change's commit with
+read-only git, as the search files say:
+`git -C <checkout> show <head>:<path>` and
+`git -C <checkout> grep -n <pattern> <head>`. `ld-factory.pyz` doesn't search for you:
+`gates` and `risks` only check what you found.
+
+Follow `RUN/gate_search.txt` (written by `start`; the method is
+[GATES.md](references/GATES.md)). Write its JSON to `RUN/gates.json`, then:
+
+```bash
+ld-factory.pyz gates RUN
+```
+
+It checks every line of every gate you report against the change's commit
+and keeps only the gates whose every link matches, then adds them to the
+evidence (`GATES: N verified, M dropped`). A caller coverage (every caller of
+a changed unit, each behind a flag or leaving the new behavior off) is kept
+only when its lines match and a search of the commit finds no caller you
+didn't list; callers in a client repository are checked the same way in
+that checkout at its pinned commit, and their flags read from that
+repository's LaunchDarkly project (`CALLER COVERAGE: N verified, M dropped`). A
+data gate (changed code that only acts on records whose every writer is
+behind a flag) is kept the same way: its lines match, and a search of the
+commit for the data's name finds no use you didn't list (`DATA GATES: N
+verified, M dropped`). When nothing gates the change, `{"gates": [],
+"searched": "..."}` is a correct result: don't guess.
+
+**Then the risk search.** Some changes rework a path customers already use in
+a way that can fail them -- a new call or write to another service, an
+existing call pointed somewhere else, a cache, a check that blocks the path
+when a call fails, a new action on a customer screen, a removed capability, a
+change to stored data -- without tripping any of the questions. Follow
+`RUN/risk_search.txt` ([RISK.md](references/RISK.md)), write its JSON to
+`RUN/risks.json`, then:
+
+```bash
+ld-factory.pyz risks RUN
+```
+
+It checks each finding's every line (the changed line must be one the diff
+adds or modifies, the entry point outside tests) and answers one question
+from what holds (`RISKS: N verified ... P30 = yes|no`). You never answer that
+question yourself. Most changes have no finding: `{"findings": [],
+"searched": "..."}` is correct.
+
+**A dropped claim gets one repair.** When `gates`, `risks`, `readers`,
+`features` or `facts` prints a claim as dropped, read why: usually a quoted
+line doesn't match its number, or a link has a role the search doesn't use.
+Re-read the lines it cites at the commit, fix that claim's links (path, line, the line's exact
+text, role) in the same JSON file, and run the same command again -- once.
+Don't add a claim in the repair or change what one says; if it doesn't hold
+up when you re-read it, remove it.
+
+Once both are recorded, the second of `gates` and `risks` prints the next
+question, as `next` would (step 3). With a dropped claim to repair, it prints
+`NEXT` instead: repair it, then run `next`.
+
+### 3. Answer the questions the result needs, one at a time
+
+Read `RUN/evidence.txt` and `RUN/answering.txt` once. `evidence.txt` is the
+evidence and the rules for answering, and lists the questions already
+answered automatically (don't answer those; later questions may refer to
+them). `answering.txt` is the answer's shape and the rules for cases that
+need one: P2's list of changed lines that alter behavior, the reuse keys,
+citing a deleted line, a follow-up question whose earlier question was no,
+and a question about a list that isn't there.
+
+Then answer the questions one at a time, starting with the one `start`
+printed. If a command prints `SEARCHES NEEDED` (exit 8), do step 2's two
+searches. Each answer can settle the result, and questions after that point
+are never asked. To ask for the current question again:
+
+```bash
+ld-factory.pyz next RUN
+```
+
+prints `QUESTION: <id>` and the question. Answer it by its procedure, as
+JSON on stdin:
+
+```bash
+ld-factory.pyz answer RUN <id> <<'JSON'
+{"value": "no", "evidence": "...", "citations": [{"path": "...", "line": 12, "why": "..."}]}
+JSON
+```
+
+`answer` records it and prints the next question, so keep answering what it
+prints. After the tree's questions come any REPORT-ONLY questions (ids like
+`R1`): answer them the same way; they add to the report but never change the
+result. The last one says so: answer it and run step 4's `decide` in the same
+command, on the line after the heredoc. When `answer` prints `DECIDED`, go to step 4. If it prints `RECHECK` (exit
+5), one question is asked again because two answers disagree: answer the
+question it shows with `ld-factory.pyz answer RUN <id> --recheck`. If it exits 7,
+fetch the LaunchDarkly flags as in step 1, then run `next` again.
+
+**The consumer search, when asked for.** If you answered the question about
+an interface's contract a separate client reads as unresolved because no
+client is shown, and the result depends on it, `next` (or `decide`) prints
+`CONSUMER SEARCH NEEDED` and exits 8. Follow `RUN/consumer_search.txt`
+([CONSUMERS.md](references/CONSUMERS.md)): look for the client code that reads what
+changed, in this repository and the client checkouts it lists. Write its JSON
+to `RUN/consumers.json`, then:
+
+```bash
+ld-factory.pyz readers RUN
+```
+
+It checks every reader line by line (`READERS: N contract change(s), M with
+a verified reader`), and the question is settled from it: yes when a reader
+holds, no when the search found none. Leave your own answer as it was; then
+run `next` again (or `decide`, if that is where it stopped).
+
+**The feature flag search, when asked for.** Reuse candidates are the flags
+evaluated close to the changed lines. When the questions reach them and none
+covers the change, `next` (or `decide`) prints `FEATURE SEARCH NEEDED` and
+exits 8: the flag that releases the feature the change belongs to may be
+checked further away, at the feature's route, page, registration or handler.
+Follow `RUN/feature_search.txt` ([FEATURES.md](references/FEATURES.md)), write its JSON
+to `RUN/features.json`, then:
+
+```bash
+ld-factory.pyz features RUN
+```
+
+It checks every line (`FEATURES: N verified, M dropped`): the key existed on
+main, the chain runs from the flag's evaluation through the line its value
+decides to the feature's own entry, and a second chain runs from that entry
+to a file the change modifies. A flag that holds becomes a reuse candidate;
+its LaunchDarkly state is read like any other's (it may exit 7: fetch the
+flag as in step 1 and run `features` again). The reuse questions already
+answered are then asked again, with its lines (`ASKED AGAIN`). Don't report a
+flag over a whole area of the product: only the feature's own. `{"features":
+[], "searched": "..."}` is a correct result. Then run `next` again.
+
+**The fact search, when asked for.** When every answer the result needs is
+in, and one you gave as unresolved decides it, `next` (or `decide`) prints
+`FACT SEARCH NEEDED` and exits 8. Follow `RUN/fact_search.txt`
+([FACTS.md](references/FACTS.md)): it names the question, when it is unresolved, and
+what your answer said was missing. Search the code at the commit for exactly
+that fact, write its JSON to `RUN/facts.json`, then:
+
+```bash
+ld-factory.pyz facts RUN
+```
+
+It checks each finding's quoted line (`FACTS: N verified, M dropped`). When
+one holds, `next` asks the same question once more, with the verified lines
+shown (`ASKED AGAIN`): answer it again by its procedure, citing them where
+they help; if it still can't be settled, answer unresolved again, and a
+person decides. With nothing verified, your first answer stands. At most one
+fact search per question.
+
+(`questions.txt` lists every question, for reference; don't answer from it.)
+
+The rules in `evidence.txt` decide everything here. In short:
+
+- Answer the ONE question asked by following its PROCEDURE exactly. You are
+  not deciding whether the change needs a flag; the tree does that.
+- Answer each question on its own. Don't let one answer lean on another.
+- Answer from the evidence, and cite only a `path` and `line` it shows.
+  A very large change doesn't all fit: the evidence marks every part it
+  leaves out (`[cut to fit: ...]`, and PACKET NOTES lists them), and what
+  isn't shown isn't evidence. If the PR description and the diff disagree,
+  the diff wins.
+- Your `evidence` text and each citation's `why` are shown to the developer
+  word for word (WHY, REASONS, WHERE TO CHECK IT, the `recommend-flag`
+  block). Write them in plain words about their code, without the check's own
+  terms (see "Talking to the developer").
+- Answer `"unresolved"` when the question's UNRESOLVED-WHEN holds or the
+  evidence lacks what the procedure needs. Guessing is worse than
+  abstaining: `"unresolved"` sends the decision to a person, which is the
+  intended outcome. (Some procedures say what absence of evidence means;
+  then follow them.)
+
+### 4. Decide
+
+```bash
+ld-factory.pyz decide RUN
+```
+
+It checks every citation against the evidence (an answer whose citations
+don't check out counts as unresolved), walks the tree, and prints the result.
+Run it as is, with its whole output: don't pipe it through `grep`, `sed`,
+`head` or `tail`. The output holds the `should-i-flag-record` the decision is
+reviewed from (step 5), and a filtered one loses it.
+
+| Exit | Meaning | What you do |
+|---|---|---|
+| 0 | Decided | Go to step 5. |
+| 7 | More LaunchDarkly flags are needed | Fetch them as in step 1 and run `decide` again. |
+| 8 | A search isn't recorded yet | Do what it says: step 2's two searches, or the consumer, feature flag or fact search (step 3), then run `decide` again. A fact search can ask a question once more: answer it (`next`), then run `decide` again. |
+| 2 | Setup problem, or a question is still needed | Pass a setup message on; for `NOT DECIDED YET`, go back to `ld-factory.pyz next`. |
+
+### 5. Emit the verdict
+
+`decide` prints the result in plain English (`RESULT`, `WHY`, `DECIDING
+QUESTION`, and when a flag is suggested `REASONS FOR A FLAG`, `FLAG TO ADD`,
+`WHERE TO CHECK IT`, `WHAT A ROLLOUT CAN MEASURE`, `NEARBY FLAGS`, `NEXT
+STEPS`), then `ALSO CHECKED`, `FLAG REMOVAL` when there is one, `CAVEAT`, and
+a fenced block:
+
+````
+```json recommend-flag
+{ "recommend": true, "verdict": "suggested", "confidence": "medium", "reasons": [...], ... }
+```
+````
+
+That block is the deliverable. **Copy it verbatim** as the last thing in your
+output: CI and other tools parse it. Never edit its fields.
+
+Just before it, `decide` prints a `should-i-flag-record` block: a compact record
+of the decision (the tree's version, every answer, the path it took) kept in the
+command's output so the decision can be reviewed and re-walked later. It's for
+that review only: don't copy it, summarize it, or pass it on to the developer.
+
+- `verdict` is `suggested`, `reuse-existing` (with `reuse_flag_key`),
+  `already-flagged`, or `not-suited`.
+- When a person has to decide, the verdict is `suggested` with
+  `confidence: "low"`, `needs_human: true`, and `question_for_human`.
+- If a `recommend-flag` tool is available, call it once with the block's
+  `recommend`, `verdict`, `reuse_flag_key` (if any), `confidence` and
+  `reasons`, as well as printing the block. If your instructions say to
+  translate the verdict into another tool instead, do that rather than
+  calling `recommend-flag`.
+- When the block has `flag_removal_warnings`, each warning's `note` goes on
+  verbatim, whichever tool takes the verdict: as `flag_removal_warnings` if
+  the tool has that field, else appended to its `reasons` (or, for another
+  tool, to its free-text summary or rationale) starting `Flag removal:`.
+  Never drop it: it is how the people still on the deleted side find out.
+
+Then summarize for the developer in short paragraphs, using only what
+`decide` printed:
+
+1. The `RESULT` and `WHY`, close to verbatim, and a sentence or two on what
+   in their change led there, in terms of their code. If `REASONS FOR A
+   FLAG` lists more than the deciding one, a sentence for each.
+2. When a flag is suggested: what kind (`FLAG TO ADD`, which names a
+   multivariate flag when the PR or the developer asked for one), where to check it
+   (`WHERE TO CHECK IT`, by file and component), what a rollout can measure,
+   and the `NEXT STEPS`. If there's a `NEARBY FLAGS` line, say a similar
+   neighbor already uses a flag.
+3. `UNCLEAR, BUT IT DIDN'T MATTER`, if present: a question the check couldn't
+   settle, which every answer would decide the same way.
+4. `WORTH A LOOK`, if present.
+5. `FLAG REMOVAL`, if present, close to verbatim: the change deletes a flag
+   some real users still get the other side of. It doesn't change the
+   result, but pass it on wherever the result goes, so the people still on
+   the other side aren't switched by surprise.
+6. Anything from step 1 to act on: uncommitted changes left out, or
+   LaunchDarkly state not read.
+7. The `CAVEAT`, in a sentence.
+
+Don't add facts the output doesn't give you. List the `ALSO CHECKED`
+questions only if asked how it got there. Leave out how the check ran: the
+profile it derived or repaired, fetching flags from LaunchDarkly, the
+searches, reruns. They're setup, not findings; the one to mention is
+LaunchDarkly state that couldn't be read at all (item 5).
+
+## Talking to the developer
+
+The people reading this don't know how the check works inside. In everything
+you say, including progress updates, don't use its internal words: predicate,
+P-numbers, node, walk, tree, terminal, outcome codes (T-SG-6, E-UNRESOLVED),
+manifest, packet, hunk, mechanical, merge_base. Say "the check", "your
+change", "the code you changed", "a person needs to decide", "the version on
+main". Refer to questions by what they ask, in the wording `decide` prints.
+
+## What not to do
+
+- Don't create, toggle, or modify any flag, and don't edit the checked repo.
+- Don't answer from your own view of the change's risk. Follow each procedure.
+- Don't cite code the evidence doesn't show, and don't change the
+  `recommend-flag` block.
+- Don't switch to [references/NO_CHECKOUT.md](references/NO_CHECKOUT.md) because the
+  result surprised you. It's only for when the check can't run.
