@@ -46,6 +46,9 @@
           "launchdarkly-release-plans"
         ]
       }
+    },
+    "tessl-ld-collab/launchdarkly-mcp": {
+      "source": "file:./tessl-plugins/launchdarkly-mcp"
     }
   },
   "agents": [

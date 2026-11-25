@@ -1,0 +1,7 @@
+{
+  "name": "tessl-ld-collab/launchdarkly-mcp",
+  "version": "0.1.0",
+  "description": "Connects agents to the LaunchDarkly hosted MCP server with an API access token from the LD_ACCESS_TOKEN environment variable, for runs that can't complete OAuth.",
+  "private": true,
+  "mcpServers": ".mcp.json"
+}
