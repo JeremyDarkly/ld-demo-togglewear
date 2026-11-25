@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { LDFeedbackKind } from "@launchdarkly/server-sdk-ai";
+import { getClient } from "@launchdarkly/ai-node";
 import { getAiClient, takeReply } from "@/lib/aiServer";
 import { guard, LIMITS, text } from "@/lib/apiGuard";
 import { contextFromRequest } from "@/lib/ldServer";
@@ -8,9 +8,11 @@ import { contextFromRequest } from "@/lib/ldServer";
 // the AI Config run that wrote it. LaunchDarkly shows the two counts per
 // variation on the config's Monitoring tab, beside the judges' scores, so
 // what shoppers thought and what the judges thought can be read together.
-const KINDS: Record<string, LDFeedbackKind> = {
-  positive: LDFeedbackKind.Positive,
-  negative: LDFeedbackKind.Negative,
+// The 1.0 SDK has no feedback method, so the store sends the two events the
+// legacy tracker did, on the run's own track data.
+const KINDS: Record<string, string> = {
+  positive: "$ld:ai:feedback:user:positive",
+  negative: "$ld:ai:feedback:user:negative",
 };
 
 // Next refuses a bigger body with 413 before the handler runs.
@@ -36,15 +38,13 @@ export default async function handler(
   }
 
   // Unknown once the server restarts, or once the reply has been rated.
-  const token = takeReply(replyId);
+  const trackData = takeReply(replyId);
   const aiClient = await getAiClient();
-  if (!token || !aiClient) {
+  if (!trackData || !aiClient) {
     res.status(404).json({ error: "That reply can no longer be rated" });
     return;
   }
 
-  aiClient
-    .createTracker(token, contextFromRequest(req.headers))
-    .trackFeedback({ kind });
+  getClient().track(kind, contextFromRequest(req.headers), trackData, 1);
   res.status(200).json({ ok: true });
 }

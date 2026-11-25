@@ -1,6 +1,6 @@
 import type { LDClient, LDContext } from "@launchdarkly/node-server-sdk";
 import { LDObserve } from "@launchdarkly/observability-node";
-import { LDFeedbackKind } from "@launchdarkly/server-sdk-ai";
+import { inspectConfig, makeRunTrackData } from "@launchdarkly/ai-node";
 import { getAiClient } from "@/lib/aiServer";
 import { rolloutRunning } from "@/lib/ldServer";
 import { PERSONAL_STYLIST_KEY } from "@/lib/personalStylist";
@@ -380,9 +380,9 @@ const STYLIST_TAKE_RATE = 0.2;
 
 // Each note is a real evaluation of the Personal Stylist for a made-up
 // shopper, so the guarded rollout decides which model they get, and then
-// everything a real note records goes through the same AI SDK tracker
-// pages/api/personal-stylist uses: duration, success or error, tokens, both
-// judges' scores and the odd thumb, and then whether the shopper added the
+// everything a real note records is sent with the same events and track
+// data pages/api/personal-stylist's run sends: duration, success or error,
+// tokens, both judges' scores and the odd thumb, and then whether the shopper added the
 // stylist's suggestion, as the product page sends it. What it does not do is
 // call Bedrock. The scores are invented, which keeps a demo free and its
 // outcome certain.
@@ -433,12 +433,15 @@ function stylistUpgrade(failing: boolean): Scenario {
       }
 
       const ctx = shopperContext();
-      const config = await aiClient.completionConfig(PERSONAL_STYLIST_KEY, ctx, {
-        enabled: false,
-      });
-      if (config.enabled) {
-        const tracker = config.createTracker();
-        const onOpus = tracker.getTrackData().variationKey === STYLIST_OPUS;
+      // The events a real note's run sends, on a run of its own: the SDK's
+      // (duration, success or error, tokens) and the store's (each judge's
+      // score, a thumb), the way the route sends them, without a model.
+      const { enabled, config, meta } = await inspectConfig(PERSONAL_STYLIST_KEY, ctx);
+      if (enabled && config) {
+        const trackData = makeRunTrackData({ configKey: PERSONAL_STYLIST_KEY, config, meta });
+        const send = (key: string, value: number, data: object = trackData) =>
+          client.track(key, ctx, data, value);
+        const onOpus = trackData.variationKey === STYLIST_OPUS;
 
         // How far Opus's scores sit from Sonnet's: a little ahead when
         // healthy, level and then falling behind when failing.
@@ -452,39 +455,33 @@ function stylistUpgrade(failing: boolean): Scenario {
           lift = onOpus ? -0.35 * progress : 0;
         }
 
-        tracker.trackDuration(clamp(Math.round(gauss(2600, 450)), 1200, 4500));
+        send("$ld:ai:duration:total", clamp(Math.round(gauss(2600, 450)), 1200, 4500));
         if (Math.random() < 0.01) {
-          tracker.trackError();
+          send("$ld:ai:generation:error", 1);
         } else {
-          tracker.trackSuccess();
+          send("$ld:ai:generation:success", 1);
           // Real notes' sizes, catalog included: Opus writes no more words
           // but counts the same prompt as more tokens and bills about five
           // times the output tokens for its thinking, which is the cost a
           // user can point at beside its better scores.
           const input = onOpus ? randint(2050, 2450) : randint(1450, 1750);
           const output = onOpus ? randint(380, 500) : randint(60, 110);
-          tracker.trackTokens({ input, output, total: input + output });
-          tracker.trackJudgeResult({
+          send("$ld:ai:tokens:total", input + output);
+          send("$ld:ai:tokens:input", input);
+          send("$ld:ai:tokens:output", output);
+          send(ACCURACY_METRIC_KEY, clamp(gauss(0.88 + lift, 0.06), 0, 1), {
+            ...trackData,
             judgeConfigKey: ACCURACY_JUDGE_KEY,
-            metricKey: ACCURACY_METRIC_KEY,
-            success: true,
-            sampled: true,
-            score: clamp(gauss(0.88 + lift, 0.06), 0, 1),
           });
-          tracker.trackJudgeResult({
+          send(RELEVANCE_METRIC_KEY, clamp(gauss(0.85 + lift, 0.06), 0, 1), {
+            ...trackData,
             judgeConfigKey: RELEVANCE_JUDGE_KEY,
-            metricKey: RELEVANCE_METRIC_KEY,
-            success: true,
-            sampled: true,
-            score: clamp(gauss(0.85 + lift, 0.06), 0, 1),
           });
           // About one note in ten gets a thumb, mostly up, and more often
           // down once a failing Opus's notes have slipped.
           if (Math.random() < 0.1) {
             const down = Math.random() < 0.15 - lift;
-            tracker.trackFeedback({
-              kind: down ? LDFeedbackKind.Negative : LDFeedbackKind.Positive,
-            });
+            send(down ? "$ld:ai:feedback:user:negative" : "$ld:ai:feedback:user:positive", 1);
           }
           // A little more often for a healthy Opus, and hardly at all once
           // a failing one's sizes and pairings have gone wrong.
@@ -501,11 +498,9 @@ function stylistUpgrade(failing: boolean): Scenario {
 
     run.update({ sent });
     flush(client);
-    const settled = await aiClient.completionConfig(PERSONAL_STYLIST_KEY, shopperContext(), {
-      enabled: false,
-    });
+    const settled = await inspectConfig(PERSONAL_STYLIST_KEY, shopperContext());
     const outcome =
-      settled.enabled && settled.createTracker().getTrackData().variationKey === STYLIST_OPUS
+      settled.enabled && settled.meta?.variationKey === STYLIST_OPUS
         ? "reached 100%"
         : "was rolled back";
     return `The rollout ${outcome} after ${sent.toLocaleString()} stylist notes.`;

@@ -2,17 +2,21 @@ import { randomUUID } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { LDObserve } from "@launchdarkly/observability-node";
 import type { LDClient, LDContext } from "@launchdarkly/node-server-sdk";
-import type { LDAIMetrics } from "@launchdarkly/server-sdk-ai";
-import {
-  convertMessagesToLangChain,
-  createLangChainModel,
-  getAIUsageFromResponse,
-} from "@launchdarkly/server-sdk-ai-langchain";
+import { config as aiConfig, inspectConfig, type TrackData } from "@launchdarkly/ai-node";
 import type { AIMessage } from "@langchain/core/messages";
 import { activityGroup } from "@/lib/activity";
-import { getAiClient, judge, rememberReply, textOf } from "@/lib/aiServer";
+import {
+  UnusableAnswer,
+  getAiClient,
+  judge,
+  rememberReply,
+  runTrackDataOf,
+  storeHandlers,
+  textOf,
+} from "@/lib/aiServer";
 import { guard, LIMITS, text } from "@/lib/apiGuard";
 import { codeChecksOn, runCodeChecks, stylistReplyUsable } from "@/lib/codeChecks";
+import { langChainModel, renderedMessages, toLangChain, usageOf } from "@/lib/langchainModel";
 import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { startAgentRun } from "@/lib/llmTrace";
 import {
@@ -66,7 +70,6 @@ function remember(key: string, note: StylistNote) {
 }
 
 type Picked = { text: string; size?: string; pairing?: string };
-type Written = { picked: Picked | null; raw: string; metrics: LDAIMetrics };
 
 // The reply is meant to be bare JSON but sometimes arrives fenced or with a
 // sentence around it, so the object is cut out before parsing. With no note
@@ -153,27 +156,26 @@ async function handler(
     const orders = JSON.stringify(tools["get-order-status"]({}));
     const catalog = stylistCatalogFor(person, slug);
 
-    const config = await aiClient.completionConfig(
-      PERSONAL_STYLIST_KEY,
-      context,
-      { enabled: false },
-      {
-        shopper_name: isGuest(person) ? "a guest who has not signed in" : person.name,
-        loyalty_tier: TIER_LABELS[person.tier],
-        product_facts: productFacts,
-        order_history: orders,
-        catalog: JSON.stringify(catalog),
-      },
-    );
+    const variables = {
+      shopper_name: isGuest(person) ? "a guest who has not signed in" : person.name,
+      loyalty_tier: TIER_LABELS[person.tier],
+      product_facts: productFacts,
+      order_history: orders,
+      catalog: JSON.stringify(catalog),
+    };
 
-    if (!config.enabled) {
+    // The variation this shopper gets, for the note kept from before, read
+    // without running anything. invoke() throws for a config that is off.
+    const inspected = await inspectConfig(PERSONAL_STYLIST_KEY, context);
+    if (!inspected.enabled || !inspected.config) {
       span.setAttribute("ai.config.enabled", false);
       res.status(200).json({ note: null });
       return;
     }
 
-    const tracker = config.createTracker();
-    const { variationKey, version, modelName } = tracker.getTrackData();
+    const variationKey = inspected.meta?.variationKey ?? "";
+    const version = inspected.meta?.version ?? 1;
+    const modelName = inspected.config.model.name;
     // The version too, so a prompt edited in LaunchDarkly shows on the next
     // page load rather than after the server restarts.
     const cacheKey = `${context.key}|${slug}|${variationKey}|${version}`;
@@ -194,60 +196,65 @@ async function handler(
 
     // Each note is a conversation of one turn: the prompt filled in for
     // this shopper and product, and the note.
-    const messages = config.messages ?? [];
-    const asked = messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n\n");
+    const shown = renderedMessages(inspected.config, { ...variables, ldContext: context });
+    const asked = shown.filter((m) => m.role !== "system").map((m) => m.content).join("\n\n");
     const agentRun = startAgentRun(
       span,
       `stylist-note-${randomUUID()}`,
       "Personal Stylist",
-      messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n"),
+      shown.filter((m) => m.role === "system").map((m) => m.content).join("\n\n"),
       asked,
     );
 
-    let written: Written;
+    // One model call. A note that does not parse is thrown, so the SDK
+    // records it as a generation error, as the legacy tracker's success:
+    // false was.
+    let raw: string | undefined;
+    let runTrackData: TrackData | undefined;
+    let picked = null as Picked | null;
+    const handler = storeHandlers(async (config, _input, _tools, vars) => {
+      runTrackData = runTrackDataOf(vars);
+      const model = await langChainModel(config);
+      const response = await agentRun.modelCall(config.model.name, [asked], async () => {
+        const response = (await model.invoke(
+          toLangChain(renderedMessages(config, vars)),
+        )) as AIMessage;
+        return { response, usage: usageOf(response) };
+      });
+      raw = textOf(response);
+      picked = pickedFrom(raw, product, catalog);
+      if (!picked) throw new UnusableAnswer("The personal stylist returned no usable note", raw);
+      return { output: raw, usage: usageOf(response) };
+    });
+
+    let ran: Awaited<ReturnType<ReturnType<typeof aiConfig>["invoke"]>> | undefined;
+    let failure: unknown;
     try {
-      written = await tracker.trackMetricsOf(
-        (w: Written) => w.metrics,
-        async () => {
-          const model = await createLangChainModel(config);
-          const response = await agentRun.modelCall(modelName, [asked], async () => {
-            const response = (await model.invoke(
-              convertMessagesToLangChain(messages),
-            )) as AIMessage;
-            return { response, usage: getAIUsageFromResponse(response) };
-          });
-          const raw = textOf(response);
-          const picked = pickedFrom(raw, product, catalog);
-          return {
-            picked,
-            raw,
-            metrics: {
-              success: picked !== null,
-              tokens: getAIUsageFromResponse(response),
-            },
-          };
-        },
-      );
+      ran = await aiConfig({ key: PERSONAL_STYLIST_KEY, handler, skipJudges: true })
+        .invoke(asked, context, variables);
     } catch (err) {
-      agentRun.fail(err);
-      LDObserve.recordError(err as Error, secureSessionId, requestId, attributes, { span });
-      res.status(502).json({ error: "The stylist could not write a note" });
-      return;
+      failure = err;
     }
 
-    // A cached note returned above, unchecked, as it goes unjudged.
-    await checkReply(await getServerClient(), context, tracker.getTrackData(), written.raw, product, catalog);
+    // A cached note returned above, unchecked, as it goes unjudged. So is a
+    // note whose model call failed, which wrote nothing to check.
+    if (raw !== undefined && runTrackData) {
+      await checkReply(await getServerClient(), context, runTrackData, raw, product, catalog);
+    }
 
-    if (!written.picked) {
-      agentRun.fail(new Error("The personal stylist returned no usable note"));
-      LDObserve.recordLog("Personal stylist returned no usable note", "warn", secureSessionId, requestId, attributes);
+    if (!ran || !picked) {
+      agentRun.fail(failure);
+      if (failure instanceof UnusableAnswer) {
+        LDObserve.recordLog("Personal stylist returned no usable note", "warn", secureSessionId, requestId, attributes);
+      } else {
+        LDObserve.recordError(failure as Error, secureSessionId, requestId, attributes, { span });
+      }
       res.status(502).json({ error: "The stylist could not write a note" });
       return;
     }
 
     // What the judges and the trace read: the picks spelled out by name, so
     // a pairing can be checked against the catalog it came from.
-    const { picked } = written;
     const pairingName = picked.pairing ? productBySlug(picked.pairing)?.name : undefined;
     const answer = [
       `Size: ${picked.size ?? "one size"}`,
@@ -260,7 +267,7 @@ async function handler(
       replyId: randomUUID(),
       servedBy: servedByFor(variationKey, modelName),
     };
-    rememberReply(note.replyId, tracker.resumptionToken);
+    rememberReply(note.replyId, ran.trackData);
     remember(cacheKey, note);
     res.status(200).json({ note });
 
@@ -272,11 +279,8 @@ async function handler(
       `data: orders ${orders}`,
       `data: catalog ${JSON.stringify(catalog)}`,
     ].join("\n");
-    judge(aiClient, config, context, tracker, input, answer)
-      .then(agentRun.scored)
-      .catch((err) => {
-        agentRun.scored();
-        LDObserve.recordError(err as Error, secureSessionId, requestId, attributes);
-      });
+    judge(ran.judgeTasks, context, input, answer, (err) =>
+      LDObserve.recordError(err as Error, secureSessionId, requestId, attributes),
+    ).then(agentRun.scored, () => agentRun.scored());
   });
 }

@@ -5,10 +5,10 @@ import {
   type Span,
   type TimeInput,
 } from "@opentelemetry/api";
-import type { LDJudgeResult, LDTokenUsage } from "@launchdarkly/server-sdk-ai";
+import type { TokenUsage } from "@launchdarkly/ai-node";
 import type { AIMessage } from "@langchain/core/messages";
 import { recordActivity } from "@/lib/activity";
-import { textOf } from "@/lib/aiServer";
+import { textOf, type JudgeResult } from "@/lib/aiServer";
 import { servedByFor } from "@/lib/swagAssistant";
 
 // The spans that make an agent's run readable as a conversation under
@@ -77,14 +77,14 @@ export type AgentRun = {
   modelCall: (
     model: string,
     input: string[],
-    call: () => Promise<{ response: AIMessage; usage?: LDTokenUsage; output?: string }>,
+    call: () => Promise<{ response: AIMessage; usage?: TokenUsage; output?: string }>,
   ) => Promise<AIMessage>;
   tool: (call: { id?: string; name: string; args: unknown }, run: () => Promise<string>) => Promise<string>;
   // The answer, and the end of the run. With judges, their scores can still
   // be added until scored is called, without moving the run's end.
   finish: (output: string, judged?: boolean) => void;
   fail: (err: unknown) => void;
-  scored: (results?: LDJudgeResult[]) => void;
+  scored: (results?: JudgeResult[]) => void;
 };
 
 // An agent's run within a conversation, under parent (the route's span).
@@ -228,7 +228,7 @@ export function startAgentRun(
     scored(results = []) {
       if (closed) return;
       for (const result of results) {
-        if (!result.sampled || !result.success || result.score === undefined) continue;
+        if (typeof result.score !== "number") continue;
         const judgeName = (result.metricKey ?? result.judgeConfigKey ?? "A judge").replace(/^\$ld:ai:judge:/, "");
         recordActivity({
           kind: "judge",

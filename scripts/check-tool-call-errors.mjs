@@ -125,4 +125,92 @@ function expectSent(sent, expected) {
   console.log("order review: unknown tool 1, good call 0");
 }
 
+// The Swag Assistant's run through the AI SDK, with the store's handler, on
+// a stub LaunchDarkly client: the SDK sends $ld:ai:tool_call for each call
+// and the run's own events, and the store's ai-tool-call-error lands on the
+// same run, whether the variation carries its tools as 1.0 reads them or
+// only in model.parameters.tools, as the legacy SDK also read them.
+{
+  const { initClient, config: aiConfig } = await import("@launchdarkly/ai-node");
+  const { storeHandlers, runTrackDataOf, toolFunctions } = await import("../lib/aiServer.ts");
+  const { renderedMessages } = await import("../lib/langchainModel.ts");
+
+  const sent = [];
+  const track = (key, ctx, data, value) => sent.push({ key, ctx, data, value });
+  let served;
+  await initClient({ variation: async () => served, track, flush: async () => {}, close: () => {} });
+
+  const definition = (name) => ({ type: "function", name, parameters: { type: "object", properties: {} } });
+  const shapes = {
+    "top-level tools": {
+      model: { name: "scripted" },
+      tools: { "search-products": definition("search-products"), "get-product-details": definition("get-product-details") },
+    },
+    "model.parameters.tools": {
+      model: { name: "scripted", parameters: { tools: toolDefs("search-products", "get-product-details") } },
+    },
+  };
+  for (const [shape, carried] of Object.entries(shapes)) {
+    sent.length = 0;
+    served = {
+      _ldMeta: { enabled: true, variationKey: "standard", version: 3, mode: "completion" },
+      provider: { name: "bedrock" },
+      messages: [{ role: "system", content: "Help {{shopper_name}}." }],
+      ...carried,
+    };
+    scripted([
+      { name: "search-products", args: { query: "cap" } },
+      { name: "get-product-details", args: { slug: "no-such-thing" } },
+    ]);
+    const tools = swagAssistantTools(context);
+    let system;
+    const handler = storeHandlers(async (config, _input, toolHandlers = {}, vars) => {
+      const trackData = runTrackDataOf(vars);
+      const messages = renderedMessages(config, vars);
+      system = messages[0].content;
+      const result = await converse(
+        { ...config, messages },
+        [],
+        "question",
+        tools,
+        agentRun("Swag Assistant"),
+        toolCallReporter({ track }, context, trackData),
+        toolFunctions(toolHandlers, tools.registry, context, trackData),
+      );
+      return { output: result.content, usage: { input: 120, output: 30 } };
+    });
+    const ran = await aiConfig({ key: "swag-assistant", handler, toolHandlers: tools.registry, skipJudges: true })
+      .invoke("question", context, { shopper_name: "Alex" });
+
+    // The SDK's reports on itself ($ld:ai:sdk:info and $ld:ai:sdk:usage)
+    // are not the run's.
+    const run = sent.filter((s) => !s.key.startsWith("$ld:ai:sdk:"));
+    assert.equal(system, "Help Alex.");
+    assert.equal(ran.response, "Here is what I found.");
+    const { runId } = ran.trackData;
+    assert.ok(runId);
+    assert.deepEqual(
+      run.map((s) => [s.key, s.data.toolKey ?? null, s.value]),
+      [
+        ["$ld:ai:tool_call", "search-products", 1],
+        ["ai-tool-call-error", "search-products", 0],
+        ["$ld:ai:tool_call", "get-product-details", 1],
+        ["ai-tool-call-error", "get-product-details", 1],
+        ["$ld:ai:duration:total", null, run[4].value],
+        ["$ld:ai:generation:success", null, 1],
+        ["$ld:ai:tokens:total", null, 150],
+        ["$ld:ai:tokens:input", null, 120],
+        ["$ld:ai:tokens:output", null, 30],
+      ],
+      shape,
+    );
+    for (const s of run) {
+      assert.equal(s.data.runId, runId, `${shape}: ${s.key} on the run`);
+      assert.equal(s.data.variationKey, "standard");
+      assert.equal(s.data.configKey, "swag-assistant");
+    }
+    console.log(`swag assistant through the SDK, ${shape}: one $ld:ai:tool_call per call, errors on the same run`);
+  }
+}
+
 console.log("All tool call error checks passed.");

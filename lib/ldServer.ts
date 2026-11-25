@@ -2,7 +2,7 @@ import type { IncomingHttpHeaders } from "http";
 import {
   init,
   type LDClient,
-  type LDContext,
+  type LDSingleKindContext,
 } from "@launchdarkly/node-server-sdk";
 import { Observability } from "@launchdarkly/observability-node";
 import { activityHook, outsideGroup, recordActivity } from "@/lib/activity";
@@ -92,7 +92,7 @@ export function rolloutRunning(flagKey: string) {
 // the shopper on the same side of any rollout the storefront did. A real
 // storefront would look the shopper up from a session cookie; there is no
 // account system behind this one to look them up in.
-const ANONYMOUS: LDContext = {
+const ANONYMOUS: LDSingleKindContext = {
   kind: "user",
   key: "server-anonymous",
   anonymous: true,
@@ -102,7 +102,10 @@ const ANONYMOUS: LDContext = {
 // used to make the server parse something large. Over it reads as anonymous.
 const MAX_CONTEXT_HEADER_BYTES = 4_096;
 
-export function contextFromRequest(headers: IncomingHttpHeaders): LDContext {
+// Single-kind, as the storefront sends it (lib/ldContext.ts), which is also
+// the shape the 1.0 AI SDK's context type accepts: that type leaves out the
+// server SDK's legacy user, so a server SDK LDContext cannot be handed to it.
+export function contextFromRequest(headers: IncomingHttpHeaders): LDSingleKindContext {
   const header = headers["x-ld-context"];
   if (typeof header !== "string" || Buffer.byteLength(header) > MAX_CONTEXT_HEADER_BYTES) return ANONYMOUS;
   try {

@@ -1,5 +1,5 @@
 import type { LDContext } from "@launchdarkly/node-server-sdk";
-import type { ToolRegistry } from "@launchdarkly/server-sdk-ai";
+import type { ToolFunctions as ToolRegistry } from "@/lib/langchainModel";
 import { ordersFor } from "@/lib/account";
 import { resolveLines } from "@/lib/cart";
 import { paymentSignals, shippingSignals, type RiskSignal } from "@/lib/fraudAgent";

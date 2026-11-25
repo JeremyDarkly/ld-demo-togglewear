@@ -1,14 +1,11 @@
 import { randomUUID } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { LDObserve } from "@launchdarkly/observability-node";
-import type { LDAIMetrics } from "@launchdarkly/server-sdk-ai";
-import {
-  createLangChainModel,
-  getAIUsageFromResponse,
-} from "@launchdarkly/server-sdk-ai-langchain";
+import { config as aiConfig, inspectConfig, parseTemplate } from "@launchdarkly/ai-node";
 import { HumanMessage, SystemMessage, type AIMessage } from "@langchain/core/messages";
 import { activityGroup } from "@/lib/activity";
-import { getAiClient, judge } from "@/lib/aiServer";
+import { UnusableAnswer, getAiClient, judge, storeHandlers } from "@/lib/aiServer";
+import { langChainModel, usageOf } from "@/lib/langchainModel";
 import { resolveLines, type CartLine } from "@/lib/cart";
 import {
   CART_RECOVERY_KEY,
@@ -94,7 +91,7 @@ function offersOf(custom: Record<string, unknown> | undefined): Offer[] {
   return known.length ? known : ["none"];
 }
 
-type Written = { message: string; offer: Offer; metrics: LDAIMetrics };
+type Written = { message: string; offer: Offer };
 
 // Next refuses a bigger body with 413 before the handler runs.
 export const config = { api: { bodyParser: { sizeLimit: "16kb" } } };
@@ -129,16 +126,18 @@ async function handler(
 
   await LDObserve.runWithHeaders("cartRecovery.line", req.headers, async (span) => {
     const { secureSessionId, requestId } = LDObserve.parseHeaders(req.headers);
-    const config = await aiClient.agentConfig(CART_RECOVERY_KEY, context, { enabled: false });
-    if (!config.enabled) {
+    // invoke() throws for a config that is off, so whether it is on, and
+    // which variation and offers this shopper gets, is read first.
+    const inspected = await inspectConfig(CART_RECOVERY_KEY, context);
+    if (!inspected.enabled || !inspected.config) {
       span.setAttribute("ai.config.enabled", false);
       res.status(200).json({ recovery: null });
       return;
     }
 
-    const tracker = config.createTracker();
-    const { variationKey, modelName } = tracker.getTrackData();
-    const offers = offersOf(config.model?.custom);
+    const variationKey = inspected.meta?.variationKey ?? "";
+    const modelName = inspected.config.model.name;
+    const offers = offersOf(inspected.config.model.custom);
     const attributes = {
       "ai.config.key": CART_RECOVERY_KEY,
       "ai.config.variation": variationKey,
@@ -183,63 +182,61 @@ async function handler(
       required: ["message", "offer"],
     };
 
-    const instructions = config.instructions ?? "";
     const agentRun = startAgentRun(
       span,
       `cart-recovery-${randomUUID()}`,
       "Cart Recovery",
-      instructions,
+      parseTemplate(inspected.config.instructions ?? "", { ldContext: context }),
       input,
     );
 
-    let written: Written;
+    // A line that breaks the rules above is thrown, so the SDK records it as
+    // a generation error, as the legacy tracker's success: false was.
+    let written: Written | undefined;
+    const handler = storeHandlers(async (config, _input, _tools, vars = {}) => {
+      const instructions = parseTemplate(config.instructions ?? "", vars);
+      const llm = await langChainModel(config);
+      let parsed: { message?: unknown; offer?: unknown } | undefined;
+      const raw = await agentRun.modelCall(config.model.name, [input], async () => {
+        const result = await llm
+          .withStructuredOutput(schema, { name: "write_reminder", includeRaw: true })
+          .invoke([new SystemMessage(instructions), new HumanMessage(input)]);
+        parsed = result.parsed as typeof parsed;
+        const response = result.raw as AIMessage;
+        return {
+          response,
+          usage: usageOf(response),
+          output: parsed ? JSON.stringify(parsed) : undefined,
+        };
+      });
+      const message = typeof parsed?.message === "string" ? parsed.message.trim() : "";
+      const offer = offers.find((o) => o === parsed?.offer);
+      if (
+        !offer ||
+        message.length === 0 ||
+        message.length > MAX_MESSAGE_LENGTH ||
+        makesAnOffer(message)
+      ) {
+        throw new UnusableAnswer(`The cart recovery agent wrote no usable line: ${message.slice(0, 200)}`, message);
+      }
+      written = { message, offer };
+      return { output: JSON.stringify(written), usage: usageOf(raw) };
+    });
+
+    let ran: Awaited<ReturnType<ReturnType<typeof aiConfig>["invoke"]>>;
     try {
-      written = await tracker.trackMetricsOf(
-        (w: Written) => w.metrics,
-        async () => {
-          const llm = await createLangChainModel(config);
-          let parsed: { message?: unknown; offer?: unknown } | undefined;
-          const raw = await agentRun.modelCall(modelName, [input], async () => {
-            const result = await llm
-              .withStructuredOutput(schema, { name: "write_reminder", includeRaw: true })
-              .invoke([new SystemMessage(instructions), new HumanMessage(input)]);
-            parsed = result.parsed as typeof parsed;
-            const response = result.raw as AIMessage;
-            return {
-              response,
-              usage: getAIUsageFromResponse(response),
-              output: parsed ? JSON.stringify(parsed) : undefined,
-            };
-          });
-          const message = typeof parsed?.message === "string" ? parsed.message.trim() : "";
-          const offer = offers.find((o) => o === parsed?.offer);
-          return {
-            message,
-            offer: offer ?? "none",
-            metrics: {
-              success:
-                Boolean(offer) &&
-                message.length > 0 &&
-                message.length <= MAX_MESSAGE_LENGTH &&
-                !makesAnOffer(message),
-              tokens: getAIUsageFromResponse(raw),
-            },
-          };
-        },
-      );
+      ran = await aiConfig({ key: CART_RECOVERY_KEY, handler, skipJudges: true }).invoke(input, context);
     } catch (err) {
       agentRun.fail(err);
-      LDObserve.recordError(err as Error, secureSessionId, requestId, attributes, { span });
+      if (err instanceof UnusableAnswer) {
+        LDObserve.recordLog("Cart recovery agent wrote no usable line", "warn", secureSessionId, requestId, attributes);
+      } else {
+        LDObserve.recordError(err as Error, secureSessionId, requestId, attributes, { span });
+      }
       res.status(200).json({ recovery: null });
       return;
     }
-
-    if (!written.metrics.success) {
-      agentRun.fail(new Error(`The cart recovery agent wrote no usable line: ${written.message.slice(0, 200)}`));
-      LDObserve.recordLog("Cart recovery agent wrote no usable line", "warn", secureSessionId, requestId, attributes);
-      res.status(200).json({ recovery: null });
-      return;
-    }
+    if (!written) throw new Error("The cart recovery handler returned without a line");
 
     const recovery = { message: written.message, offer: written.offer };
     const output = JSON.stringify(recovery);
@@ -254,11 +251,8 @@ async function handler(
       `data: cart ${JSON.stringify(cart)}`,
       `data: offer shown after the line "${OFFER_LINES[recovery.offer] || "none"}"`,
     ].join("\n");
-    judge(aiClient, config, context, tracker, judgeInput, recovery.message)
-      .then(agentRun.scored)
-      .catch((err) => {
-        agentRun.scored();
-        LDObserve.recordError(err as Error, secureSessionId, requestId, attributes);
-      });
+    judge(ran.judgeTasks, context, judgeInput, recovery.message, (err) =>
+      LDObserve.recordError(err as Error, secureSessionId, requestId, attributes),
+    ).then(agentRun.scored, () => agentRun.scored());
   });
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { LDContext } from "@launchdarkly/node-server-sdk";
+import type { LDContext, LDSingleKindContext } from "@launchdarkly/node-server-sdk";
 
 // Made-up visitors for the demo generator, the same ones results_generator.py
 // invents, so both generators' traffic lands in the same segments and slices.
@@ -35,7 +35,7 @@ const LOCATIONS = [
 // role and tier carry the values, under the names, that contextFor in
 // lib/ldContext.ts sends, so these match the Developers, Beta Testers, Gold
 // Members and Platinum Members segments. Mostly ordinary shoppers.
-export function shopperContext(): LDContext {
+export function shopperContext(): LDSingleKindContext {
   return {
     kind: "user",
     key: `shopper-${randomUUID()}`,
