@@ -1,13 +1,13 @@
 # launchdarkly-observability needs Python 3.10 or newer. The yaml pins moved
 # because 6.0 and 0.2.6 have no 3.12 wheels and fail to compile against a
 # Cython that no longer exists. requests has to stay at 2.33 or above, or pip
-# quietly resolves the observability plugin back down to 1.2.0.
+# quietly resolves the observability plugin back down to 1.2.0. The
+# LaunchDarkly packages are pinned so every build installs the same SDKs.
 PyYAML==6.0.2
 ruamel.yaml==0.18.6
 ruamel.yaml.clib==0.2.8
 randomname==0.2.1
 requests==2.34.2
 python-dotenv==1.1.0
-launchdarkly-server-sdk-ai
-launchdarkly-server-sdk
-launchdarkly-observability
+launchdarkly-server-sdk==9.21.0
+launchdarkly-observability==1.4.1
