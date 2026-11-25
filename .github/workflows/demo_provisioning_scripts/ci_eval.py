@@ -101,9 +101,7 @@ current = None
 def answer_of(output):
     """The answer filled in to output_format, as a dict, or None.
 
-    The agents handler asks for output_format in the prompt rather than
-    through LangChain's structured output, so its answer is JSON text, which
-    the model may put in a fence.
+    It may come as JSON text, which the model may put in a fence.
     """
     if isinstance(output, dict):
         return output
@@ -426,6 +424,28 @@ def bedrock_model(invocation):
         **{BEDROCK_PARAMETERS[k]: v for k, v in parameters.items() if k in BEDROCK_PARAMETERS and v is not None})
 
 
+def agent_handler(llm):
+    """The handler for agent-mode configs, which binds their output_format.
+
+    The agents handler only asks for output_format in the system prompt and
+    returns the model's text, so fraud-decision-agent wrote its decision
+    freehand and got the threshold wrong. A config with output_format goes to
+    the messages handler instead, which fills it in with structured output, as
+    the store's order review does. The CI runs pass no tools, so these configs
+    need no tool loop. case-note-agent, which has no output_format, stays on
+    the agents handler.
+    """
+    agents = create_langchain_agents_handler(llm)
+    structured = create_langchain_messages_handler(llm)
+
+    async def call(config, user_input=None, tool_handlers=None, variables=None, history=None):
+        inner = structured if config.get("outputFormat") else agents
+        return await inner(config, user_input, tool_handlers, variables, history)
+
+    return ProviderHandler(call, provides_for=agents.provides_for, capture_content=agents.capture_content,
+                           providers=agents.providers)
+
+
 def ld_get(path):
     """GET from the LaunchDarkly REST API, for the judge configs the SDK doesn't read for us.
 
@@ -514,12 +534,11 @@ async def run_target(evals, target, variation_key, args):
             dataset=rows,
             ai_config=AIConfig(key=target["config"], variation=variation_key),
             generation=generation_for(target, variation, args.replace or ()),
-            # The SDK picks the handler by the config's mode: the agents
-            # handler for AGENT_CONFIGS, the messages handler for the rest
-            # and for every judge.
+            # The SDK picks the handler by the config's mode: agent_handler
+            # for AGENT_CONFIGS, the messages handler for the rest and for
+            # every judge.
             handlers=[recording_handler(inner, result, rows, JUDGE_VIEWS.get(target["config"]), thresholds)
-                      for inner in (create_langchain_messages_handler(bedrock_model),
-                                    create_langchain_agents_handler(bedrock_model))],
+                      for inner in (create_langchain_messages_handler(bedrock_model), agent_handler(bedrock_model))],
             # The store's Order Review agents call their tools before they're
             # handed on; the datasets carry what the tools found.
             tools=[],
