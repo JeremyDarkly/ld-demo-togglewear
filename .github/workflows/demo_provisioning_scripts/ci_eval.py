@@ -9,6 +9,10 @@ model, parameters and prompt come from demo_resources.py rather than from
 LaunchDarkly, so a commit is evaluated before any project has it. The project
 in .env only has to hold the judges, and the evaluations land there.
 
+Before any model call, each dataset is checked: a duplicate row or a line
+outside ASCII stops the run, and a row too long for LaunchDarkly's upload
+screen is a warning in the summary.
+
 Results are advisory: a failed verdict is reported, not raised. The script
 exits non-zero only when a run can't be completed. It writes a Markdown
 summary to --summary-file, $GITHUB_STEP_SUMMARY in GitHub Actions.
@@ -444,6 +448,50 @@ def rows_for(target, quick):
              "variables": r.get("variables", {}), "metadata": r.get("metadata", {})} for r in rows]
 
 
+# LaunchDarkly's dataset upload screen showed a file with rows over about
+# 4,096 characters as empty, so a row this long is warned about.
+MAX_ROW_CHARS = 4000
+
+
+def check_dataset(name):
+    """Stop on rows that would spoil a run, before any model call; return the
+    rows too long to show in LaunchDarkly's upload screen, as (line, length).
+
+    Two rows with the same input and variables would count twice in pass
+    rates, and their tool calls couldn't be told apart. Anything outside
+    ASCII is written as a JSON escape, to be safe with the upload screen.
+    """
+    seen, long_rows = {}, []
+    with open(os.path.join(HERE, "datasets", name), encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    for number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        if not line.isascii():
+            raise SystemExit(f"error: datasets/{name} line {number} has a character outside ASCII; "
+                             "write it as a JSON escape, as json.dumps does by default")
+        if len(line) >= MAX_ROW_CHARS:
+            long_rows.append((number, len(line)))
+        row = json.loads(line)
+        key = json.dumps([row.get("input"), row.get("variables", {})], sort_keys=True)
+        if key in seen:
+            raise SystemExit(f"error: datasets/{name} lines {seen[key]} and {number} have the same input "
+                             "and variables, so they'd count twice and their tool calls couldn't be told apart")
+        seen[key] = number
+    return long_rows
+
+
+def long_rows_warning(long_rows):
+    """The summary's warning for check_dataset's long rows: dataset name -> [(line, length)]."""
+    if not any(long_rows.values()):
+        return ""
+    lines = ["", f"### Warning: rows of {MAX_ROW_CHARS:,} characters or more", "",
+             "LaunchDarkly's dataset upload screen may show a file with rows this long as empty.", ""]
+    for name, rows in long_rows.items():
+        lines += [f"- `datasets/{name}` line {number}: {length:,} characters" for number, length in rows]
+    return "\n".join(lines) + "\n"
+
+
 async def judge_thresholds(evals, spec):
     """evaluationMetricKey -> (judge key, threshold), since a judge call carries only the metric key."""
     thresholds = {}
@@ -672,6 +720,10 @@ async def main(args):
                     with open(out, "w", encoding="utf-8") as f:
                         json.dump([] if out == args.json_out else load_baseline(args.baseline) or [], f)
             return 0
+    long_rows = {name: check_dataset(name) for name in dict.fromkeys(t["dataset"] for t, _ in pairs)}
+    warning = long_rows_warning(long_rows)
+    if warning:
+        print(warning, flush=True)
     baseline = load_baseline(args.baseline)
     evals = init_evaluations(project_key=os.environ["LD_PROJECT_KEY"], api_key=os.environ["LD_API_KEY"],
                              sdk_key=os.environ["LD_SDK_KEY"])
@@ -681,7 +733,7 @@ async def main(args):
             results.append(await run_target(evals, target, variation, args))
     finally:
         await shutdown()
-    text = markdown(results)
+    text = markdown(results) + warning
     if args.baseline:
         text += comparison(results, baseline) or (
             "\n### Compared with `main`\n\nNo result from `main` to compare with yet.\n")
