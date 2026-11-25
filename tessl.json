@@ -35,7 +35,15 @@
           "investigate",
           "alert-investigation",
           "create-graph",
-          "create-fix-pr"
+          "create-fix-pr",
+          "legacy-sdk-migrate",
+          "flag-and-release-change",
+          "onboarding",
+          "launchdarkly-automations-archival-settings",
+          "launchdarkly-automations-cleanup-settings",
+          "launchdarkly-release-autopilot-onboarding",
+          "launchdarkly-release-autopilot-settings",
+          "launchdarkly-release-plans"
         ]
       }
     }

@@ -1,0 +1,23 @@
+{
+  "name": "flag-and-release-change",
+  "description": "End-to-end PR orchestrator: decide, create and wire the guarding flag, and start its release from the flag release plan or each environment's release plan (composes should-flag-change, launchdarkly-flag-create, and flag-release)",
+  "version": "0.4.0",
+  "author": "LaunchDarkly",
+  "repository": "https://github.com/launchdarkly/ai-tooling",
+  "skills": ["./"],
+  "tags": [
+    "launchdarkly",
+    "feature-flags",
+    "feature-management",
+    "flag-creation",
+    "pull-request",
+    "auto-release",
+    "automated-rollout",
+    "release-plan",
+    "dark-launch",
+    "mcp"
+  ],
+  "requirements": {
+    "mcp-servers": ["@launchdarkly/mcp-server"]
+  }
+}
