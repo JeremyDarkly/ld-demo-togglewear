@@ -1992,7 +1992,10 @@ PLAYGROUNDS = [
 # the evaluations it creates. scorers are ci_eval.py's own checks of each
 # answer; the config's attached judges run as well. quick is the rows a
 # --quick run takes: their metadata scenarios, or how many from the top.
-# variations defaults to the one the default rule serves. user_message is
+# Each variation the config's targeting serves is evaluated: its fallthrough,
+# each rule's, both sides of a guarded rollout and an adaptive trigger's
+# serve. variations, when set, is evaluated instead, and the summary lists
+# what it leaves out as served but not evaluated. user_message is
 # added to a prompt that has none of its own, filled in from the row.
 # statements names an agent optimization whose acceptance statements are
 # judged too.
@@ -2028,14 +2031,12 @@ CI_EVALS = [
     # acts on, the size and the pairing; the judges score the note.
     {'config': 'personal-stylist',
      'dataset': 'personal_stylist.jsonl',
-     'variations': ['claude-sonnet-4-6', 'claude-opus-5-5'],
      'scorers': ['stylist-reply-usable'],
      'quick': 6},
     # Both variations shoppers get. In the store it calls its tools; here it
     # is handed what they returned, as in its playground.
     {'config': 'swag-assistant',
      'dataset': 'swag_assistant.jsonl',
-     'variations': ['standard', 'member-concierge'],
      'user_message': _SWAG_USER,
      'quick': 6},
 ]

@@ -43,7 +43,7 @@ on:
         description: 'One AI Config to evaluate, such as fraud-decision-agent (blank for all)'
         required: false
       variation:
-        description: 'One variation of it (blank for those CI_EVALS names)'
+        description: 'One variation of it (blank for those its targeting serves)'
         required: false
       mode:
         description: 'quick or full'

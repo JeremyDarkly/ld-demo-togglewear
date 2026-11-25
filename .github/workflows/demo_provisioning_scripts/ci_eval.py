@@ -2,12 +2,13 @@
 
     python ci_eval.py [--config fraud-decision-agent] [--variation claude-sonnet-4-6] [--quick]
 
-For each entry in CI_EVALS, the AI SDK generates an answer for every row of
-its dataset in datasets/, on Bedrock with your AWS credentials, then runs the
-entry's scorers and the judges attached to the variation. The variation's
-model, parameters and prompt come from demo_resources.py rather than from
-LaunchDarkly, so a commit is evaluated before any project has it. The project
-in .env only has to hold the judges, and the evaluations land there.
+For each entry in CI_EVALS, and each variation its config's targeting serves,
+the AI SDK generates an answer for every row of its dataset in datasets/, on
+Bedrock with your AWS credentials, then runs the entry's scorers and the
+judges attached to the variation. The variation's model, parameters and
+prompt come from demo_resources.py rather than from LaunchDarkly, so a commit
+is evaluated before any project has it. The project in .env only has to hold
+the judges, and the evaluations land there.
 
 Before any model call, each dataset is checked: a duplicate row or a line
 outside ASCII stops the run, and a row too long for LaunchDarkly's upload
@@ -92,6 +93,9 @@ class Result:
     row_errors: list = field(default_factory=list)
     # judge key -> every score it gave, for the summary's mean and lowest.
     judge_scores: dict = field(default_factory=dict)
+    # What serves the variation, from served_variations: empty when only a
+    # variations override or --variation picked it.
+    served_by: list = field(default_factory=list)
 
 
 # ---- Scorers ----
@@ -470,6 +474,35 @@ def spec_for(config_key):
     return next(s for s in AI_CONFIGS + AGENT_CONFIGS if s["config"]["config_key"] == config_key)
 
 
+def clause_label(clause):
+    """A targeting clause as the summary names it, such as "segments gold-members"."""
+    values = ", ".join(str(v).lower() if isinstance(v, bool) else str(v) for v in clause.get("values", []))
+    if clause.get("op") == "segmentMatch":
+        label = f"segments {values}"
+    else:
+        label = f"{clause.get('attribute')} {clause.get('op')} {values}"
+    return f"not {label}" if clause.get("negate") else label
+
+
+def served_variations(spec):
+    """Variation key -> what serves it, in the order DemoBuilder.py's targeting
+    lists them: the fallthrough first, then each rule, the guarded rollout's
+    two sides and the adaptive trigger's serve, in the order the spec has them.
+    """
+    served = {spec["fallthrough"]: ["fallthrough"]}
+    for name, value in spec.items():
+        if name == "rules":
+            for number, (variation, clauses) in enumerate(value, start=1):
+                served.setdefault(variation, []).append(
+                    f"rule {number} ({' and '.join(clause_label(c) for c in clauses)})")
+        elif name == "guarded_rollout":
+            for side in ("control", "target"):
+                served.setdefault(value[side], []).append(f"guarded rollout {side}")
+        elif name == "adaptive_trigger":
+            served.setdefault(value["serve"], []).append("adaptive trigger")
+    return served
+
+
 def generation_for(target, variation, replace=()):
     """The variation as demo_resources.py defines it, over what LaunchDarkly has.
 
@@ -636,12 +669,15 @@ def definition(resources, config, variation_key, dataset_text):
     target = next((t for t in resources.get("CI_EVALS", []) if t["config"] == config), None)
     if spec is None or target is None:
         return None
+    # What serves the variation is part of it, so a variation that targeting
+    # starts to serve is evaluated, though its own definition is unchanged.
+    served_by = served_variations(spec).get(variation_key, [])
     judges = [next((s for s in configs if s["config"]["config_key"] == j["judgeConfigKey"]), None)
               for j in spec.get("judges", [])]
     optimization = next((o for o in resources.get("AGENT_OPTIMIZATIONS", [])
                          if o["key"] == target.get("statements")), None)
     return json.dumps({
-        "target": target,
+        "target": target, "served_by": served_by,
         "variation": next((v for v in spec["variations"] if v["ai_config_version_key"] == variation_key), None),
         "judges": judges, "attached": spec.get("judges", []),
         "snippets": resources.get("PROMPT_SNIPPETS", []),
@@ -721,10 +757,22 @@ def comparison(results, baseline):
     return "\n".join(lines) + "\n"
 
 
+def unevaluated_note(unevaluated):
+    """The summary's list of variations targeting serves that a variations
+    override left out: config -> {variation: what serves it}."""
+    if not any(unevaluated.values()):
+        return ""
+    lines = ["", "### Served but not evaluated", "",
+             "Targeting serves these, but the config's `variations` in `CI_EVALS` leaves them out.", ""]
+    for config, served in unevaluated.items():
+        lines += [f"- `{config}/{variation}`: {', '.join(by)}" for variation, by in served.items()]
+    return "\n".join(lines) + "\n"
+
+
 def markdown(results):
     lines = ["## Offline evals", "",
-             "| Config | Variation | Dataset | Rows passed | Verdict | Run |",
-             "|---|---|---|---|---|---|"]
+             "| Config | Variation | Served by | Dataset | Rows passed | Verdict | Run |",
+             "|---|---|---|---|---|---|---|"]
     for r in results:
         if r.error:
             verdict, passed = f"error: {r.error[:150]}", "–"
@@ -734,7 +782,8 @@ def markdown(results):
             if r.summary.get("errors"):
                 passed += f" ({r.summary['errors']} errors)"
         run = f"[{r.key}]({r.url})" if r.url else r.key
-        lines.append(f"| `{r.config}` | `{r.variation}` | `{r.dataset}` | {passed} | {verdict} | {run} |")
+        served_by = ", ".join(r.served_by) or "not served by targeting"
+        lines.append(f"| `{r.config}` | `{r.variation}` | {served_by} | `{r.dataset}` | {passed} | {verdict} | {run} |")
     for r in results:
         for judge, scores in r.judge_scores.items():
             lines.append(f"\n`{r.config}/{r.variation}` {judge}: mean {sum(scores) / len(scores):.2f}, "
@@ -768,9 +817,16 @@ async def main(args):
     targets = [t for t in CI_EVALS if not args.config or t["config"] in args.config]
     if not targets:
         sys.exit(f"error: no CI_EVALS entry for {', '.join(args.config)}")
+    # What targeting serves, unless the entry's variations or --variation
+    # says otherwise.
+    served = {t["config"]: served_variations(spec_for(t["config"])) for t in targets}
     pairs = [(t, v) for t in targets
-             for v in ([args.variation] if args.variation
-                       else t.get("variations", [spec_for(t["config"])["fallthrough"]]))]
+             for v in ([args.variation] if args.variation else t.get("variations", list(served[t["config"]])))]
+    unevaluated = {}
+    for t in targets:
+        if "variations" in t and not args.variation:
+            unevaluated[t["config"]] = {v: by for v, by in served[t["config"]].items() if v not in t["variations"]}
+    note = unevaluated_note(unevaluated)
     if args.changed:
         pairs, everything = changed_since(args.changed, pairs)
         if everything:
@@ -779,7 +835,7 @@ async def main(args):
             args.quick = True
         if not pairs:
             write_summary("## Offline evals\n\nNo AI Config, judge, prompt snippet or dataset that CI "
-                          f"evaluates changed since `{args.changed[:7]}`, so nothing was evaluated.\n", args)
+                          f"evaluates changed since `{args.changed[:7]}`, so nothing was evaluated.\n" + note, args)
             for out in (args.json_out, args.baseline_out):
                 if out:
                     with open(out, "w", encoding="utf-8") as f:
@@ -795,10 +851,12 @@ async def main(args):
     results = []
     try:
         for target, variation in pairs:
-            results.append(await run_target(evals, target, variation, args))
+            result = await run_target(evals, target, variation, args)
+            result.served_by = served[target["config"]].get(variation, [])
+            results.append(result)
     finally:
         await shutdown()
-    text = markdown(results) + warning
+    text = markdown(results) + note + warning
     if args.baseline:
         text += comparison(results, baseline) or (
             "\n### Compared with `main`\n\nNo result from `main` to compare with yet.\n")
@@ -820,7 +878,7 @@ async def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", action="append", help="only this config; repeat for more")
-    parser.add_argument("--variation", help="this variation instead of the one the default rule serves")
+    parser.add_argument("--variation", help="this variation instead of the ones targeting serves")
     parser.add_argument("--quick", action="store_true", help="only the rows named in quick")
     parser.add_argument("--replace", nargs=2, action="append", metavar=("OLD", "NEW"),
                         help="replace OLD with NEW in the prompt; repeat for more")
