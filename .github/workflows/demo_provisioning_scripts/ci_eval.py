@@ -5,12 +5,17 @@
 For each entry in CI_EVALS, and each variation its config's targeting serves,
 the AI SDK generates an answer for every row of its dataset in datasets/, on
 Bedrock with your AWS credentials, then runs the entry's scorers and the
-judges attached to the variation, and any of the entry's own. An entry with
-tools gives the model stand-ins to call (swag_tools.py), and the judges see
-the calls the SDK recorded. The variation's model, parameters and
-prompt come from demo_resources.py rather than from LaunchDarkly, so a commit
-is evaluated before any project has it. The project in .env only has to hold
-the judges, and the evaluations land there.
+judges attached to the variation, and any of the entry's own, each judge
+followed by its companions in JUDGE_COMPANIONS. An entry with tools gives the
+model stand-ins to call (swag_tools.py), and the judges see the calls the SDK
+recorded. The variation's model, parameters and prompt come from
+demo_resources.py rather than from LaunchDarkly, so a commit is evaluated
+before any project has it. The project in .env only has to hold the judges,
+and the evaluations land there.
+
+The judge alone decides a row. A companion, the same rubric on another model,
+is there to compare with: the summary counts the rows each passed and how
+often the two agree, but a companion's low scores aren't listed as misses.
 
 Before any model call, each dataset is checked: a duplicate row or a line
 outside ASCII stops the run, and a row too long for LaunchDarkly's upload
@@ -46,10 +51,14 @@ from launchdarkly_ai_langchain_messages import create_langchain_messages_handler
 from launchdarkly_ai_server import (AIConfig, EvaluationsError, Judge, ProviderHandler, Scorer, init_evaluations,
                                    parse_json_with_possible_fences, shutdown)
 
+from code_checks import (SIGNAL_POINTS, answer_of, case_note_covers_the_case, decision_matches_points,
+                         stylist_reply, stylist_reply_usable)
+
 from langchain_core.messages import HumanMessage, SystemMessage
 
 import swag_tools
-from demo_resources import AGENT_CONFIGS, AGENT_OPTIMIZATIONS, AI_CONFIGS, CI_EVALS, PROMPT_SNIPPETS
+from demo_resources import (AGENT_CONFIGS, AGENT_OPTIMIZATIONS, AI_CONFIGS, CI_EVALS, JUDGE_COMPANIONS,
+                            PROMPT_SNIPPETS)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(HERE, "..", "..", "..", ".env"))
@@ -97,6 +106,13 @@ class Result:
     row_errors: list = field(default_factory=list)
     # judge key -> every score it gave, for the summary's mean and lowest.
     judge_scores: dict = field(default_factory=dict)
+    # judge key -> {row index: score}, for the rows each judge passed and
+    # whether a judge and its companion agree.
+    judge_rows: dict = field(default_factory=dict)
+    # (judge key, companion key, threshold) for each companion that ran.
+    companions: list = field(default_factory=list)
+    # Companions the project doesn't have, so they were left out.
+    missing_companions: list = field(default_factory=list)
     # What serves the variation, from served_variations: empty when only a
     # variations override or --variation picked it.
     served_by: list = field(default_factory=list)
@@ -113,17 +129,6 @@ class Result:
 current = None
 
 
-def answer_of(output):
-    """The answer filled in to output_format, as a dict, or None.
-
-    It may come as JSON text, which the model may put in a fence.
-    """
-    if isinstance(output, dict):
-        return output
-    answer = parse_json_with_possible_fences(output) if isinstance(output, str) else None
-    return answer if isinstance(answer, dict) else None
-
-
 def row_label(metadata, row_input):
     """How a row is named in the summary: its scenario, or who and what it is about."""
     metadata = metadata or {}
@@ -138,100 +143,47 @@ def row_label(metadata, row_input):
 
 
 def score_decision(row, output):
-    """1.0 when the decision is the one the row's risk points call for.
-
-    The store acts on the decision alone (parseDecision in
-    pages/api/order-review/index.ts), so a wrong total with the right decision
-    passes, but is listed.
-    """
+    """decision_matches_points (code_checks.py) on a dataset row, with the
+    miss listed when the decision or the total is wrong."""
     metadata = row.metadata or {}
     expected, points = metadata.get("expected_decision"), metadata.get("risk_points")
-    answer = answer_of(output) or {}
-    decision, score = answer.get("decision"), answer.get("score")
-    if current is not None and (decision != expected or score != points):
+    result = decision_matches_points(output, expected, points)
+    if current is not None and result.reasons:
+        answer = answer_of(output) or {}
         current.misses.append(Miss(row_label(metadata, row.input), f"{expected}, {points} points",
-                                   f"{decision}, {score} points" if answer else f"no decision: {str(output)[:120]}"))
-    return 1.0 if decision == expected else 0.0
-
-
-def stylist_reply(output):
-    """The reply as the page reads it (pickedFrom in pages/api/personal-stylist/index.ts)."""
-    text = output if isinstance(output, str) else json.dumps(output)
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end < start:
-        return None
-    try:
-        reply = json.loads(text[start:end + 1])
-    except json.JSONDecodeError:
-        return None
-    return reply if isinstance(reply, dict) else None
+                                   f"{answer.get('decision')}, {answer.get('score')} points" if answer
+                                   else f"no decision: {str(output)[:120]}"))
+    return result.score
 
 
 def score_stylist_reply(row, output):
-    """1.0 when the page can use the whole reply: a note, a pairing from the
-    catalog it was given, and a size the product comes in.
-
-    The page drops a size or a pairing it can't use and keeps the note, so a
-    reply that fails here still shows, with part of it missing.
-    """
+    """stylist_reply_usable (code_checks.py) on a dataset row, with the
+    sizes and catalog its variables gave the stylist."""
     variables = row.variables or {}
     sizes = json.loads(variables.get("product_facts") or "{}").get("sizes") or []
-    catalog = {p["slug"] for p in json.loads(variables.get("catalog") or "[]")}
-    reply = stylist_reply(output)
-    problems = []
-    if reply is None:
-        problems.append("not JSON")
-    else:
-        note = reply.get("note")
-        if not isinstance(note, str) or not note.strip():
-            problems.append("no note")
-        elif len(note.split()) > 50:
-            problems.append(f"note is {len(note.split())} words")
-        if reply.get("pairing") not in catalog:
-            problems.append(f"pairing {reply.get('pairing')!r} isn't in its catalog")
-        if len(sizes) > 1 and reply.get("size") not in sizes:
-            problems.append(f"size {reply.get('size')!r} isn't one of {', '.join(sizes)}")
-    if problems and current is not None:
+    catalog = [p["slug"] for p in json.loads(variables.get("catalog") or "[]")]
+    result = stylist_reply_usable(output, sizes, catalog)
+    if result.reasons and current is not None:
         current.misses.append(Miss(row_label(row.metadata, row.input), "a reply the page can use",
-                                   "; ".join(problems), answer=str(output)))
-    # Over 50 words is listed, but the page still shows it.
-    return 0.0 if [p for p in problems if "words" not in p] else 1.0
-
-
-SIGNAL_POINTS = re.compile(r"with (\d+) points")
-SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+                                   "; ".join(result.reasons), answer=str(output)))
+    return result.score
 
 
 def score_case_note(row, output):
-    """1.0 when the note does what the Case Note prompt asks that code can check:
-    three or four sentences, the decision, each signal's points, and plain text.
-
-    Whether it gets the account history right and invents nothing is left to
-    the acceptance statements.
-    """
-    note = output if isinstance(output, str) else json.dumps(output)
+    """case_note_covers_the_case (code_checks.py) on a dataset row, with each
+    signal's points read from the row's input."""
     metadata = row.metadata or {}
-    problems = []
-    # Order numbers and prices don't end a sentence, so a full stop counts
-    # only before a space or the end.
-    sentences = len(SENTENCE_END.findall(note.strip()))
-    if not 3 <= sentences <= 4:
-        problems.append(f"{sentences} sentences")
-    decision = metadata.get("expected_decision")
-    said = {"review": ("held", "review"), "decline": ("declin",)}.get(decision, ())
-    if said and not any(word in note.lower() for word in said):
-        problems.append(f"doesn't say it was {'held' if decision == 'review' else 'declined'}")
-    for points in sorted(set(SIGNAL_POINTS.findall(row.input or ""))):
-        if points not in note:
-            problems.append(f"no {points}-point signal")
-    if re.search(r"(^|\n)\s*([-*#]|\d+\.)\s|\*\*", note):
-        problems.append("markdown")
-    if problems and current is not None:
+    result = case_note_covers_the_case(output, metadata.get("expected_decision"),
+                                       SIGNAL_POINTS.findall(row.input or ""))
+    if result.reasons and current is not None:
         current.misses.append(Miss(row_label(metadata, row.input), "the note the prompt asks for",
-                                   "; ".join(problems), answer=note))
-    return 0.0 if problems else 1.0
+                                   "; ".join(result.reasons),
+                                   answer=output if isinstance(output, str) else json.dumps(output)))
+    return result.score
 
 
+# demo-summary-names-decision, the fourth check in code_checks.py, runs live
+# only, as a metric to compare.
 SCORERS = {"decision-matches-points": score_decision, "stylist-reply-usable": score_stylist_reply,
            "case-note-covers-the-case": score_case_note}
 
@@ -409,9 +361,15 @@ def row_key(row_input, variables, names):
 
 
 def recording_handler(inner, result, rows, judge_view, thresholds):
-    """Wrap the handler to ask judges as the store does, and record low judge scores."""
+    """Wrap the handler to ask judges as the store does, and record judge scores.
+
+    thresholds is judge_thresholds'. Every judge's score is recorded against
+    its row, and a judge's low score is listed as a miss; a companion's isn't,
+    since the judge decides the row.
+    """
     names = {k for r in rows for k in r["variables"]}
     by_key = {row_key(r["input"], r["variables"], names): r for r in rows}
+    index_of = {id(r): i for i, r in enumerate(rows)}
     # Row id -> the stand-in tools' calls for it, for the judges.
     tool_calls = {}
 
@@ -453,7 +411,8 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
             score = numeric_score(raw)
             if score is not None:
                 result.judge_scores.setdefault(threshold[0], []).append(score)
-            if score is not None and score < threshold[1]:
+                result.judge_rows.setdefault(threshold[0], {})[index_of[id(row)]] = score
+            if score is not None and score < threshold[1] and not threshold[2]:
                 result.misses.append(Miss(row_label(row.get("metadata"), row["input"]), f"{threshold[0]} ≥ {threshold[1]}",
                                           f"{score:.2f}: {' '.join(str(reason).split())[:200]}",
                                           answer=str(user_input).rsplit("RESPONSE TO EVALUATE:\n", 1)[-1],
@@ -638,16 +597,43 @@ def long_rows_warning(long_rows):
 
 
 def judges_for(target, spec):
-    """The judges an entry runs: the ones attached to its config, then its own."""
-    return spec.get("judges", []) + target.get("judges", [])
+    """(judge, threshold, the judge key it's a companion of or None) for each
+    judge an entry runs: the ones attached to its config, then its own, each
+    followed by its companions, which share its threshold. A companion's judge
+    is {"judgeConfigKey": its key}."""
+    judges = []
+    for judge in spec.get("judges", []) + target.get("judges", []):
+        key, threshold = judge["judgeConfigKey"], judge.get("threshold", 0.7)
+        judges.append((judge, threshold, None))
+        judges += [({"judgeConfigKey": companion}, threshold, key) for companion in JUDGE_COMPANIONS.get(key, [])]
+    return judges
 
 
-async def judge_thresholds(evals, judges):
-    """evaluationMetricKey -> (judge key, threshold), since a judge call carries only the metric key."""
+async def judge_thresholds(evals, judges, result):
+    """evaluationMetricKey -> (judge key, threshold, the judge it's a companion
+    of or None), for judges_for's judges, since a judge call carries only the
+    metric key.
+
+    A companion the project doesn't have yet, such as one built before the
+    companion was added, is left out and listed on result, rather than failing
+    the run.
+    """
     thresholds = {}
-    for judge in judges:
-        config = await asyncio.to_thread(ld_get, f"projects/{evals.project_key}/ai-configs/{judge['judgeConfigKey']}")
-        thresholds[config["evaluationMetricKey"]] = (judge["judgeConfigKey"], judge.get("threshold", 0.7))
+    for judge, threshold, companion_of in judges:
+        key = judge["judgeConfigKey"]
+        try:
+            config = await asyncio.to_thread(ld_get, f"projects/{evals.project_key}/ai-configs/{key}")
+        except EvaluationsError as error:
+            if companion_of is None or " failed with 404:" not in str(error):
+                raise
+            result.missing_companions.append(key)
+            continue
+        if config["evaluationMetricKey"] in thresholds:
+            raise EvaluationsError(f"{key} has the same evaluationMetricKey as "
+                                   f"{thresholds[config['evaluationMetricKey']][0]}, so their scores can't be told apart")
+        thresholds[config["evaluationMetricKey"]] = (key, threshold, companion_of)
+        if companion_of is not None:
+            result.companions.append((companion_of, key, threshold))
     return thresholds
 
 
@@ -667,7 +653,7 @@ async def run_target(evals, target, variation_key, args):
           + (f" with tools {', '.join(result.tools)}" if tools else ""), flush=True)
     current = result
     try:
-        thresholds = await judge_thresholds(evals, judges)
+        thresholds = await judge_thresholds(evals, judges, result)
         run = await evals.run(
             key=result.key,
             dataset=rows,
@@ -685,9 +671,12 @@ async def run_target(evals, target, variation_key, args):
             tools=tools,
             criteria=[Scorer(name=name, fn=SCORERS[name]) for name in target.get("scorers", [])]
             + (statement_scorers(target["statements"]) if "statements" in target else [])
+            # A companion is held to 0 here, so LaunchDarkly never fails a
+            # row on it; its own threshold applies in the summary alone.
             + [Judge(key=j["judgeConfigKey"], ground_truth_context=j.get("ground_truth"),
                      **({"threshold": j["threshold"]} if "threshold" in j else {}))
-               for j in judges],
+               if companion_of is None else Judge(key=j["judgeConfigKey"], threshold=0.0)
+               for j, _, companion_of in judges if j["judgeConfigKey"] not in result.missing_companions],
             concurrency=args.concurrency,
             poll_timeout_seconds=600,
         )
@@ -713,10 +702,10 @@ def dataset_sha(name):
 # --changed BASE evaluates only what a change could affect: each target
 # whose definition differs from the one in demo_resources.py at BASE. A
 # target's definition is everything that decides its result: its CI_EVALS
-# entry, the variation, its judges' configs, the prompt snippets, the
-# optimization its statements come from, its dataset file and, for an entry
-# with tools, the stand-ins, the loader they run under, the store code they
-# answer from and the tools' AI_TOOLS entries.
+# entry, the variation, its judges' configs and their companions', the prompt
+# snippets, the optimization its statements come from, its dataset file and,
+# for an entry with tools, the stand-ins, the loader they run under, the store
+# code they answer from and the tools' AI_TOOLS entries.
 
 def git(*args):
     return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True)
@@ -737,14 +726,18 @@ def definition(resources, config, dataset, variation_key, dataset_text, tool_sou
     # What serves the variation is part of it, so a variation that targeting
     # starts to serve is evaluated, though its own definition is unchanged.
     served_by = served_variations(spec).get(variation_key, [])
-    judges = [next((s for s in configs if s["config"]["config_key"] == j["judgeConfigKey"]), None)
-              for j in judges_for(target, spec)]
+    companions = resources.get("JUDGE_COMPANIONS", {})
+    own = spec.get("judges", []) + target.get("judges", [])
+    judges = [next((s for s in configs if s["config"]["config_key"] == key), None)
+              for j in own
+              for key in [j["judgeConfigKey"], *companions.get(j["judgeConfigKey"], [])]]
     optimization = next((o for o in resources.get("AGENT_OPTIMIZATIONS", [])
                          if o["key"] == target.get("statements")), None)
     return json.dumps({
         "target": target, "served_by": served_by,
         "variation": next((v for v in spec["variations"] if v["ai_config_version_key"] == variation_key), None),
         "judges": judges, "attached": spec.get("judges", []),
+        "companions": {j["judgeConfigKey"]: companions.get(j["judgeConfigKey"], []) for j in own},
         "snippets": resources.get("PROMPT_SNIPPETS", []),
         "optimization": optimization, "dataset": dataset_text,
         "tool_sources": tool_sources if target.get("tools") else None,
@@ -846,6 +839,32 @@ def unevaluated_note(unevaluated):
     return "\n".join(lines) + "\n"
 
 
+def companion_table(results):
+    """The summary's lines comparing each judge with its companions, row by
+    row: the rows each passed, at the judge's threshold, out of those it
+    scored, and the rows both passed or both failed, out of those both scored."""
+    lines = []
+    for r in results:
+        if r.error:
+            continue
+        for judge, companion, threshold in r.companions:
+            ours, theirs = r.judge_rows.get(judge, {}), r.judge_rows.get(companion, {})
+            both = ours.keys() & theirs.keys()
+            same = sum((ours[i] >= threshold) == (theirs[i] >= threshold) for i in both)
+            lines.append(f"| `{r.config}` | `{r.variation}` | `{r.dataset}` | `{judge}` "
+                         f"| {sum(s >= threshold for s in ours.values())}/{len(ours)} | `{companion}` "
+                         f"| {sum(s >= threshold for s in theirs.values())}/{len(theirs)} | {same}/{len(both)} |")
+    if lines:
+        lines = ["", "**Rows each judge passed**", "",
+                 "| AI Config | Variation | Dataset | Judge | Rows passed | Companion | Rows passed | Same verdict |",
+                 "|---|---|---|---|---|---|---|---|"] + lines
+    missing = sorted({key for r in results for key in r.missing_companions})
+    if missing:
+        lines += ["", f"Not in the project, so not run: {', '.join(f'`{key}`' for key in missing)}. "
+                      "Rebuild the project from this branch to compare the judges with them."]
+    return lines
+
+
 def markdown(results):
     lines = ["## Offline evals", "",
              "| Config | Variation | Served by | Tools | Dataset | Rows passed | Verdict | Run |",
@@ -863,6 +882,7 @@ def markdown(results):
         tools = ", ".join(f"`{t}`" for t in r.tools) or "none"
         lines.append(f"| `{r.config}` | `{r.variation}` | {served_by} | {tools} | `{r.dataset}` | {passed} | {verdict} "
                      f"| {run} |")
+    lines += companion_table(results)
     for r in results:
         # A config can be run with tools and without, on different datasets.
         name = f"{r.config}/{r.variation}" + (" with tools" if r.tools else "")

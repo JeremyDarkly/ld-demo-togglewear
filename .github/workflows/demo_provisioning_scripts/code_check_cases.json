@@ -1,0 +1,702 @@
+[
+  {
+    "check": "decision-matches-points",
+    "name": "right decision and total",
+    "input": {
+      "expected_decision": "review",
+      "risk_points": 45
+    },
+    "output": "{\"decision\": \"review\", \"score\": 45, \"summary\": \"Your order is confirmed.\"}",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "decision-matches-points",
+    "name": "wrong decision",
+    "input": {
+      "expected_decision": "review",
+      "risk_points": 45
+    },
+    "output": "{\"decision\": \"approve\", \"score\": 45, \"summary\": \"Your order is confirmed.\"}",
+    "passes": false,
+    "reasons": [
+      "decision 'approve' isn't 'review'"
+    ]
+  },
+  {
+    "check": "decision-matches-points",
+    "name": "right decision, wrong total: listed but passes",
+    "input": {
+      "expected_decision": "decline",
+      "risk_points": 90
+    },
+    "output": "{\"decision\": \"decline\", \"score\": 100, \"summary\": \"Your order is confirmed.\"}",
+    "passes": true,
+    "reasons": [
+      "score 100 isn't 90 points"
+    ]
+  },
+  {
+    "check": "decision-matches-points",
+    "name": "decision in a json fence",
+    "input": {
+      "expected_decision": "approve",
+      "risk_points": 0
+    },
+    "output": "```json\n{\"decision\": \"approve\", \"score\": 0, \"summary\": \"Your order is confirmed.\"}\n```",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "decision-matches-points",
+    "name": "fence after a preamble",
+    "input": {
+      "expected_decision": "decline",
+      "risk_points": 80
+    },
+    "output": "Here is my decision:\n```\n{\"decision\": \"decline\", \"score\": 80, \"summary\": \"Your order is confirmed.\"}\n```",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "decision-matches-points",
+    "name": "not JSON",
+    "input": {
+      "expected_decision": "approve",
+      "risk_points": 0
+    },
+    "output": "I would approve this order.",
+    "passes": false,
+    "reasons": [
+      "no decision"
+    ]
+  },
+  {
+    "check": "decision-matches-points",
+    "name": "JSON that isn't an object",
+    "input": {
+      "expected_decision": "approve",
+      "risk_points": 0
+    },
+    "output": "[\"approve\"]",
+    "passes": false,
+    "reasons": [
+      "no decision"
+    ]
+  },
+  {
+    "check": "decision-matches-points",
+    "name": "no decision field",
+    "input": {
+      "expected_decision": "review",
+      "risk_points": 45
+    },
+    "output": "{\"score\": 45}",
+    "passes": false,
+    "reasons": [
+      "decision None isn't 'review'"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "usable reply",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order. The cap finishes the look.\"}",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "reply in a json fence",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "```json\n{\"size\": \"L\", \"pairing\": \"bucket-hat\", \"note\": \"The hoodie runs true to size, so M matches your last order. The cap finishes the look.\"}\n```",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "not JSON",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "Try the M with the cap.",
+    "passes": false,
+    "reasons": [
+      "not JSON"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "broken JSON",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"note\": }",
+    "passes": false,
+    "reasons": [
+      "not JSON"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "no note",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": \"togglewear-cap\"}",
+    "passes": false,
+    "reasons": [
+      "no note"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "blank note",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": \"togglewear-cap\", \"note\": \"   \"}",
+    "passes": false,
+    "reasons": [
+      "no note"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "pairing not in the catalog",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": \"camera-drone\", \"note\": \"The hoodie runs true to size, so M matches your last order. The cap finishes the look.\"}",
+    "passes": false,
+    "reasons": [
+      "pairing 'camera-drone' isn't in its catalog"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "no pairing",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"note\": \"The hoodie runs true to size, so M matches your last order. The cap finishes the look.\"}",
+    "passes": false,
+    "reasons": [
+      "pairing None isn't in its catalog"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "size the product doesn't come in",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"XXL\", \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order. The cap finishes the look.\"}",
+    "passes": false,
+    "reasons": [
+      "size 'XXL' isn't one of S, M, L, XL"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "one-size product needs no size",
+    "input": {
+      "sizes": [
+        "One Size"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order. The cap finishes the look.\"}",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "one-size product with any size",
+    "input": {
+      "sizes": [
+        "One Size"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"L\", \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order. The cap finishes the look.\"}",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "note over 50 words: listed but passes",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"S\", \"pairing\": \"checkerboard-socks\", \"note\": \"word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word\"}",
+    "passes": true,
+    "reasons": [
+      "note is 51 words"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "several problems at once",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"XXS\", \"pairing\": \"it's-new\", \"note\": \"\"}",
+    "passes": false,
+    "reasons": [
+      "no note",
+      "pairing \"it's-new\" isn't in its catalog",
+      "size 'XXS' isn't one of S, M, L, XL"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "unknown pairing containing words",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": \"words-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "pairing 'words-cap' isn't in its catalog"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "bad size containing words",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"words\", \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "size 'words' isn't one of S, M, L, XL"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "pairing is a list",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": [], \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "pairing [] isn't in its catalog"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "pairing is an object",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": {\"slug\": \"togglewear-cap\"}, \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "pairing {'slug': 'togglewear-cap'} isn't in its catalog"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "size is a list",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": [\"M\"], \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "size ['M'] isn't one of S, M, L, XL"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "size is an object",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": {\"size\": \"M\"}, \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "size {'size': 'M'} isn't one of S, M, L, XL"
+    ]
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "review note that covers the case",
+    "input": {
+      "expected_decision": "review",
+      "signal_points": [
+        45
+      ]
+    },
+    "output": "Order TW-2026-14259 was held for review at 45 points. The order value is above the $800 threshold (45 points). Diane has been a Platinum member for three years. Please confirm the address before it ships.",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "decline note that says declined",
+    "input": {
+      "expected_decision": "decline",
+      "signal_points": [
+        45,
+        45
+      ]
+    },
+    "output": "Order TW-2026-11111 was declined at 90 points. The total is above $800 (45 points) and one item was ordered five times (45 points). The shopper is a guest with no order history.",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "decline note that never says so",
+    "input": {
+      "expected_decision": "decline",
+      "signal_points": [
+        45,
+        45
+      ]
+    },
+    "output": "Order TW-2026-11111 was stopped at 90 points. The total is above $800 (45 points) and one item was ordered five times (45 points). The shopper is a guest with no order history.",
+    "passes": false,
+    "reasons": [
+      "doesn't say it was declined"
+    ]
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "review note that never says held or review",
+    "input": {
+      "expected_decision": "review",
+      "signal_points": [
+        45
+      ]
+    },
+    "output": "Order TW-2026-14259 was paused at 45 points. The order value is above the $800 threshold (45 points). Diane has been a Platinum member for three years. Please confirm the address before it ships.",
+    "passes": false,
+    "reasons": [
+      "doesn't say it was held"
+    ]
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "too few sentences",
+    "input": {
+      "expected_decision": "review",
+      "signal_points": [
+        45
+      ]
+    },
+    "output": "Order TW-2026-14259 was held for review at 45 points. Nothing else stood out.",
+    "passes": false,
+    "reasons": [
+      "2 sentences"
+    ]
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "too many sentences",
+    "input": {
+      "expected_decision": "review",
+      "signal_points": [
+        45
+      ]
+    },
+    "output": "Order TW-2026-14259 was held for review at 45 points. The order value is above the $800 threshold (45 points). Diane has been a Platinum member for three years. Please confirm the address before it ships. It is her first big order. Thanks.",
+    "passes": false,
+    "reasons": [
+      "6 sentences"
+    ]
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "a signal's points missing",
+    "input": {
+      "expected_decision": "decline",
+      "signal_points": [
+        80
+      ]
+    },
+    "output": "Order TW-2026-12345 was declined. The ZIP matches a reshipping address. The shopper is a guest. Nothing was charged.",
+    "passes": false,
+    "reasons": [
+      "no 80-point signal"
+    ]
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "markdown",
+    "input": {
+      "expected_decision": "review",
+      "signal_points": [
+        45
+      ]
+    },
+    "output": "**Held for review.** The total is over $800 (45 points). She is a member. Please check it.",
+    "passes": false,
+    "reasons": [
+      "markdown"
+    ]
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "a bullet list",
+    "input": {
+      "expected_decision": "review",
+      "signal_points": [
+        45
+      ]
+    },
+    "output": "Held for review at 45 points.\n- The total is over $800.\n- She is a member.\n- Check the address.",
+    "passes": false,
+    "reasons": [
+      "markdown"
+    ]
+  },
+  {
+    "check": "case-note-covers-the-case",
+    "name": "prices and order numbers don't end a sentence",
+    "input": {
+      "expected_decision": "review",
+      "signal_points": [
+        45
+      ]
+    },
+    "output": "Order TW-2026.14259 was held for review at 45 points. The total was $933.50 in all. She is a member. Please check it.",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "demo-summary-names-decision",
+    "name": "summary names the decision",
+    "input": {},
+    "output": "{\"decision\": \"review\", \"score\": 45, \"summary\": \"Your order is under review before it ships.\"}",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "demo-summary-names-decision",
+    "name": "decline summary that says declined",
+    "input": {},
+    "output": "{\"decision\": \"decline\", \"score\": 90, \"summary\": \"We've declined this order and nothing was charged.\"}",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "demo-summary-names-decision",
+    "name": "weak: a right decision put another way fails",
+    "input": {},
+    "output": "{\"decision\": \"review\", \"score\": 45, \"summary\": \"We've held your order while someone takes a look.\"}",
+    "passes": false,
+    "reasons": [
+      "summary doesn't say 'review'"
+    ]
+  },
+  {
+    "check": "demo-summary-names-decision",
+    "name": "weak: a wrong decision that names itself passes",
+    "input": {},
+    "output": "{\"decision\": \"approve\", \"score\": 90, \"summary\": \"Your order is approved and on its way.\"}",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "demo-summary-names-decision",
+    "name": "no summary: nothing to check",
+    "input": {},
+    "output": "{\"decision\": \"approve\", \"score\": 0}",
+    "passes": true,
+    "reasons": []
+  },
+  {
+    "check": "demo-summary-names-decision",
+    "name": "not JSON: nothing to check",
+    "input": {},
+    "output": "approve",
+    "passes": true,
+    "reasons": []
+  }
+]

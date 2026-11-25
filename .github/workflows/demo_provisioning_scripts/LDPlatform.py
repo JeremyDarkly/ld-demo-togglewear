@@ -445,14 +445,17 @@ class LDPlatform:
         migration_stages=0,
         prerequisites=[],
         temporary=False,
+        client_side=True,
     ):
         payload = {
             "key": flag_key,
             "name": flag_name,
             "description": description,
+            # client_side=False keeps a flag the server reads out of the
+            # client-side and mobile SDKs.
             "clientSideAvailability": {
-                "usingEnvironmentId": True,
-                "usingMobileKey": True,
+                "usingEnvironmentId": client_side,
+                "usingMobileKey": client_side,
             },
             "temporary": temporary,
             "maintainerId": self.user_id
