@@ -368,6 +368,7 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 │   └── generator/            What each Cmd+K generator does
 ├── public/                   Images and icons
 ├── scripts/                  check-tool-call-errors.mjs: runs the tool loops on a scripted model, no credentials
+│                             swag-tool-results.mjs: regenerates the Swag Assistant dataset's tool results
 ├── styles/                   Global CSS and the Söhne fonts
 ├── dockerfile                The production image: Next's standalone output on Node 24, no npm
 ├── docs/api_endpoint_usage.csv  Which LaunchDarkly REST endpoints the build calls
@@ -413,7 +414,13 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 **Changing an agent's instructions, model or tools.**
 
 1. Edit its entry in `AI_CONFIGS` or `AGENT_CONFIGS`, or the tool in `AI_TOOLS`. A new environment picks this up on its own. In an existing project, editing a tool creates a new version of it, and the variations have to be repinned to that version.
-2. If the change affects what the agent sees or says, recapture its dataset in `datasets/` from the store, so the playground compares real inputs.
+2. If the change affects what the agent sees or says, recapture its dataset in `datasets/` from the store, so the playground compares real inputs. For the Swag Assistant, a change to its tools or to the catalogue changes what its rows' recorded calls return; regenerate them, and reread the expected output of each row it changes:
+
+   ```bash
+   node --no-warnings --import ./scripts/tool-call-errors-register.mjs scripts/swag-tool-results.mjs
+   ```
+
+   With `--check` it changes nothing, and lists any row whose results have drifted.
 3. For Order Decision or Case Note, rerun its optimization so the recorded run matches, then commit the updated `optimizations/<key>.json`:
 
    ```bash
