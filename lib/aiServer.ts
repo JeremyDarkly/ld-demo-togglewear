@@ -70,10 +70,38 @@ export async function judge(
       );
       const result = await judge?.evaluate(input, output);
       if (result?.sampled) tracker.trackJudgeResult(result);
+      if (judge && result) {
+        await trackParseResult(judge.getAIConfig().createTracker(), context, result);
+      }
       return result;
     }),
   );
   return results.filter((r): r is LDJudgeResult => Boolean(r));
+}
+
+// Whether a judge's reply parsed, recorded on the judge's own config and
+// variation: 1 when it did not, 0 when it did. The AI SDK drops a reply it
+// cannot parse without an error, so this is the only sign of a judge model
+// that keeps breaking. A skipped evaluation, and one with an errorMessage (a
+// failed model call, or a judge with no metric key), had no reply to parse.
+// A failed send is only logged.
+async function trackParseResult(
+  judgeTracker: LDAIConfigTracker,
+  context: LDContext,
+  result: LDJudgeResult,
+) {
+  if (!result.sampled || result.errorMessage) return;
+  try {
+    const client = await getServerClient();
+    client?.track(
+      "judge-parse-error",
+      context,
+      judgeTracker.getTrackData(),
+      result.score === undefined ? 1 : 0,
+    );
+  } catch (err) {
+    console.warn("judge-parse-error could not be sent:", err);
+  }
 }
 
 // Thumbs up and down arrive in a later request than the reply they rate, and
