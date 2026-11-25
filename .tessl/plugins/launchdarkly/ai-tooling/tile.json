@@ -76,6 +76,9 @@
     "launchdarkly-metric-instrument": {
       "path": "skills/metrics/launchdarkly-metric-instrument/SKILL.md"
     },
+    "legacy-sdk-migrate": {
+      "path": "skills/agentcontrol/legacy-sdk-migrate/SKILL.md"
+    },
     "migrate": {
       "path": "skills/agentcontrol/migrate/SKILL.md"
     },
@@ -118,7 +121,6 @@
       "launchdarkly-release-autopilot-onboarding",
       "launchdarkly-release-autopilot-settings",
       "launchdarkly-release-plans",
-      "legacy-sdk-migrate",
       "mcp-configure",
       "observability-plugin-setup",
       "onboarding",

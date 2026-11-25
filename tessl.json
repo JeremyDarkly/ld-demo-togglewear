@@ -35,7 +35,8 @@
           "investigate",
           "alert-investigation",
           "create-graph",
-          "create-fix-pr"
+          "create-fix-pr",
+          "legacy-sdk-migrate"
         ]
       }
     }
