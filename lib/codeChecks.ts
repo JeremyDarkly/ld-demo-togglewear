@@ -148,26 +148,32 @@ export function stylistReplyUsable(
 ): CheckResult {
   const reply = stylistReply(output);
   const problems: string[] = [];
+  // Over 50 words is listed, but the page still shows it, so only the other
+  // problems fail the check.
+  let failed = false;
   if (reply === null) {
     problems.push("not JSON");
+    failed = true;
   } else {
     const note = reply.note;
     if (typeof note !== "string" || !note.trim()) {
       problems.push("no note");
+      failed = true;
     } else if (words(note) > 50) {
       problems.push(`note is ${words(note)} words`);
     }
     const pairing = reply.pairing ?? null;
     if (typeof pairing !== "string" || !catalog.includes(pairing)) {
       problems.push(`pairing ${pyRepr(pairing)} isn't in its catalog`);
+      failed = true;
     }
     const size = reply.size ?? null;
     if (sizes.length > 1 && (typeof size !== "string" || !sizes.includes(size))) {
       problems.push(`size ${pyRepr(size)} isn't one of ${sizes.join(", ")}`);
+      failed = true;
     }
   }
-  // Over 50 words is listed, but the page still shows it.
-  return { score: problems.some((p) => !p.includes("words")) ? 0 : 1, reasons: problems };
+  return { score: failed ? 0 : 1, reasons: problems };
 }
 
 // Order numbers and prices don't end a sentence, so a full stop counts only

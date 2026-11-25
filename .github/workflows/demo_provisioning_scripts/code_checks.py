@@ -108,20 +108,29 @@ def stylist_reply_usable(output, sizes, catalog):
     """
     reply = stylist_reply(output)
     problems = []
+    # Over 50 words is listed, but the page still shows it, so only the
+    # other problems fail the check.
+    failed = False
     if reply is None:
         problems.append("not JSON")
+        failed = True
     else:
         note = reply.get("note")
         if not isinstance(note, str) or not note.strip():
             problems.append("no note")
+            failed = True
         elif len(note.split()) > 50:
             problems.append(f"note is {len(note.split())} words")
-        if reply.get("pairing") not in set(catalog):
-            problems.append(f"pairing {reply.get('pairing')!r} isn't in its catalog")
-        if len(sizes) > 1 and reply.get("size") not in sizes:
-            problems.append(f"size {reply.get('size')!r} isn't one of {', '.join(sizes)}")
-    # Over 50 words is listed, but the page still shows it.
-    return CheckResult(0.0 if [p for p in problems if "words" not in p] else 1.0, problems)
+        # A list or an object is never a slug or a size, as in TypeScript.
+        pairing = reply.get("pairing")
+        if not isinstance(pairing, str) or pairing not in catalog:
+            problems.append(f"pairing {pairing!r} isn't in its catalog")
+            failed = True
+        size = reply.get("size")
+        if len(sizes) > 1 and (not isinstance(size, str) or size not in sizes):
+            problems.append(f"size {size!r} isn't one of {', '.join(sizes)}")
+            failed = True
+    return CheckResult(0.0 if failed else 1.0, problems)
 
 
 SIGNAL_POINTS = re.compile(r"with (\d+) points")

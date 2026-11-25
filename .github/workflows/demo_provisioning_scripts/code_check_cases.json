@@ -372,6 +372,138 @@
     ]
   },
   {
+    "check": "stylist-reply-usable",
+    "name": "unknown pairing containing words",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": \"words-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "pairing 'words-cap' isn't in its catalog"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "bad size containing words",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"words\", \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "size 'words' isn't one of S, M, L, XL"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "pairing is a list",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": [], \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "pairing [] isn't in its catalog"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "pairing is an object",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": \"M\", \"pairing\": {\"slug\": \"togglewear-cap\"}, \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "pairing {'slug': 'togglewear-cap'} isn't in its catalog"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "size is a list",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": [\"M\"], \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "size ['M'] isn't one of S, M, L, XL"
+    ]
+  },
+  {
+    "check": "stylist-reply-usable",
+    "name": "size is an object",
+    "input": {
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "catalog": [
+        "togglewear-cap",
+        "checkerboard-socks",
+        "bucket-hat"
+      ]
+    },
+    "output": "{\"size\": {\"size\": \"M\"}, \"pairing\": \"togglewear-cap\", \"note\": \"The hoodie runs true to size, so M matches your last order.\"}",
+    "passes": false,
+    "reasons": [
+      "size {'size': 'M'} isn't one of S, M, L, XL"
+    ]
+  },
+  {
     "check": "case-note-covers-the-case",
     "name": "review note that covers the case",
     "input": {
