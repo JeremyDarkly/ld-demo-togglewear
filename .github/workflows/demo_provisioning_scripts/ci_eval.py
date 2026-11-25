@@ -43,6 +43,9 @@ from launchdarkly_ai_langchain_messages import create_langchain_messages_handler
 from launchdarkly_ai_server import (AIConfig, EvaluationsError, Judge, ProviderHandler, Scorer, init_evaluations,
                                    parse_json_with_possible_fences, shutdown)
 
+from code_checks import (SIGNAL_POINTS, answer_of, case_note_covers_the_case, decision_matches_points,
+                         stylist_reply, stylist_reply_usable)
+
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from demo_resources import AGENT_CONFIGS, AGENT_OPTIMIZATIONS, AI_CONFIGS, CI_EVALS, PROMPT_SNIPPETS
@@ -106,17 +109,6 @@ class Result:
 current = None
 
 
-def answer_of(output):
-    """The answer filled in to output_format, as a dict, or None.
-
-    It may come as JSON text, which the model may put in a fence.
-    """
-    if isinstance(output, dict):
-        return output
-    answer = parse_json_with_possible_fences(output) if isinstance(output, str) else None
-    return answer if isinstance(answer, dict) else None
-
-
 def row_label(metadata, row_input):
     """How a row is named in the summary: its scenario, or who and what it is about."""
     metadata = metadata or {}
@@ -131,100 +123,47 @@ def row_label(metadata, row_input):
 
 
 def score_decision(row, output):
-    """1.0 when the decision is the one the row's risk points call for.
-
-    The store acts on the decision alone (parseDecision in
-    pages/api/order-review/index.ts), so a wrong total with the right decision
-    passes, but is listed.
-    """
+    """decision_matches_points (code_checks.py) on a dataset row, with the
+    miss listed when the decision or the total is wrong."""
     metadata = row.metadata or {}
     expected, points = metadata.get("expected_decision"), metadata.get("risk_points")
-    answer = answer_of(output) or {}
-    decision, score = answer.get("decision"), answer.get("score")
-    if current is not None and (decision != expected or score != points):
+    result = decision_matches_points(output, expected, points)
+    if current is not None and result.reasons:
+        answer = answer_of(output) or {}
         current.misses.append(Miss(row_label(metadata, row.input), f"{expected}, {points} points",
-                                   f"{decision}, {score} points" if answer else f"no decision: {str(output)[:120]}"))
-    return 1.0 if decision == expected else 0.0
-
-
-def stylist_reply(output):
-    """The reply as the page reads it (pickedFrom in pages/api/personal-stylist/index.ts)."""
-    text = output if isinstance(output, str) else json.dumps(output)
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end < start:
-        return None
-    try:
-        reply = json.loads(text[start:end + 1])
-    except json.JSONDecodeError:
-        return None
-    return reply if isinstance(reply, dict) else None
+                                   f"{answer.get('decision')}, {answer.get('score')} points" if answer
+                                   else f"no decision: {str(output)[:120]}"))
+    return result.score
 
 
 def score_stylist_reply(row, output):
-    """1.0 when the page can use the whole reply: a note, a pairing from the
-    catalog it was given, and a size the product comes in.
-
-    The page drops a size or a pairing it can't use and keeps the note, so a
-    reply that fails here still shows, with part of it missing.
-    """
+    """stylist_reply_usable (code_checks.py) on a dataset row, with the
+    sizes and catalog its variables gave the stylist."""
     variables = row.variables or {}
     sizes = json.loads(variables.get("product_facts") or "{}").get("sizes") or []
-    catalog = {p["slug"] for p in json.loads(variables.get("catalog") or "[]")}
-    reply = stylist_reply(output)
-    problems = []
-    if reply is None:
-        problems.append("not JSON")
-    else:
-        note = reply.get("note")
-        if not isinstance(note, str) or not note.strip():
-            problems.append("no note")
-        elif len(note.split()) > 50:
-            problems.append(f"note is {len(note.split())} words")
-        if reply.get("pairing") not in catalog:
-            problems.append(f"pairing {reply.get('pairing')!r} isn't in its catalog")
-        if len(sizes) > 1 and reply.get("size") not in sizes:
-            problems.append(f"size {reply.get('size')!r} isn't one of {', '.join(sizes)}")
-    if problems and current is not None:
+    catalog = [p["slug"] for p in json.loads(variables.get("catalog") or "[]")]
+    result = stylist_reply_usable(output, sizes, catalog)
+    if result.reasons and current is not None:
         current.misses.append(Miss(row_label(row.metadata, row.input), "a reply the page can use",
-                                   "; ".join(problems), answer=str(output)))
-    # Over 50 words is listed, but the page still shows it.
-    return 0.0 if [p for p in problems if "words" not in p] else 1.0
-
-
-SIGNAL_POINTS = re.compile(r"with (\d+) points")
-SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+                                   "; ".join(result.reasons), answer=str(output)))
+    return result.score
 
 
 def score_case_note(row, output):
-    """1.0 when the note does what the Case Note prompt asks that code can check:
-    three or four sentences, the decision, each signal's points, and plain text.
-
-    Whether it gets the account history right and invents nothing is left to
-    the acceptance statements.
-    """
-    note = output if isinstance(output, str) else json.dumps(output)
+    """case_note_covers_the_case (code_checks.py) on a dataset row, with each
+    signal's points read from the row's input."""
     metadata = row.metadata or {}
-    problems = []
-    # Order numbers and prices don't end a sentence, so a full stop counts
-    # only before a space or the end.
-    sentences = len(SENTENCE_END.findall(note.strip()))
-    if not 3 <= sentences <= 4:
-        problems.append(f"{sentences} sentences")
-    decision = metadata.get("expected_decision")
-    said = {"review": ("held", "review"), "decline": ("declin",)}.get(decision, ())
-    if said and not any(word in note.lower() for word in said):
-        problems.append(f"doesn't say it was {'held' if decision == 'review' else 'declined'}")
-    for points in sorted(set(SIGNAL_POINTS.findall(row.input or ""))):
-        if points not in note:
-            problems.append(f"no {points}-point signal")
-    if re.search(r"(^|\n)\s*([-*#]|\d+\.)\s|\*\*", note):
-        problems.append("markdown")
-    if problems and current is not None:
+    result = case_note_covers_the_case(output, metadata.get("expected_decision"),
+                                       SIGNAL_POINTS.findall(row.input or ""))
+    if result.reasons and current is not None:
         current.misses.append(Miss(row_label(metadata, row.input), "the note the prompt asks for",
-                                   "; ".join(problems), answer=note))
-    return 0.0 if problems else 1.0
+                                   "; ".join(result.reasons),
+                                   answer=output if isinstance(output, str) else json.dumps(output)))
+    return result.score
 
 
+# demo-summary-names-decision, the fourth check in code_checks.py, runs live
+# only, as a metric to compare.
 SCORERS = {"decision-matches-points": score_decision, "stylist-reply-usable": score_stylist_reply,
            "case-note-covers-the-case": score_case_note}
 
