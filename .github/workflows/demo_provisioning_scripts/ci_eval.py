@@ -33,6 +33,7 @@ from math import isfinite
 
 from dotenv import load_dotenv
 from langchain_aws import ChatBedrockConverse
+from launchdarkly_ai_langchain_agents import create_langchain_agents_handler
 from launchdarkly_ai_langchain_messages import create_langchain_messages_handler
 from launchdarkly_ai_server import (AIConfig, EvaluationsError, Judge, ProviderHandler, Scorer, init_evaluations,
                                    parse_json_with_possible_fences, shutdown)
@@ -98,13 +99,15 @@ current = None
 
 
 def answer_of(output):
-    """The answer filled in to output_format, as a dict, or None."""
+    """The answer filled in to output_format, as a dict, or None.
+
+    The agents handler asks for output_format in the prompt rather than
+    through LangChain's structured output, so its answer is JSON text, which
+    the model may put in a fence.
+    """
     if isinstance(output, dict):
         return output
-    try:
-        answer = json.loads(output or "")
-    except (TypeError, json.JSONDecodeError):
-        return None
+    answer = parse_json_with_possible_fences(output) if isinstance(output, str) else None
     return answer if isinstance(answer, dict) else None
 
 
@@ -505,14 +508,18 @@ async def run_target(evals, target, variation_key, args):
     print(f"running {target['config']}/{variation_key} on {len(rows)} rows of {target['dataset']}", flush=True)
     current = result
     try:
+        thresholds = await judge_thresholds(evals, spec)
         run = await evals.run(
             key=result.key,
             dataset=rows,
             ai_config=AIConfig(key=target["config"], variation=variation_key),
             generation=generation_for(target, variation, args.replace or ()),
-            handler=recording_handler(
-                create_langchain_messages_handler(bedrock_model), result, rows,
-                JUDGE_VIEWS.get(target["config"]), await judge_thresholds(evals, spec)),
+            # The SDK picks the handler by the config's mode: the agents
+            # handler for AGENT_CONFIGS, the messages handler for the rest
+            # and for every judge.
+            handlers=[recording_handler(inner, result, rows, JUDGE_VIEWS.get(target["config"]), thresholds)
+                      for inner in (create_langchain_messages_handler(bedrock_model),
+                                    create_langchain_agents_handler(bedrock_model))],
             # The store's Order Review agents call their tools before they're
             # handed on; the datasets carry what the tools found.
             tools=[],

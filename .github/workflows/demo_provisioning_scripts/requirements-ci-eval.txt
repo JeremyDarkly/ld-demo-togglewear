@@ -1,6 +1,7 @@
 # For ci_eval.py only: the AI SDK, whose evaluations API it runs on, as
 # released on PyPI. It stays on 1.0.0 to match policy_agent's evals.
 launchdarkly-ai-server==1.0.0
+launchdarkly-ai-langchain-agents==1.0.0
 launchdarkly-ai-langchain-messages==1.0.0
 launchdarkly-server-sdk>=9.20.0
 langchain-aws==1.8.0
