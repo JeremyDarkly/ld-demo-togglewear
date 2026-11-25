@@ -34,6 +34,9 @@
     "custom-metrics": {
       "path": "skills/agentcontrol/custom-metrics/SKILL.md"
     },
+    "flag-and-release-change": {
+      "path": "skills/feature-flags/flag-and-release-change/SKILL.md"
+    },
     "flag-release": {
       "path": "skills/feature-flags/flag-release/SKILL.md"
     },
@@ -42,6 +45,12 @@
     },
     "launchdarkly-approval-requests": {
       "path": "skills/feature-flags/launchdarkly-approval-requests/SKILL.md"
+    },
+    "launchdarkly-automations-archival-settings": {
+      "path": "skills/release-autopilot/launchdarkly-automations-archival-settings/SKILL.md"
+    },
+    "launchdarkly-automations-cleanup-settings": {
+      "path": "skills/release-autopilot/launchdarkly-automations-cleanup-settings/SKILL.md"
     },
     "launchdarkly-experiment-guide": {
       "path": "skills/experiments/launchdarkly-experiment-guide/SKILL.md"
@@ -76,11 +85,23 @@
     "launchdarkly-metric-instrument": {
       "path": "skills/metrics/launchdarkly-metric-instrument/SKILL.md"
     },
+    "launchdarkly-release-autopilot-onboarding": {
+      "path": "skills/release-autopilot/launchdarkly-release-autopilot-onboarding/SKILL.md"
+    },
+    "launchdarkly-release-autopilot-settings": {
+      "path": "skills/release-autopilot/launchdarkly-release-autopilot-settings/SKILL.md"
+    },
+    "launchdarkly-release-plans": {
+      "path": "skills/release-autopilot/launchdarkly-release-plans/SKILL.md"
+    },
     "legacy-sdk-migrate": {
       "path": "skills/agentcontrol/legacy-sdk-migrate/SKILL.md"
     },
     "migrate": {
       "path": "skills/agentcontrol/migrate/SKILL.md"
+    },
+    "onboarding": {
+      "path": "skills/onboarding/SKILL.md"
     },
     "online-evals": {
       "path": "skills/agentcontrol/online-evals/SKILL.md"
@@ -112,18 +133,11 @@
       "apply",
       "detect",
       "experiment-orchestration",
-      "flag-and-release-change",
-      "launchdarkly-automations-archival-settings",
-      "launchdarkly-automations-cleanup-settings",
       "launchdarkly-flag-command",
       "launchdarkly-flag-drift",
       "launchdarkly-flag-qualitative-feedback-setup",
-      "launchdarkly-release-autopilot-onboarding",
-      "launchdarkly-release-autopilot-settings",
-      "launchdarkly-release-plans",
       "mcp-configure",
       "observability-plugin-setup",
-      "onboarding",
       "plan",
       "projects",
       "sdk-install",
