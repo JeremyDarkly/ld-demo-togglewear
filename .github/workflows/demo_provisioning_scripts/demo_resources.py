@@ -266,6 +266,20 @@ METRICS = [
      'unit_aggregation_type': 'average',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'judge', 'order-review', 'togglewear']},
+    # The CI tool-use judge's score (ci_eval.py), recorded on the evaluations
+    # it runs in. No variation in the store attaches the judge.
+    {'metric_key': 'ci-tool-use',
+     'metric_name': 'CI Tool Use',
+     'event_key': '$ld:ai:judge:ci-tool-use',
+     'metric_description': 'The CI Tool Use judge\'s score for each Swag Assistant reply in the '
+                           'offline evals, from 0 to 1: whether it called the tools the question '
+                           'needed, with the right arguments, and used what they returned.',
+     'numeric': True,
+     'unit': 'score',
+     'success_criteria': 'HigherThanBaseline',
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'judge', 'ci-evals', 'togglewear']},
 
     # ---- AI Configs: the Personal Stylist's guarded rollout and the Cart
     # Recovery experiment ----
@@ -1540,6 +1554,61 @@ AI_CONFIGS = [
      'environment': 'production',
      'fallthrough': 'relevance-judge'},
 
+    # The offline evals' tool-use judge (ci_eval.py), for the Swag Assistant
+    # run with stand-in tools. No variation attaches it, so it never runs in
+    # the store, but every build makes it, so CI can run in any project built
+    # from this file. It grades the tool calls, not the prose, against the
+    # row's expected tools, which ci_eval.py fills in as
+    # {{ground_truth_context}}.
+    {'config': {'config_key': 'togglewear-ci-tool-use-judge',
+                'config_name': 'ToggleWear CI Tool Use Judge',
+                'description': 'Offline evals only, never attached to a variation: scores each '
+                               'Swag Assistant reply in a CI run from 0 to 1 for whether it '
+                               'called the tools the question needed, with arguments the question '
+                               'supports, and used what they returned. Runs on Claude Sonnet 4.6.',
+                'tags': ['ai-config', 'judge', 'ci-evals', 'togglewear'],
+                'mode': 'judge',
+                'evaluation_metric_key': '$ld:ai:judge:ci-tool-use',
+                'is_inverted': False},
+     'variations': [
+         # Sonnet, for the reason the Decision Policy judge gives.
+         {'ai_config_version_key': 'ci-tool-use-judge',
+          'ai_model_config_key': _SONNET,
+          'ai_config_version_name': 'Claude Sonnet 4.6',
+          'model': {'modelName': _SONNET_ID,
+                    'parameters': {'maxTokens': 500, 'temperature': 0.0}},
+          'messages': [{'role': 'system', 'content': (
+              "You grade the TOOL USE of ToggleWear's Swag Assistant, a shopping chat in "
+              "LaunchDarkly's merch store, not its prose. The message history shows the "
+              "shopper's message, the tools the assistant could call, and each call it made, on "
+              "a line starting \"tool:\", with its arguments and what it returned, or that it "
+              "called none. The response is its reply.\n\n"
+              "The assistant's prompt gives it the store's policies below, so a fact from them, "
+              "such as shipping times or the returns window, needs no tool call.\n\n"
+              + _snippet('togglewear-store-policies') + "\n\n"
+              "Grade only against the tools listed as available. Do not penalize the assistant "
+              "for not calling a tool that is not listed, and do not expect a tool that does not "
+              "exist.\n\n"
+              "Do not judge whether the facts it states match what a tool returned: the "
+              "Accuracy judge scores that. A stated fact counts against tool use only when it "
+              "is the kind a tool provides (products, prices, stock, orders or perks) and the "
+              "tool that would have provided it was not called.\n\n"
+              "1.0: the tool use fits the request. That includes calling no tool when the "
+              "request did not need one, such as a thank-you or a question the store policies "
+              "answer: an unused tool is not a mistake.\n"
+              "0.0: it needed a tool and did not call it, called the wrong tool, passed "
+              "arguments the request does not support, stated products, prices, stock, orders "
+              "or perks without calling the tool that provides them, or ignored what a tool "
+              "returned.\n"
+              "Score in between for partial credit.\n\n"
+              "Expected tool use for this request, a guide rather than a script: another "
+              "reasonable set of calls can still score 1.0.\n"
+              "{{ground_truth_context}}\n\n"
+              "Explain your score in one or two sentences, citing the calls, their arguments and "
+              "results.")}]}],
+     'environment': 'production',
+     'fallthrough': 'ci-tool-use-judge'},
+
     # The Order Review's Order Decision agent's two judges, run from
     # pages/api/order-review on every decision, after the shopper has their
     # answer. Each is handed what the agent was handed, the specialists'
@@ -2164,7 +2233,12 @@ PLAYGROUNDS = [
 # what it leaves out as served but not evaluated. user_message is
 # added to a prompt that has none of its own, filled in from the row.
 # statements names an agent optimization whose acceptance statements are
-# judged too.
+# judged too. tools gives the model stand-in tools to call, which replace the
+# variation's: 'swag-assistant' is swag_tools.py's, and every other entry runs
+# with none. judges are judges to run besides the attached ones, such as the
+# tool-use judge, each with its threshold and, as ground_truth, the context
+# filled in from the row's variables for its {{ground_truth_context}}. A
+# config can have more than one entry, each with a dataset of its own.
 CI_EVALS = [
     # The store has it answer by filling in DECISION_SCHEMA
     # (pages/api/order-review/index.ts), so CI asks for the same. LangChain
@@ -2204,6 +2278,17 @@ CI_EVALS = [
     {'config': 'swag-assistant',
      'dataset': 'swag_assistant.jsonl',
      'user_message': _SWAG_USER,
+     'quick': 6},
+    # The same variations calling their tools, as in the store: swag_tools.py's
+    # stand-ins answer from the store's real tools, as the row's shopper. The
+    # tool-use judge grades the calls against the row's expected_tools, and
+    # the attached judges see what the tools returned.
+    {'config': 'swag-assistant',
+     'dataset': 'swag_assistant_tools.jsonl',
+     'tools': 'swag-assistant',
+     'judges': [{'judgeConfigKey': 'togglewear-ci-tool-use-judge', 'threshold': 0.8,
+                 'ground_truth': 'Expected tool calls (an empty list means no tool is needed): '
+                                 '{{expected_tools}}'}],
      'quick': 6},
 ]
 

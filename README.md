@@ -374,6 +374,7 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 ├── scripts/                  check-tool-call-errors.mjs: runs the tool loops on a scripted model, no credentials
 │                             check-code-checks.mjs: runs the code checks over the shared cases, no credentials
 │                             swag-tool-results.mjs: regenerates the Swag Assistant dataset's tool results
+│                             swag-tools.mjs: calls the Swag Assistant's tools, for the offline evals' stand-ins
 ├── styles/                   Global CSS and the Söhne fonts
 ├── dockerfile                The production image: Next's standalone output on Node 24, no npm
 ├── docs/api_endpoint_usage.csv  Which LaunchDarkly REST endpoints the build calls
@@ -398,6 +399,7 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
         ├── ci_eval.py, requirements-ci-eval.txt   The offline evals
         ├── code_checks.py      Their code checks, which lib/codeChecks.ts mirrors
         ├── code_check_cases.json, check_code_checks.py   The cases both are tested against
+        ├── swag_tools.py       The Swag Assistant's stand-in tools for the evals, and their parity check
         ├── datasets/           The four playground datasets, which the evals use too
         └── optimizations/      Recorded optimization runs the build replays
 ```
@@ -441,6 +443,8 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 
 **Checking a change with the offline evals.** `ci_eval.py` runs an AI Config, as `demo_resources.py` defines it, over its dataset in `datasets/` on Bedrock, with the judges attached to it and checks of its own, and records each run as an evaluation in LaunchDarkly. Which configs it covers, and how each is scored, is the `CI_EVALS` table in `demo_resources.py`. It evaluates every variation a config's targeting serves: the fallthrough, each rule's, both sides of a guarded rollout and an adaptive trigger's serve. A `variations` list on an entry overrides that, and `--variation` picks one. The summary says what serves each variation it evaluated, and lists any that targeting serves but an override left out under **Served but not evaluated**. Every judged row is also scored by each judge's companion in `JUDGE_COMPANIONS`, the same rubric on another vendor's model, so a judge's quirks can be told from a real problem in the reply. The judge alone decides the row: a companion is held to a threshold of 0 in LaunchDarkly and its low scores aren't listed. **Rows each judge passed** compares the two, with the rows each passed at the judge's threshold and **Same verdict**, the rows both passed or both failed out of those both scored. A project built before the companions were added doesn't have them, so they're skipped and the summary says so. The results are advisory: they're scores to read, not a pass or fail. Before any model call it checks each dataset: two rows with the same input and variables, or a line with a character outside ASCII (write those as JSON escapes), stop the run, and a row of 4,000 characters or more is listed as a warning, since LaunchDarkly's upload screen may show it as empty.
 
+The Swag Assistant is evaluated twice. On `swag_assistant.jsonl` it's handed what its tools returned, as in its playground. On `swag_assistant_tools.jsonl` it calls them: `swag_tools.py` gives it stand-ins for its four tools that answer from the store's real ones (`lib/swagAssistantTools.ts`, run on Node through `scripts/swag-tools.mjs`) as the row's `metadata.shopper`, so a member sees member prices. The AI SDK records each call, the Accuracy and Relevance judges see what the tools returned, and the CI Tool Use judge (`togglewear-ci-tool-use-judge`, attached to no variation) scores whether it called the right tools with the right arguments against the row's `expected_tools`, including the control rows that need none. The summary's Tools column says which runs had tools. `python swag_tools.py` checks the stand-ins against the real tools, with no credentials, and the workflow runs it first. Both need Node 22.18 or later.
+
 ```bash
 cd .github/workflows/demo_provisioning_scripts
 pip install -r requirements-ci-eval.txt     # its own: the AI SDK 1.0.0, for its evaluations API
@@ -451,7 +455,7 @@ python ci_eval.py --config fraud-decision-agent \
 
 It needs `LD_API_KEY`, `LD_PROJECT_KEY` and `LD_SDK_KEY` for a project built from `demo_resources.py` in `.env`, and AWS credentials that can invoke the store's Bedrock models. Point it at a test project, not a demo: it only reads the project's judges, but every run adds an evaluation to its list, and they can't be deleted. `--json-out` keeps every listed answer and the judge's full reasoning, which is how to tell a judge's mistake from the agent's.
 
-The **Offline Evals** workflow (`evals.yml`) runs the same thing: by hand from the Actions tab, and, once the repository variable `EVALS_ON_CHANGES` is `true`, on pull requests and pushes to `main` that change a config, judge, snippet or dataset it covers, and every night in full. Each run compares itself with `main`'s last result. Its credentials, all in the `evals` environment, are listed at the top of the workflow, and must never be the build's: a pull request runs the branch's code. It doesn't go through `authorize.yaml`: anyone with write access to the repository can start it, and its credentials reach only the CI project and Bedrock.
+The **Offline Evals** workflow (`evals.yml`) runs the same thing: by hand from the Actions tab, and, once the repository variable `EVALS_ON_CHANGES` is `true`, on pull requests and pushes to `main` that change a config, judge, snippet or dataset it covers, or the code the Swag Assistant's stand-in tools answer from, and every night in full. Each run compares itself with `main`'s last result. Its credentials, all in the `evals` environment, are listed at the top of the workflow, and must never be the build's: a pull request runs the branch's code. It doesn't go through `authorize.yaml`: anyone with write access to the repository can start it, and its credentials reach only the CI project and Bedrock.
 
 **Changing a code check.** The evals' code checks are in `code_checks.py`, and `lib/codeChecks.ts` runs the same checks on live replies while flag 15 serves true. Change both, add a case to `code_check_cases.json`, and run both against it. Neither needs credentials:
 

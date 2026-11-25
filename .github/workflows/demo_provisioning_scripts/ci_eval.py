@@ -5,8 +5,10 @@
 For each entry in CI_EVALS, and each variation its config's targeting serves,
 the AI SDK generates an answer for every row of its dataset in datasets/, on
 Bedrock with your AWS credentials, then runs the entry's scorers and the
-judges attached to the variation, each followed by its companions in
-JUDGE_COMPANIONS. The variation's model, parameters and prompt come from
+judges attached to the variation, and any of the entry's own, each judge
+followed by its companions in JUDGE_COMPANIONS. An entry with tools gives the
+model stand-ins to call (swag_tools.py), and the judges see the calls the SDK
+recorded. The variation's model, parameters and prompt come from
 demo_resources.py rather than from LaunchDarkly, so a commit is evaluated
 before any project has it. The project in .env only has to hold the judges,
 and the evaluations land there.
@@ -24,7 +26,8 @@ exits non-zero only when a run can't be completed. It writes a Markdown
 summary to --summary-file, $GITHUB_STEP_SUMMARY in GitHub Actions.
 
 Needs requirements-ci-eval.txt, LD_API_KEY, LD_PROJECT_KEY and LD_SDK_KEY in
-.env or the environment, and AWS credentials with Bedrock.
+.env or the environment, AWS credentials with Bedrock, and Node 22.18 or later
+for the stand-in tools.
 """
 
 import argparse
@@ -53,6 +56,7 @@ from code_checks import (SIGNAL_POINTS, answer_of, case_note_covers_the_case, de
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+import swag_tools
 from demo_resources import (AGENT_CONFIGS, AGENT_OPTIMIZATIONS, AI_CONFIGS, CI_EVALS, JUDGE_COMPANIONS,
                             PROMPT_SNIPPETS)
 
@@ -112,6 +116,9 @@ class Result:
     # What serves the variation, from served_variations: empty when only a
     # variations override or --variation picked it.
     served_by: list = field(default_factory=list)
+    # The stand-in tools the model was given, by key: empty for an entry
+    # without tools.
+    tools: list = field(default_factory=list)
 
 
 # ---- Scorers ----
@@ -236,14 +243,14 @@ def statement_scorers(optimization_key):
 # and the answer that returns (message history, response), as that route
 # builds them. A config with none gets the row's input and the answer.
 
-def _order_decision_view(row, answer):
+def _order_decision_view(row, answer, **_):
     # pages/api/order-review/index.ts adds the total, which the Decision
     # Policy judge reads from the last line.
     points = row["metadata"]["risk_points"]
     return f"{row['input']}\n\nRisk points the specialists' tools found: {points}.", answer
 
 
-def _stylist_view(row, answer):
+def _stylist_view(row, answer, **_):
     # pages/api/personal-stylist/index.ts gives the judges the facts in the
     # chat's "data:" form, and the reply as the page shows it.
     v = row["variables"]
@@ -261,10 +268,42 @@ def _stylist_view(row, answer):
     return history, response
 
 
-def _swag_view(row, answer):
+# One call in the trajectory the SDK puts in a judge's message_history
+# (render_trajectory in launchdarkly_ai_server/trajectory.py).
+TRAJECTORY_CALL = re.compile(r"^\d+\. (\S+)\n   arguments: (.*?)\n   (result|error): (.*?)"
+                             r"(?=\n\d+\. |\n\(\d+ further|\Z)", re.M | re.S)
+TRUNCATED = "… (truncated)"
+
+
+def tool_lines(message_history, calls=None):
+    """The row's tool calls as "tool:" lines, from the trajectory the SDK
+    recorded, with the tools it listed as available or its note that none was
+    called.
+
+    The SDK cuts a result over 2,000 characters short, which would hide most
+    of a browse of the catalogue from the judges, so a cut result is filled in
+    from calls, the stand-ins' own record of the row's calls in order.
+    """
+    block = next((part for part in message_history.split("\n\n")
+                  if part.startswith(("Tools available: ", "Tool calls made ", "No tool calls "))), "")
+    lines = [line for line in block.split("\n")
+             if line.startswith(("Tools available: ", "No tool calls ", "("))]
+    for position, (name, arguments, kind, value) in enumerate(TRAJECTORY_CALL.findall(block)):
+        full = calls[position] if calls and position < len(calls) else None
+        if kind == "result" and value.endswith(TRUNCATED) and full and full[0] == name:
+            value = json.dumps(full[2], separators=(",", ":"), ensure_ascii=False)
+        lines.append(f"tool: {name}({arguments}) -> " + (f"error: {value}" if kind == "error" else value))
+    return "\n".join(lines)
+
+
+def _swag_view(row, answer, variables=None, calls=None):
     # pages/api/swag-assistant/index.ts: the conversation, then each tool call
-    # and what it returned, which tool_results already has as "tool:" lines.
-    tools = row["variables"].get("tool_results", "")
+    # and what it returned, as "tool:" lines. A row with tool_results has
+    # them already; with stand-in tools they come from the SDK's trajectory.
+    if "tool_results" in row["variables"]:
+        tools = row["variables"]["tool_results"]
+    else:
+        tools = tool_lines((variables or {}).get("message_history", ""), calls)
     return "\n".join([f"user: {row['input']}"] + ([tools] if tools else [])), answer
 
 
@@ -331,6 +370,8 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
     names = {k for r in rows for k in r["variables"]}
     by_key = {row_key(r["input"], r["variables"], names): r for r in rows}
     index_of = {id(r): i for i, r in enumerate(rows)}
+    # Row id -> the stand-in tools' calls for it, for the judges.
+    tool_calls = {}
 
     async def recorded(config, user_input=None, tool_handlers=None, variables=None, history=None):
         judging = bool(variables) and "formatting_instructions" in variables
@@ -338,9 +379,17 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
         if judging:
             if row is None:
                 raise RuntimeError("judge call for a row ci_eval.py can't find")
-            view = judge_view or (lambda r, answer: (r["input"], answer))
-            user_input = judge_request(*view(row, user_input))
+            view = judge_view or (lambda r, answer, **_: (r["input"], answer))
+            user_input = judge_request(*view(row, user_input, variables=variables, calls=tool_calls.get(id(row))))
             config = {**config, "outputFormat": JUDGE_SCHEMA}
+        elif tool_handlers:
+            # The stand-ins answer as the row's shopper. Set here, in the
+            # row's own task, so the tool calls the handler makes see it.
+            generating = by_key.get(row_key(user_input or "", variables, names))
+            swag_tools.SHOPPER.set(((generating or {}).get("metadata") or {}).get("shopper"))
+            if generating is not None:
+                tool_calls[id(generating)] = []
+                swag_tools.CALLS.set(tool_calls[id(generating)])
         try:
             output = await inner(config, user_input, tool_handlers, variables, history)
         except Exception as error:
@@ -547,28 +596,31 @@ def long_rows_warning(long_rows):
     return "\n".join(lines) + "\n"
 
 
-def judges_for(spec):
-    """(judge key, threshold, the judge it's a companion of or None) for each
-    judge attached to the config, each followed by its companions, which share
-    its threshold."""
+def judges_for(target, spec):
+    """(judge, threshold, the judge key it's a companion of or None) for each
+    judge an entry runs: the ones attached to its config, then its own, each
+    followed by its companions, which share its threshold. A companion's judge
+    is {"judgeConfigKey": its key}."""
     judges = []
-    for judge in spec.get("judges", []):
+    for judge in spec.get("judges", []) + target.get("judges", []):
         key, threshold = judge["judgeConfigKey"], judge.get("threshold", 0.7)
-        judges.append((key, threshold, None))
-        judges += [(companion, threshold, key) for companion in JUDGE_COMPANIONS.get(key, [])]
+        judges.append((judge, threshold, None))
+        judges += [({"judgeConfigKey": companion}, threshold, key) for companion in JUDGE_COMPANIONS.get(key, [])]
     return judges
 
 
-async def judge_thresholds(evals, spec, result):
+async def judge_thresholds(evals, judges, result):
     """evaluationMetricKey -> (judge key, threshold, the judge it's a companion
-    of or None), since a judge call carries only the metric key.
+    of or None), for judges_for's judges, since a judge call carries only the
+    metric key.
 
     A companion the project doesn't have yet, such as one built before the
     companion was added, is left out and listed on result, rather than failing
     the run.
     """
     thresholds = {}
-    for key, threshold, companion_of in judges_for(spec):
+    for judge, threshold, companion_of in judges:
+        key = judge["judgeConfigKey"]
         try:
             config = await asyncio.to_thread(ld_get, f"projects/{evals.project_key}/ai-configs/{key}")
         except EvaluationsError as error:
@@ -594,10 +646,14 @@ async def run_target(evals, target, variation_key, args):
                     mode="quick" if args.quick else "full", dataset_sha=dataset_sha(target["dataset"]))
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     result.key = f"ci-{args.label}-{target['config']}-{variation_key}-{stamp}"
-    print(f"running {target['config']}/{variation_key} on {len(rows)} rows of {target['dataset']}", flush=True)
+    tools = swag_tools.eval_tools() if target.get("tools") == "swag-assistant" else []
+    result.tools = [t.key for t in tools]
+    judges = judges_for(target, spec)
+    print(f"running {target['config']}/{variation_key} on {len(rows)} rows of {target['dataset']}"
+          + (f" with tools {', '.join(result.tools)}" if tools else ""), flush=True)
     current = result
     try:
-        thresholds = await judge_thresholds(evals, spec, result)
+        thresholds = await judge_thresholds(evals, judges, result)
         run = await evals.run(
             key=result.key,
             dataset=rows,
@@ -608,15 +664,19 @@ async def run_target(evals, target, variation_key, args):
             # every judge.
             handlers=[recording_handler(inner, result, rows, JUDGE_VIEWS.get(target["config"]), thresholds)
                       for inner in (create_langchain_messages_handler(bedrock_model), agent_handler(bedrock_model))],
-            # The store's Order Review agents call their tools before they're
-            # handed on; the datasets carry what the tools found.
-            tools=[],
+            # These replace the variation's tools. Without an entry's tools
+            # there are none: the store's Order Review agents call theirs
+            # before they're handed on, and the other datasets carry what the
+            # tools found.
+            tools=tools,
             criteria=[Scorer(name=name, fn=SCORERS[name]) for name in target.get("scorers", [])]
             + (statement_scorers(target["statements"]) if "statements" in target else [])
             # A companion is held to 0 here, so LaunchDarkly never fails a
             # row on it; its own threshold applies in the summary alone.
-            + [Judge(key=key) if companion_of is None else Judge(key=key, threshold=0.0)
-               for key, _, companion_of in judges_for(spec) if key not in result.missing_companions],
+            + [Judge(key=j["judgeConfigKey"], ground_truth_context=j.get("ground_truth"),
+                     **({"threshold": j["threshold"]} if "threshold" in j else {}))
+               if companion_of is None else Judge(key=j["judgeConfigKey"], threshold=0.0)
+               for j, _, companion_of in judges if j["judgeConfigKey"] not in result.missing_companions],
             concurrency=args.concurrency,
             poll_timeout_seconds=600,
         )
@@ -643,7 +703,9 @@ def dataset_sha(name):
 # whose definition differs from the one in demo_resources.py at BASE. A
 # target's definition is everything that decides its result: its CI_EVALS
 # entry, the variation, its judges' configs and their companions', the prompt
-# snippets, the optimization its statements come from, and its dataset file.
+# snippets, the optimization its statements come from, its dataset file and,
+# for an entry with tools, the stand-ins, the loader they run under, the store
+# code they answer from and the tools' AI_TOOLS entries.
 
 def git(*args):
     return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True)
@@ -654,18 +716,20 @@ def repo_path(name):
     return os.path.relpath(os.path.join(HERE, name), top)
 
 
-def definition(resources, config, variation_key, dataset_text):
+def definition(resources, config, dataset, variation_key, dataset_text, tool_sources=None):
     configs = resources.get("AI_CONFIGS", []) + resources.get("AGENT_CONFIGS", [])
     spec = next((s for s in configs if s["config"]["config_key"] == config), None)
-    target = next((t for t in resources.get("CI_EVALS", []) if t["config"] == config), None)
+    target = next((t for t in resources.get("CI_EVALS", [])
+                   if (t["config"], t["dataset"]) == (config, dataset)), None)
     if spec is None or target is None:
         return None
     # What serves the variation is part of it, so a variation that targeting
     # starts to serve is evaluated, though its own definition is unchanged.
     served_by = served_variations(spec).get(variation_key, [])
     companions = resources.get("JUDGE_COMPANIONS", {})
+    own = spec.get("judges", []) + target.get("judges", [])
     judges = [next((s for s in configs if s["config"]["config_key"] == key), None)
-              for j in spec.get("judges", [])
+              for j in own
               for key in [j["judgeConfigKey"], *companions.get(j["judgeConfigKey"], [])]]
     optimization = next((o for o in resources.get("AGENT_OPTIMIZATIONS", [])
                          if o["key"] == target.get("statements")), None)
@@ -673,9 +737,13 @@ def definition(resources, config, variation_key, dataset_text):
         "target": target, "served_by": served_by,
         "variation": next((v for v in spec["variations"] if v["ai_config_version_key"] == variation_key), None),
         "judges": judges, "attached": spec.get("judges", []),
-        "companions": {j["judgeConfigKey"]: companions.get(j["judgeConfigKey"], []) for j in spec.get("judges", [])},
+        "companions": {j["judgeConfigKey"]: companions.get(j["judgeConfigKey"], []) for j in own},
         "snippets": resources.get("PROMPT_SNIPPETS", []),
         "optimization": optimization, "dataset": dataset_text,
+        "tool_sources": tool_sources if target.get("tools") else None,
+        # The schemas and descriptions eval_tools() hands the model.
+        "tool_specs": [t for t in resources.get("AI_TOOLS", []) if t["tool_key"] in swag_tools.TOOL_KEYS]
+        if target.get("tools") else None,
     }, sort_keys=True, default=str)
 
 
@@ -694,15 +762,23 @@ def changed_since(base, pairs):
     if shown.returncode == 0:
         exec(compile(shown.stdout, "demo_resources.py@base", "exec"), base_resources)
     import demo_resources
+    top = git("rev-parse", "--show-toplevel").stdout.strip()
+    sources_now, sources_then = {}, {}
+    for path in swag_tools.SOURCES:
+        with open(os.path.join(top, path), encoding="utf-8") as f:
+            sources_now[path] = f.read()
+        shown = git("show", f"{base}:{path}")
+        sources_then[path] = shown.stdout if shown.returncode == 0 else None
     changed = []
     for target, variation in pairs:
         name = os.path.join("datasets", target["dataset"])
         with open(os.path.join(HERE, name), encoding="utf-8") as f:
             now_text = f.read()
         then = git("show", f"{base}:{repo_path(name)}")
-        now = definition(vars(demo_resources), target["config"], variation, now_text)
-        before = definition(base_resources, target["config"], variation,
-                            then.stdout if then.returncode == 0 else None)
+        now = definition(vars(demo_resources), target["config"], target["dataset"], variation, now_text,
+                         sources_now)
+        before = definition(base_resources, target["config"], target["dataset"], variation,
+                            then.stdout if then.returncode == 0 else None, sources_then)
         if now != before:
             changed.append((target, variation))
     return changed, False
@@ -716,16 +792,16 @@ def miss_key(miss):
 
 def comparison(results, baseline):
     """Markdown comparing each result with the baseline run of the same
-    config, variation and mode, or None with no baseline at all."""
+    config, variation, mode and dataset, or None with no baseline at all."""
     if baseline is None:
         return None
     lines = ["", "### Compared with `main`", ""]
     for r in results:
         if r.error:
             continue
-        then = next((b for b in baseline if (b["config"], b["variation"], b.get("mode"))
-                     == (r.config, r.variation, r.mode) and not b.get("error")), None)
-        name = f"`{r.config}/{r.variation}`"
+        then = next((b for b in baseline if (b["config"], b["variation"], b.get("mode"), b.get("dataset"))
+                     == (r.config, r.variation, r.mode, r.dataset) and not b.get("error")), None)
+        name = f"`{r.config}/{r.variation}`" + (" with tools" if r.tools else "")
         if then is None:
             lines.append(f"- {name}: no result on `main` to compare with yet.")
             continue
@@ -775,13 +851,13 @@ def companion_table(results):
             ours, theirs = r.judge_rows.get(judge, {}), r.judge_rows.get(companion, {})
             both = ours.keys() & theirs.keys()
             same = sum((ours[i] >= threshold) == (theirs[i] >= threshold) for i in both)
-            lines.append(f"| `{r.config}` | `{r.variation}` | `{judge}` "
+            lines.append(f"| `{r.config}` | `{r.variation}` | `{r.dataset}` | `{judge}` "
                          f"| {sum(s >= threshold for s in ours.values())}/{len(ours)} | `{companion}` "
                          f"| {sum(s >= threshold for s in theirs.values())}/{len(theirs)} | {same}/{len(both)} |")
     if lines:
         lines = ["", "**Rows each judge passed**", "",
-                 "| AI Config | Variation | Judge | Rows passed | Companion | Rows passed | Same verdict |",
-                 "|---|---|---|---|---|---|---|"] + lines
+                 "| AI Config | Variation | Dataset | Judge | Rows passed | Companion | Rows passed | Same verdict |",
+                 "|---|---|---|---|---|---|---|---|"] + lines
     missing = sorted({key for r in results for key in r.missing_companions})
     if missing:
         lines += ["", f"Not in the project, so not run: {', '.join(f'`{key}`' for key in missing)}. "
@@ -791,8 +867,8 @@ def companion_table(results):
 
 def markdown(results):
     lines = ["## Offline evals", "",
-             "| Config | Variation | Served by | Dataset | Rows passed | Verdict | Run |",
-             "|---|---|---|---|---|---|---|"]
+             "| Config | Variation | Served by | Tools | Dataset | Rows passed | Verdict | Run |",
+             "|---|---|---|---|---|---|---|---|"]
     for r in results:
         if r.error:
             verdict, passed = f"error: {r.error[:150]}", "–"
@@ -803,17 +879,21 @@ def markdown(results):
                 passed += f" ({r.summary['errors']} errors)"
         run = f"[{r.key}]({r.url})" if r.url else r.key
         served_by = ", ".join(r.served_by) or "not served by targeting"
-        lines.append(f"| `{r.config}` | `{r.variation}` | {served_by} | `{r.dataset}` | {passed} | {verdict} | {run} |")
+        tools = ", ".join(f"`{t}`" for t in r.tools) or "none"
+        lines.append(f"| `{r.config}` | `{r.variation}` | {served_by} | {tools} | `{r.dataset}` | {passed} | {verdict} "
+                     f"| {run} |")
     lines += companion_table(results)
     for r in results:
+        # A config can be run with tools and without, on different datasets.
+        name = f"{r.config}/{r.variation}" + (" with tools" if r.tools else "")
         for judge, scores in r.judge_scores.items():
-            lines.append(f"\n`{r.config}/{r.variation}` {judge}: mean {sum(scores) / len(scores):.2f}, "
+            lines.append(f"\n`{name}` {judge}: mean {sum(scores) / len(scores):.2f}, "
                          f"lowest {min(scores):.2f}, over {len(scores)} rows")
         if r.row_errors:
-            lines += ["", f"**{r.config}/{r.variation} row errors:**", ""]
+            lines += ["", f"**{name} row errors:**", ""]
             lines += [f"- `{e}`" for e in r.row_errors]
         if r.misses:
-            lines += ["", f"<details><summary>{r.config}/{r.variation}: {len(r.misses)} to look at</summary>", "",
+            lines += ["", f"<details><summary>{name}: {len(r.misses)} to look at</summary>", "",
                       "| Row | Expected | Actual |", "|---|---|---|"]
             lines += [f"| {m.row} | {m.expected} | {m.actual.replace('|', '/')} |" for m in r.misses]
             lines += ["", "</details>"]
@@ -889,8 +969,9 @@ async def main(args):
     if args.baseline_out:
         # A run on main may evaluate only what changed, so the baseline keeps
         # every other target's latest result and replaces this run's.
-        ran = {(r["config"], r["variation"], r["mode"]) for r in saved if not r["error"]}
-        kept = [b for b in baseline or [] if (b["config"], b["variation"], b.get("mode")) not in ran]
+        ran = {(r["config"], r["variation"], r["mode"], r["dataset"]) for r in saved if not r["error"]}
+        kept = [b for b in baseline or []
+                if (b["config"], b["variation"], b.get("mode"), b.get("dataset")) not in ran]
         with open(args.baseline_out, "w", encoding="utf-8") as f:
             json.dump(kept + [r for r in saved if not r["error"]], f, indent=2)
     return 1 if any(r.error for r in results) else 0

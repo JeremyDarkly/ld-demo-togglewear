@@ -7,7 +7,7 @@
 //   node --no-warnings --import ./scripts/tool-call-errors-register.mjs scripts/swag-tool-results.mjs [--check]
 import { readFileSync, writeFileSync } from "node:fs";
 
-const { swagAssistantTools } = await import("../lib/swagAssistantTools.ts");
+import { callSwagTool } from "./swag-tools.mjs";
 
 const DATASET = new URL(
   "../.github/workflows/demo_provisioning_scripts/datasets/swag_assistant.jsonl",
@@ -25,13 +25,9 @@ function parseCall(line, row) {
 
 // What the route records for a call (pages/api/swag-assistant/index.ts).
 async function replay(call, row, shopper) {
-  const context =
-    shopper === "guest"
-      ? { kind: "user", key: "guest", anonymous: true }
-      : { kind: "user", key: shopper };
-  const tool = swagAssistantTools(context).registry[call.name];
-  if (!tool) throw new Error(`row ${row}: no tool named ${call.name}`);
-  const output = await tool(call.args);
+  const output = await callSwagTool(shopper, call.name, call.args).catch((error) => {
+    throw new Error(`row ${row}: ${error.message}`);
+  });
   const text = typeof output === "string" ? output : JSON.stringify(output);
   return `tool: ${call.name}(${JSON.stringify(call.args)}) -> ${text}`;
 }
