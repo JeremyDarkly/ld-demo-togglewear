@@ -52,7 +52,7 @@ from launchdarkly_ai_server import (AIConfig, EvaluationsError, Judge, ProviderH
                                    parse_json_with_possible_fences, shutdown)
 
 from code_checks import (SIGNAL_POINTS, answer_of, case_note_covers_the_case, decision_matches_points,
-                         stylist_reply, stylist_reply_usable)
+                         demo_summary_names_decision, stylist_reply, stylist_reply_usable)
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -109,6 +109,13 @@ class Result:
     # judge key -> {row index: score}, for the rows each judge passed and
     # whether a judge and its companion agree.
     judge_rows: dict = field(default_factory=dict)
+    # row label -> {criterion: passed}, from each scorer, each judge but the
+    # companions at its threshold and each acceptance statement at its own,
+    # for the rows each passed and whether a scorer agrees with what checks
+    # what it does.
+    verdicts: dict = field(default_factory=dict)
+    # criterion -> scorer, judge or statement, for each that gave a verdict.
+    kinds: dict = field(default_factory=dict)
     # (judge key, companion key, threshold) for each companion that ran.
     companions: list = field(default_factory=list)
     # Companions the project doesn't have, so they were left out.
@@ -142,12 +149,20 @@ def row_label(metadata, row_input):
     return f"{' / '.join(named)}: {question}" if named else question
 
 
+def record_verdict(result, name, kind, metadata, row_input, passed):
+    """Record whether the row passed a criterion, under the row's label."""
+    if result is not None:
+        result.kinds.setdefault(name, kind)
+        result.verdicts.setdefault(row_label(metadata, row_input), {})[name] = bool(passed)
+
+
 def score_decision(row, output):
     """decision_matches_points (code_checks.py) on a dataset row, with the
     miss listed when the decision or the total is wrong."""
     metadata = row.metadata or {}
     expected, points = metadata.get("expected_decision"), metadata.get("risk_points")
     result = decision_matches_points(output, expected, points)
+    record_verdict(current, "decision-matches-points", "scorer", metadata, row.input, result.passed)
     if current is not None and result.reasons:
         answer = answer_of(output) or {}
         current.misses.append(Miss(row_label(metadata, row.input), f"{expected}, {points} points",
@@ -163,6 +178,7 @@ def score_stylist_reply(row, output):
     sizes = json.loads(variables.get("product_facts") or "{}").get("sizes") or []
     catalog = [p["slug"] for p in json.loads(variables.get("catalog") or "[]")]
     result = stylist_reply_usable(output, sizes, catalog)
+    record_verdict(current, "stylist-reply-usable", "scorer", row.metadata, row.input, result.passed)
     if result.reasons and current is not None:
         current.misses.append(Miss(row_label(row.metadata, row.input), "a reply the page can use",
                                    "; ".join(result.reasons), answer=str(output)))
@@ -175,6 +191,7 @@ def score_case_note(row, output):
     metadata = row.metadata or {}
     result = case_note_covers_the_case(output, metadata.get("expected_decision"),
                                        SIGNAL_POINTS.findall(row.input or ""))
+    record_verdict(current, "case-note-covers-the-case", "scorer", metadata, row.input, result.passed)
     if result.reasons and current is not None:
         current.misses.append(Miss(row_label(metadata, row.input), "the note the prompt asks for",
                                    "; ".join(result.reasons),
@@ -182,10 +199,34 @@ def score_case_note(row, output):
     return result.score
 
 
-# demo-summary-names-decision, the fourth check in code_checks.py, runs live
-# only, as a metric to compare.
+def score_summary_names_decision(row, output):
+    """demo_summary_names_decision (code_checks.py) on a dataset row. It's
+    comparison only, so its failures aren't listed as misses."""
+    result = demo_summary_names_decision(output)
+    record_verdict(current, "demo-summary-names-decision", "scorer", row.metadata, row.input, result.passed)
+    return result.score
+
+
 SCORERS = {"decision-matches-points": score_decision, "stylist-reply-usable": score_stylist_reply,
-           "case-note-covers-the-case": score_case_note}
+           "case-note-covers-the-case": score_case_note,
+           "demo-summary-names-decision": score_summary_names_decision}
+
+# Scorers there only to compare with the others: deliberately weak checks,
+# held to 0 in LaunchDarkly so they never fail a row, kept out of the misses,
+# and shown in the summary's own "Comparison only" table.
+COMPARISON_ONLY = {"demo-summary-names-decision"}
+
+# Scorer -> the criteria that check what it does, for the summary's "Same
+# verdict as". The case note's scorer checks its structure, as the first
+# acceptance statement does; the second, that every fact is grounded, is a
+# different requirement. The stylist's judges ask about the note, which its
+# scorer doesn't check.
+AGREES_WITH = {
+    "decision-matches-points": ["togglewear-decision-policy-judge"],
+    "case-note-covers-the-case": ["case-note-quality-1"],
+    "stylist-reply-usable": [],
+    "demo-summary-names-decision": ["decision-matches-points", "togglewear-decision-policy-judge"],
+}
 
 
 # ---- Acceptance statements ----
@@ -222,6 +263,7 @@ def statement_scorers(optimization_key):
             score = numeric_score(verdict.get("score"))
             if score is None:
                 raise ValueError(f"{name} gave no score: {verdict}")
+            record_verdict(current, name, "statement", row.metadata, row.input, score >= spec["threshold"])
             if score < spec["threshold"] and current is not None:
                 current.misses.append(Miss(
                     row_label(row.metadata, row.input), f"{name} ≥ {spec['threshold']}",
@@ -412,6 +454,9 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
             if score is not None:
                 result.judge_scores.setdefault(threshold[0], []).append(score)
                 result.judge_rows.setdefault(threshold[0], {})[index_of[id(row)]] = score
+            if score is not None and not threshold[2]:
+                record_verdict(result, threshold[0], "judge", row.get("metadata"), row["input"],
+                               score >= threshold[1])
             if score is not None and score < threshold[1] and not threshold[2]:
                 result.misses.append(Miss(row_label(row.get("metadata"), row["input"]), f"{threshold[0]} ≥ {threshold[1]}",
                                           f"{score:.2f}: {' '.join(str(reason).split())[:200]}",
@@ -669,7 +714,9 @@ async def run_target(evals, target, variation_key, args):
             # before they're handed on, and the other datasets carry what the
             # tools found.
             tools=tools,
-            criteria=[Scorer(name=name, fn=SCORERS[name]) for name in target.get("scorers", [])]
+            criteria=[Scorer(name=name, fn=SCORERS[name]) if name not in COMPARISON_ONLY
+                      else Scorer(name=name, fn=SCORERS[name], threshold=0.0)
+                      for name in target.get("scorers", [])]
             + (statement_scorers(target["statements"]) if "statements" in target else [])
             # A companion is held to 0 here, so LaunchDarkly never fails a
             # row on it; its own threshold applies in the summary alone.
@@ -790,6 +837,13 @@ def miss_key(miss):
     return (miss["row"], miss["expected"]) if isinstance(miss, dict) else (miss.row, miss.expected)
 
 
+def baseline_for(r, baseline):
+    """The baseline run of the result's config, variation, mode and dataset,
+    if any."""
+    return next((b for b in baseline or [] if (b["config"], b["variation"], b.get("mode"), b.get("dataset"))
+                 == (r.config, r.variation, r.mode, r.dataset) and not b.get("error")), None)
+
+
 def comparison(results, baseline):
     """Markdown comparing each result with the baseline run of the same
     config, variation, mode and dataset, or None with no baseline at all."""
@@ -799,8 +853,7 @@ def comparison(results, baseline):
     for r in results:
         if r.error:
             continue
-        then = next((b for b in baseline if (b["config"], b["variation"], b.get("mode"), b.get("dataset"))
-                     == (r.config, r.variation, r.mode, r.dataset) and not b.get("error")), None)
+        then = baseline_for(r, baseline)
         name = f"`{r.config}/{r.variation}`" + (" with tools" if r.tools else "")
         if then is None:
             lines.append(f"- {name}: no result on `main` to compare with yet.")
@@ -839,6 +892,63 @@ def unevaluated_note(unevaluated):
     return "\n".join(lines) + "\n"
 
 
+def rows_passed(verdicts, name):
+    """(rows passed, rows given a verdict) for a criterion."""
+    given = [v[name] for v in verdicts.values() if name in v]
+    return sum(given), len(given)
+
+
+def agreement(r, scorer, other):
+    """`other` same/both: the rows the scorer and the other criterion gave
+    the same verdict, of the rows both did; empty when none did."""
+    both = [v for v in r.verdicts.values() if scorer in v and other in v]
+    if not both:
+        return ""
+    return f"`{other}` {sum(v[scorer] == v[other] for v in both)}/{len(both)}"
+
+
+KINDS = ("scorer", "judge", "statement")
+
+
+def criteria_tables(results, baseline=None):
+    """The summary's "Rows each scorer and judge passed" table, and the
+    "Comparison only" table for COMPARISON_ONLY's scorers. Each count says how
+    it changed from the baseline run of the same config, variation and mode,
+    when that run has the criterion."""
+    rows, compared = [], []
+    for r in results:
+        if r.error:
+            continue
+        then = (baseline_for(r, baseline) or {}).get("verdicts") or {}
+        for name, kind in sorted(r.kinds.items(), key=lambda item: (KINDS.index(item[1]), item[0])):
+            passed, given = rows_passed(r.verdicts, name)
+            counts = f"{passed}/{given}"
+            before, before_given = rows_passed(then, name)
+            if before_given:
+                change = passed - before
+                counts += " (no change)" if change == 0 else f" ({change:+d}, was {before}/{before_given})"
+            same = " · ".join(a for a in (agreement(r, name, other) for other in AGREES_WITH.get(name, []))
+                              if a) or "–"
+            line = f"| `{r.config}` | `{r.variation}` | `{r.dataset}` | `{name}` | {kind} | {counts} | {same} |"
+            (compared if name in COMPARISON_ONLY else rows).append(line)
+    header = ["| AI Config | Variation | Dataset | Criterion | Kind | Rows passed | Same verdict as |",
+              "|---|---|---|---|---|---|---|"]
+    lines = []
+    if rows:
+        lines += ["", "**Rows each scorer and judge passed**", "", *header, *rows, "",
+                  "A scorer is a code check in `code_checks.py`, a judge passes a row at its threshold, and a "
+                  "statement is one of an agent optimization's acceptance statements, at its own threshold. "
+                  "Companions are compared with their judges under *Rows each judge passed*. *Same verdict "
+                  "as*: the rows where a scorer and a criterion that checks what it does gave the same "
+                  "verdict, of the rows both scored."]
+    if compared:
+        lines += ["", "**Comparison only**", "", *header, *compared, "",
+                  "Deliberately weak checks, kept to compare with the ones that check the same thing properly. "
+                  "LaunchDarkly holds them to 0, so they never fail a row, and their failures aren't listed "
+                  "as misses."]
+    return lines
+
+
 def companion_table(results):
     """The summary's lines comparing each judge with its companions, row by
     row: the rows each passed, at the judge's threshold, out of those it
@@ -865,7 +975,7 @@ def companion_table(results):
     return lines
 
 
-def markdown(results):
+def markdown(results, baseline=None):
     lines = ["## Offline evals", "",
              "| Config | Variation | Served by | Tools | Dataset | Rows passed | Verdict | Run |",
              "|---|---|---|---|---|---|---|---|"]
@@ -882,6 +992,7 @@ def markdown(results):
         tools = ", ".join(f"`{t}`" for t in r.tools) or "none"
         lines.append(f"| `{r.config}` | `{r.variation}` | {served_by} | {tools} | `{r.dataset}` | {passed} | {verdict} "
                      f"| {run} |")
+    lines += criteria_tables(results, baseline)
     lines += companion_table(results)
     for r in results:
         # A config can be run with tools and without, on different datasets.
@@ -957,7 +1068,7 @@ async def main(args):
             results.append(result)
     finally:
         await shutdown()
-    text = markdown(results) + note + warning
+    text = markdown(results, baseline) + note + warning
     if args.baseline:
         text += comparison(results, baseline) or (
             "\n### Compared with `main`\n\nNo result from `main` to compare with yet.\n")
