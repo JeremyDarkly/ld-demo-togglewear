@@ -319,7 +319,11 @@ export async function runGraph(
     // The start of what it did say, so the error in Observability shows
     // what went wrong rather than only that something did.
     if (!result.metrics.success) {
-      throw new UnusableAnswer(`${key} returned no usable answer: ${result.text.slice(0, 200)}`, result.text);
+      throw new UnusableAnswer(
+        `${key} returned no usable answer: ${result.text.slice(0, 200)}`,
+        result.text,
+        result.metrics.tokens,
+      );
     }
     return { output: result.text, usage: result.metrics.tokens };
   });

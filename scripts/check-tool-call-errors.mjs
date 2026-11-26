@@ -211,6 +211,58 @@ function expectSent(sent, expected) {
     }
     console.log(`swag assistant through the SDK, ${shape}: one $ld:ai:tool_call per call, errors on the same run`);
   }
+
+  // An answer the handler throws away is a generation error that still
+  // spends its tokens, on the same run, since the SDK sends tokens only for
+  // an answer a handler returns.
+  const { UnusableAnswer, ConfigChanged } = await import("../lib/aiServer.ts");
+  served = {
+    _ldMeta: { enabled: true, variationKey: "standard", version: 3, mode: "completion" },
+    provider: { name: "bedrock" },
+    model: { name: "scripted" },
+    messages: [{ role: "system", content: "Help." }],
+  };
+  sent.length = 0;
+  const unusable = storeHandlers(async () => {
+    throw new UnusableAnswer("empty", "", { total: 150, input: 120, output: 30 });
+  });
+  await assert.rejects(
+    aiConfig({ key: "swag-assistant", handler: unusable, skipJudges: true }).invoke("question", context),
+    UnusableAnswer,
+  );
+  const thrown = sent.filter((s) => !s.key.startsWith("$ld:ai:sdk:"));
+  assert.deepEqual(
+    thrown.map((s) => [s.key, s.value]),
+    [
+      ["$ld:ai:tokens:total", 150],
+      ["$ld:ai:tokens:input", 120],
+      ["$ld:ai:tokens:output", 30],
+      ["$ld:ai:duration:total", thrown[3].value],
+      ["$ld:ai:generation:error", 1],
+    ],
+  );
+  assert.equal(new Set(thrown.map((s) => s.data.runId)).size, 1);
+  assert.deepEqual(thrown[0].ctx, context);
+  console.log("an unusable answer: generation:error, with its tokens on the same run");
+
+  // A handler told which variation the route inspected runs only on that
+  // one; invoke() serving another throws ConfigChanged before any model call.
+  let ranModel = false;
+  const pinned = (meta) =>
+    storeHandlers(async () => {
+      ranModel = true;
+      return { output: "ok" };
+    }, meta);
+  await assert.rejects(
+    aiConfig({ key: "swag-assistant", handler: pinned({ variationKey: "standard", version: 2 }), skipJudges: true })
+      .invoke("question", context),
+    ConfigChanged,
+  );
+  assert.equal(ranModel, false);
+  const same = await aiConfig({ key: "swag-assistant", handler: pinned({ variationKey: "standard", version: 3 }), skipJudges: true })
+    .invoke("question", context);
+  assert.equal(same.response, "ok");
+  console.log("a pinned handler: runs on the inspected variation, throws ConfigChanged on another");
 }
 
 console.log("All tool call error checks passed.");

@@ -238,10 +238,11 @@ def statement_scorers(optimization_key):
 
 # ---- What the judges see ----
 #
-# Each route in the store builds its own message history for the judges,
-# and their rubrics rely on it. Keyed by config: a function of the dataset row
-# and the answer that returns (message history, response), as that route
-# builds them. A config with none gets the row's input and the answer.
+# Each route in the store hands its judges its own input and response, which
+# the SDK puts in their {{message_history}}, and their rubrics rely on it.
+# Keyed by config: a function of the dataset row and the answer that returns
+# (input, response), as that route builds them. A config with none gets the
+# row's input and the answer.
 
 def _order_decision_view(row, answer, **_):
     # pages/api/order-review/index.ts adds the total, which the Decision
@@ -313,12 +314,11 @@ JUDGE_VIEWS = {
     "swag-assistant": _swag_view,
 }
 
-# How the store's AI SDK (Node, Judge.evaluate) asks a judge: the conversation
-# and the response in one user message, answered by filling in this schema.
-# The Python SDK's offline runner sends only the response, and leaves the
-# conversation to a {{message_history}} our judges' prompts don't have, so
-# the judges are asked the store's way here. LangChain needs the title for
-# Bedrock.
+# The answer an acceptance statement's judge (statement_scorers) fills in,
+# with the conversation and the response in one user message
+# (judge_request). The judge configs in LaunchDarkly are asked the SDK's way
+# instead, through {{message_history}} (recording_handler). LangChain needs
+# the title for Bedrock.
 JUDGE_SCHEMA = {
     "title": "evaluation",
     "description": "The score and the reasoning behind it.",
@@ -360,8 +360,21 @@ def row_key(row_input, variables, names):
     return json.dumps([row_input, {k: (variables or {}).get(k) for k in sorted(names)}])
 
 
+def message_history(variables, history, response):
+    """A judge's {{message_history}} as the SDK builds it, from the store's
+    input and response in place of the row's: the parts, then the formatting
+    instructions the SDK hands the judge (build_message_history in
+    launchdarkly_ai_server/judge_scoring.py, which is internal)."""
+    parts = [history, response, variables.get("formatting_instructions", "")]
+    return "\n\n".join(part for part in parts if part)
+
+
 def recording_handler(inner, result, rows, judge_view, thresholds):
-    """Wrap the handler to ask judges as the store does, and record judge scores.
+    """Wrap the handler to show judges what the store shows them, and record judge scores.
+
+    A judge is asked the SDK's way, as the store asks it: its prompt's
+    {{message_history}} and the response as its user message. Only what goes
+    in them changes, to the input and response the store's route builds.
 
     thresholds is judge_thresholds'. Every judge's score is recorded against
     its row, and a judge's low score is listed as a miss; a companion's isn't,
@@ -380,8 +393,9 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
             if row is None:
                 raise RuntimeError("judge call for a row ci_eval.py can't find")
             view = judge_view or (lambda r, answer, **_: (r["input"], answer))
-            user_input = judge_request(*view(row, user_input, variables=variables, calls=tool_calls.get(id(row))))
-            config = {**config, "outputFormat": JUDGE_SCHEMA}
+            history, user_input = view(row, user_input, variables=variables, calls=tool_calls.get(id(row)))
+            variables = {**variables, "message_history": message_history(variables, history, user_input),
+                         "response_to_evaluate": user_input}
         elif tool_handlers:
             # The stand-ins answer as the row's shopper. Set here, in the
             # row's own task, so the tool calls the handler makes see it.
@@ -415,7 +429,7 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
             if score is not None and score < threshold[1] and not threshold[2]:
                 result.misses.append(Miss(row_label(row.get("metadata"), row["input"]), f"{threshold[0]} ≥ {threshold[1]}",
                                           f"{score:.2f}: {' '.join(str(reason).split())[:200]}",
-                                          answer=str(user_input).rsplit("RESPONSE TO EVALUATE:\n", 1)[-1],
+                                          answer=str(user_input),
                                           reasoning=str(reason)))
         return output
 

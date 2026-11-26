@@ -202,7 +202,7 @@ async function handler(
       });
       const text = textOf(response);
       picks = picksFrom(text, catalogue, member, query, shown);
-      if (!picks) throw new UnusableAnswer("Smart search returned no usable JSON", text);
+      if (!picks) throw new UnusableAnswer("Smart search returned no usable JSON", text, usageOf(response));
       return { output: text, usage: usageOf(response) };
     });
 

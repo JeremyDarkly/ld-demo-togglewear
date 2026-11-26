@@ -366,7 +366,11 @@ async function handler(
         toolFunctions(toolHandlers, tools.registry, context, trackData),
       );
       if (!conversation.metrics.success) {
-        throw new UnusableAnswer("The swag assistant returned an empty reply", conversation.content);
+        throw new UnusableAnswer(
+          "The swag assistant returned an empty reply",
+          conversation.content,
+          conversation.metrics.tokens,
+        );
       }
       return { output: conversation.content, usage: conversation.metrics.tokens };
     });

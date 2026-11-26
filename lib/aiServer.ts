@@ -60,24 +60,72 @@ export function getAiClient(): Promise<LDClient | null> {
 // be used. The SDK records generation:success whenever a handler returns,
 // so a handler throws to have an unusable answer recorded as
 // generation:error, as the legacy tracker's success: false was. It carries
-// what the model wrote, for the error the route logs.
+// what the model wrote, for the error the route logs, and the tokens it
+// spent, which the SDK sends only when a handler returns, so storeHandlers
+// sends them instead.
 export class UnusableAnswer extends Error {
   readonly answer: string;
+  readonly usage?: TokenUsage;
 
-  constructor(message: string, answer: string) {
+  constructor(message: string, answer: string, usage?: TokenUsage) {
     super(message);
     this.name = "UnusableAnswer";
     this.answer = answer;
+    this.usage = usage;
+  }
+}
+
+// Thrown by a handler when invoke() served a different variation, or
+// version, than the inspectConfig() the route read first, because targeting
+// changed in between. The route built its input, cache key and checks for
+// the variation it inspected, so the answer is not written at all, and the
+// route falls back as it does for any failed run.
+export class ConfigChanged extends Error {
+  constructor(inspected: string, served: string) {
+    super(`The variation changed between inspectConfig() (${inspected}) and invoke() (${served})`);
+    this.name = "ConfigChanged";
   }
 }
 
 type HandlerFn = Parameters<typeof createHandler>[1];
 
+// The variation a route read with inspectConfig().
+export type Inspected = { variationKey?: string; version?: number };
+
 // The store's own model loop as the SDK's handler, for either mode, since
 // the Swag Assistant, the Personal Stylist and Smart Search are completion
 // configs and Cart Recovery and the Order Review agents are agent ones.
-export function storeHandlers(run: HandlerFn): ProviderHandler[] {
-  return [createHandler(["*", "messages"], run), createHandler(["*", "agent"], run)];
+// Given the variation the route inspected, it runs only on that one (see
+// ConfigChanged). An unusable answer's tokens are sent here, on the run's
+// track data, the way the SDK sends them for an answer it returns.
+export function storeHandlers(run: HandlerFn, inspected?: Inspected | null): ProviderHandler[] {
+  const guarded: HandlerFn = async (config, input, toolHandlers, vars, history) => {
+    const trackData = runTrackDataOf(vars);
+    if (inspected !== undefined) {
+      const expected = `${inspected?.variationKey ?? ""} v${inspected?.version ?? 1}`;
+      const served = `${trackData.variationKey} v${trackData.version}`;
+      if (expected !== served) throw new ConfigChanged(expected, served);
+    }
+    try {
+      return await run(config, input, toolHandlers, vars, history);
+    } catch (err) {
+      if (err instanceof UnusableAnswer && err.usage) {
+        trackTokens(vars?.ldContext as LDContext, trackData, err.usage);
+      }
+      throw err;
+    }
+  };
+  return [createHandler(["*", "messages"], guarded), createHandler(["*", "agent"], guarded)];
+}
+
+function trackTokens(context: LDContext, trackData: TrackData, usage: TokenUsage) {
+  try {
+    if (usage.total > 0) getClient().track("$ld:ai:tokens:total", context, trackData, usage.total);
+    if (usage.input > 0) getClient().track("$ld:ai:tokens:input", context, trackData, usage.input);
+    if (usage.output > 0) getClient().track("$ld:ai:tokens:output", context, trackData, usage.output);
+  } catch (err) {
+    console.warn("$ld:ai:tokens could not be sent:", err);
+  }
 }
 
 // The run's track data, inside a handler. The SDK hands it over among the
@@ -174,9 +222,11 @@ export async function judge(
         : task.evaluationMetricKey && typeof result.score === "number"
           ? [{ metricKey: task.evaluationMetricKey, score: result.score, judgeConfigKey: task.configKey }]
           : [];
+      // result.trackData is the reply's, with judgeConfigKey merged in by
+      // runJudge; each of several metrics carries its own judgeConfigKey.
       for (const { metricKey, score, judgeConfigKey } of scores) {
         try {
-          getClient().track(metricKey, context, { ...task.parentTrackData, judgeConfigKey }, score);
+          getClient().track(metricKey, context, { ...result.trackData, judgeConfigKey }, score);
         } catch (err) {
           console.warn(`${metricKey} could not be sent:`, err);
         }

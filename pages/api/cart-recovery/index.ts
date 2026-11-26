@@ -191,7 +191,9 @@ async function handler(
     );
 
     // A line that breaks the rules above is thrown, so the SDK records it as
-    // a generation error, as the legacy tracker's success: false was.
+    // a generation error, as the legacy tracker's success: false was. It runs
+    // only on the variation inspected above, whose offers the input, the
+    // schema and the check list.
     let written: Written | undefined;
     const handler = storeHandlers(async (config, _input, _tools, vars = {}) => {
       const instructions = parseTemplate(config.instructions ?? "", vars);
@@ -217,11 +219,15 @@ async function handler(
         message.length > MAX_MESSAGE_LENGTH ||
         makesAnOffer(message)
       ) {
-        throw new UnusableAnswer(`The cart recovery agent wrote no usable line: ${message.slice(0, 200)}`, message);
+        throw new UnusableAnswer(
+          `The cart recovery agent wrote no usable line: ${message.slice(0, 200)}`,
+          message,
+          usageOf(raw),
+        );
       }
       written = { message, offer };
       return { output: JSON.stringify(written), usage: usageOf(raw) };
-    });
+    }, inspected.meta);
 
     let ran: Awaited<ReturnType<ReturnType<typeof aiConfig>["invoke"]>>;
     try {

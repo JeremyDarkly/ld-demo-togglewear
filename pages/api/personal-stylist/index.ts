@@ -208,7 +208,8 @@ async function handler(
 
     // One model call. A note that does not parse is thrown, so the SDK
     // records it as a generation error, as the legacy tracker's success:
-    // false was.
+    // false was. It runs only on the variation inspected above, which the
+    // note is labelled and kept under.
     let raw: string | undefined;
     let runTrackData: TrackData | undefined;
     let picked = null as Picked | null;
@@ -223,9 +224,9 @@ async function handler(
       });
       raw = textOf(response);
       picked = pickedFrom(raw, product, catalog);
-      if (!picked) throw new UnusableAnswer("The personal stylist returned no usable note", raw);
+      if (!picked) throw new UnusableAnswer("The personal stylist returned no usable note", raw, usageOf(response));
       return { output: raw, usage: usageOf(response) };
-    });
+    }, inspected.meta);
 
     let ran: Awaited<ReturnType<ReturnType<typeof aiConfig>["invoke"]>> | undefined;
     let failure: unknown;
