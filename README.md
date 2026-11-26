@@ -400,6 +400,7 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
         ├── code_checks.py      Their code checks, which lib/codeChecks.ts mirrors
         ├── code_check_cases.json, check_code_checks.py   The cases both are tested against
         ├── swag_tools.py       The Swag Assistant's stand-in tools for the evals, and their parity check
+        ├── check_judge_prompts.py   Fails if a judge prompt lacks {{message_history}}
         ├── datasets/           The four playground datasets, which the evals use too
         └── optimizations/      Recorded optimization runs the build replays
 ```
