@@ -435,8 +435,10 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
             if row is None:
                 raise RuntimeError("judge call for a row ci_eval.py can't find")
             view = judge_view or (lambda r, answer, **_: (r["input"], answer))
-            history, user_input = view(row, user_input, variables=variables, calls=tool_calls.get(id(row)))
-            variables = {**variables, "message_history": message_history(variables, history, user_input),
+            # Not history: that is the SDK's list of chat turns, passed on to
+            # the handler below, and a string there breaks every judge call.
+            judged, user_input = view(row, user_input, variables=variables, calls=tool_calls.get(id(row)))
+            variables = {**variables, "message_history": message_history(variables, judged, user_input),
                          "response_to_evaluate": user_input}
         elif tool_handlers:
             # The stand-ins answer as the row's shopper. Set here, in the
