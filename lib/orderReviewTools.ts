@@ -79,7 +79,8 @@ export function orderReviewTools(
           order_number: past.ref,
           placed_on: past.placedOn,
           items: past.lines.reduce((sum, line) => sum + line.quantity, 0),
-          shipped_to: past.destination,
+          // The same form as check-shipping-address gives this order's.
+          shipped_to: `${past.destination} ${past.destinationZip}`,
           status: past.status,
         })),
       };
