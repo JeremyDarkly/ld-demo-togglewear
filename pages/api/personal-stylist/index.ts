@@ -11,6 +11,7 @@ import {
   judge,
   rememberReply,
   runTrackDataOf,
+  shopperLine,
   storeHandlers,
   textOf,
 } from "@/lib/aiServer";
@@ -272,9 +273,11 @@ async function handler(
     remember(cacheKey, note);
     res.status(200).json({ note });
 
-    // The judges read what the note was written from in the same "data:"
-    // form the chat's tool results take, so one rubric serves both.
+    // The judges read what the note was written from, the shopper first, in
+    // the same "data:" form the chat's tool results take, so one rubric
+    // serves both.
     const input = [
+      shopperLine(variables),
       `request: The stylist note for ${product.name}`,
       `data: product ${productFacts}`,
       `data: orders ${orders}`,

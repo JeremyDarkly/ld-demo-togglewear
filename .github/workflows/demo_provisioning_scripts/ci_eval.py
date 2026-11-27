@@ -301,12 +301,21 @@ def _order_decision_view(row, answer, **_):
     return f"{row['input']}\n\nRisk points the specialists' tools found: {points}.", answer
 
 
+def shopper_line(variables):
+    # The store's shopperLine in lib/aiServer.ts: who the prompt was told the
+    # shopper is, so a reply that rightly names their tier is not scored as
+    # having invented it.
+    shopper = {"name": variables["shopper_name"], "loyalty_tier": variables["loyalty_tier"]}
+    return "data: shopper " + json.dumps(shopper, separators=(",", ":"), ensure_ascii=False)
+
+
 def _stylist_view(row, answer, **_):
-    # pages/api/personal-stylist/index.ts gives the judges the facts in the
-    # chat's "data:" form, and the reply as the page shows it.
+    # pages/api/personal-stylist/index.ts gives the judges the shopper and the
+    # facts in the chat's "data:" form, and the reply as the page shows it.
     v = row["variables"]
     product = json.loads(v["product_facts"])
-    history = "\n".join([f"request: The stylist note for {product['name']}",
+    history = "\n".join([shopper_line(v),
+                         f"request: The stylist note for {product['name']}",
                          f"data: product {v['product_facts']}",
                          f"data: orders {v['order_history']}",
                          f"data: catalog {v['catalog']}"])
@@ -348,14 +357,16 @@ def tool_lines(message_history, calls=None):
 
 
 def _swag_view(row, answer, variables=None, calls=None):
-    # pages/api/swag-assistant/index.ts: the conversation, then each tool call
-    # and what it returned, as "tool:" lines. A row with tool_results has
-    # them already; with stand-in tools they come from the SDK's trajectory.
+    # pages/api/swag-assistant/index.ts: the shopper, the conversation, then
+    # each tool call and what it returned, as "tool:" lines. A row with
+    # tool_results has them already; with stand-in tools they come from the
+    # SDK's trajectory.
     if "tool_results" in row["variables"]:
         tools = row["variables"]["tool_results"]
     else:
         tools = tool_lines((variables or {}).get("message_history", ""), calls)
-    return "\n".join([f"user: {row['input']}"] + ([tools] if tools else [])), answer
+    return "\n".join([shopper_line(row["variables"]), f"user: {row['input']}"]
+                     + ([tools] if tools else [])), answer
 
 
 JUDGE_VIEWS = {
