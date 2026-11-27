@@ -2,7 +2,10 @@
 // against, then runs the Order Review graph and the Personal Stylist's check
 // on a scripted model and a stubbed LaunchDarkly client, and checks the
 // code-check-* events they send with the response-code-checks flag off and
-// on. No LaunchDarkly or AWS credentials needed:
+// on. The graph runs through the AI SDK itself, which is handed the stub
+// client with initClient, so it never starts one of its own; the stub serves
+// the graph, its agents and the judge as flag values. No LaunchDarkly or AWS
+// credentials needed:
 //
 //   node --no-warnings --import ./scripts/code-checks-register.mjs scripts/check-code-checks.mjs
 import assert from "node:assert/strict";
@@ -10,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { INVALID_SPAN_CONTEXT, trace } from "@opentelemetry/api";
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
 
+const { initClient } = await import("@launchdarkly/ai-node");
 const codeChecks = await import("../lib/codeChecks.ts");
 const { runGraph } = await import("../pages/api/order-review/index.ts");
 const { checkReply } = await import("../pages/api/personal-stylist/index.ts");
@@ -43,16 +47,11 @@ console.log(`cases: all ${cases.length} match code_check_cases.json`);
 const context = { kind: "user", key: "guest", anonymous: true };
 const span = trace.wrapSpanContext(INVALID_SPAN_CONTEXT);
 const trackDataOf = (key) => ({ variationKey: "standard", configKey: key, version: 1, modelName: "scripted" });
-const trackerFor = (key) => ({
-  getTrackData: () => trackDataOf(key),
-  trackMetricsOf: async (_metrics, fn) => fn(),
-  trackJudgeResult: () => {},
-  resumptionToken: "token",
-});
-const nothing = new Proxy({}, { get: () => () => {} });
 
+const GRAPH = "order-review";
 const TOOLS = { "payment-risk-agent": "check-payment-risk", "shipping-check-agent": "check-shipping-address" };
 const POLICY_JUDGE = "togglewear-decision-policy-judge";
+const POLICY_METRIC = "$ld:ai:judge:decision-policy";
 const CHILDREN = {
   "order-intake-agent": ["payment-risk-agent", "shipping-check-agent", "account-history-agent"],
   "payment-risk-agent": ["fraud-decision-agent"],
@@ -81,44 +80,61 @@ function scripted({ decision, note }) {
   globalThis.scriptedModel = model;
 }
 
-function aiClient(judged) {
-  const node = (key) => ({
-    getKey: () => key,
-    getConfig: () => ({
-      model: {
-        name: "scripted",
-        parameters: { tools: TOOLS[key] ? [{ type: "function", name: TOOLS[key], parameters: { type: "object", properties: {} } }] : [] },
-      },
+// The flag values LaunchDarkly would serve: the graph's topology, each
+// agent's config, with the policy judge on the Order Decision agent at
+// samplingRate, and the judge's own config.
+function flagValue(key, samplingRate) {
+  if (key === GRAPH) {
+    return {
+      _ldMeta: { enabled: true, variationKey: "graph", version: 1 },
+      root: "order-intake-agent",
+      edges: Object.fromEntries(Object.entries(CHILDREN).map(([from, to]) => [from, to.map((k) => ({ key: k }))])),
+    };
+  }
+  if (key === POLICY_JUDGE) {
+    return {
+      _ldMeta: { enabled: true, variationKey: "judge", version: 1, mode: "judge" },
+      model: { name: "scripted-judge" },
+      provider: { name: "bedrock" },
+      messages: [{ role: "system", content: "Score the decision." }],
+      evaluationMetricKey: POLICY_METRIC,
+    };
+  }
+  if (key in CHILDREN) {
+    const tool = TOOLS[key];
+    return {
+      _ldMeta: { enabled: true, variationKey: "standard", version: 1, mode: "agent" },
+      model: { name: "scripted" },
+      provider: { name: "bedrock" },
       instructions: key,
-      judgeConfiguration: key === "fraud-decision-agent" ? { judges: [{ key: POLICY_JUDGE, samplingRate: 1 }] } : undefined,
-      createTracker: () => trackerFor(key),
-    }),
-  });
-  const graph = {
-    enabled: true,
-    createTracker: () => nothing,
-    getNode: node,
-    rootNode: () => node("order-intake-agent"),
-    getChildNodes: (key) => CHILDREN[key].map(node),
-  };
-  return {
-    agentGraph: async () => graph,
-    createJudge: async (key) => ({
-      evaluate: async () => ({ judgeConfigKey: key, ...judged }),
-      getAIConfig: () => ({ createTracker: () => trackerFor(key) }),
-    }),
-  };
+      ...(tool && { tools: { [tool]: { type: "function", name: tool, parameters: { type: "object", properties: {} } } } }),
+      ...(key === "fraud-decision-agent" && { judgeConfiguration: { judges: [{ key: POLICY_JUDGE, samplingRate }] } }),
+    };
+  }
+  return undefined;
 }
 
-// A client that serves the flag as flag (a function to throw), and records
-// what is sent.
-function stubClient(flag, { trackThrows = false } = {}) {
+// The one client the AI SDK keeps, passing everything to whichever stub
+// client the case set up.
+await initClient({
+  variation: (...args) => globalThis.stubClient.variation(...args),
+  track: (...args) => globalThis.stubClient.track(...args),
+  flush: async () => {},
+  close: () => {},
+});
+
+// A client that serves the flag as flag (a function to throw) and the
+// graph's configs, and records what is sent. With trackThrows, the store's
+// own code-check events fail to send.
+function stubClient(flag, { trackThrows = false, samplingRate = 1 } = {}) {
   const sent = [];
   globalThis.stubClient = {
     variation: async (key, _ctx, fallback) =>
-      key === codeChecks.CODE_CHECKS_FLAG ? (typeof flag === "function" ? flag() : flag) : fallback,
+      key === codeChecks.CODE_CHECKS_FLAG
+        ? typeof flag === "function" ? flag() : flag
+        : flagValue(key, samplingRate) ?? fallback,
     track: (key, ctx, data, value) => {
-      if (trackThrows) throw new Error("send failed");
+      if (trackThrows && key.startsWith("code-check-")) throw new Error("send failed");
       sent.push({ key, ctx, data, value });
     },
   };
@@ -136,16 +152,20 @@ const order = (zip, total) => ({
 const GOOD_NOTE =
   "Order TW-1 was held for review at 45 points. The total is over $800 (45 points). The shopper is a guest. Please check it.";
 
-async function review({ flag, decision, note = GOOD_NOTE, judged = { sampled: true, success: true, score: 0.9 }, zip = "94607", total = 900, trackThrows }) {
-  const sent = stubClient(flag, { trackThrows });
+const PASSES = JSON.stringify({ score: 0.9, reasoning: "The decision follows from the points." });
+
+// judged is the judge's reply, or an Error for a judge model that fails.
+async function review({ flag, decision, note = GOOD_NOTE, judged = PASSES, samplingRate, zip = "94607", total = 900, trackThrows }) {
+  const sent = stubClient(flag, { trackThrows, samplingRate });
   scripted({ decision, note });
+  globalThis.judgeReply = judged;
   let assessment;
-  const ran = await runGraph(aiClient(judged), context, order(zip, total), () => {}, (a) => (assessment = a), span, (err) => {
-    throw err;
-  });
+  const errors = [];
+  const ran = await runGraph(context, order(zip, total), () => {}, (a) => (assessment = a), span, (err) => errors.push(err));
   assert.equal(ran, true);
   // The judges run without anything waiting on them.
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const all = [...sent];
   const checks = sent.filter((s) => s.key.startsWith("code-check-"));
   for (const s of checks) {
     assert.equal(s.ctx, context);
@@ -155,7 +175,7 @@ async function review({ flag, decision, note = GOOD_NOTE, judged = { sampled: tr
   // Sorted, since the judge's disagreement lands whenever the judge answers.
   const byKey = (a, b) => `${a.key} ${a.data.configKey}`.localeCompare(`${b.key} ${b.data.configKey}`);
   checks.sort(byKey);
-  return { assessment, events: checks.map((s) => [s.key, s.data.configKey, s.value]), sent: checks };
+  return { assessment, events: checks.map((s) => [s.key, s.data.configKey, s.value]), sent: checks, all, errors };
 }
 
 const held = { decision: "review", score: 45, summary: "Your order is under review before it ships." };
@@ -195,7 +215,7 @@ const held = { decision: "review", score: 45, summary: "Your order is under revi
 // disagrees with the check. The weak check passes a summary that names the
 // wrong decision, and the note is checked against the final decision.
 {
-  const { assessment, events, sent } = await review({
+  const { assessment, events, sent, all } = await review({
     flag: true,
     zip: "99999",
     decision: held,
@@ -211,7 +231,12 @@ const held = { decision: "review", score: 45, summary: "Your order is under revi
     ["code-check-judge-disagreement", "fraud-decision-agent", 1],
   ]);
   assert.equal(sent[1].data.reason, "decision 'review' isn't 'decline'; score 45 isn't 100 points");
-  assert.deepEqual(sent[1].data, { ...trackDataOf("fraud-decision-agent"), reason: sent[1].data.reason });
+  // On the Order Decision agent's run, as the SDK recorded it.
+  const decided = all.find(
+    (s) => s.key === "$ld:ai:generation:success" && s.data.configKey === "fraud-decision-agent",
+  );
+  assert.deepEqual(sent[1].data, { ...decided.data, reason: sent[1].data.reason });
+  assert.equal(sent[1].data.graphKey, GRAPH);
   assert.equal(sent[0].data.reason, "doesn't say it was declined");
   console.log("order review, flag true: model's decision checked before the guard, judge disagreement 1");
 }
@@ -229,15 +254,71 @@ const held = { decision: "review", score: 45, summary: "Your order is under revi
   console.log("order review, flag true: weak check fails a right decision put another way");
 }
 
-// No disagreement when the judge was skipped or errored.
-for (const judged of [
-  { sampled: false, success: true, score: 0.9 },
-  { sampled: true, success: false, errorMessage: "model failed" },
+// No disagreement when the judge was not sampled, its model failed, or its
+// reply did not parse. Only the last sends judge-parse-error 1; a judge that
+// did not run, or threw, had no reply to parse.
+for (const [label, options, parseError] of [
+  ["not sampled", { samplingRate: 0 }, []],
+  ["model failed", { judged: new Error("model failed") }, []],
+  ["reply did not parse", { judged: "Looks fine to me." }, [1]],
 ]) {
-  const { events } = await review({ flag: true, decision: held, judged });
-  assert.ok(!events.some(([key]) => key === "code-check-judge-disagreement"), JSON.stringify(judged));
+  const { events, all, errors } = await review({ flag: true, decision: held, ...options });
+  assert.ok(!events.some(([key]) => key === "code-check-judge-disagreement"), label);
+  assert.ok(!all.some((s) => s.key === POLICY_METRIC), label);
+  assert.deepEqual(all.filter((s) => s.key === "judge-parse-error").map((s) => s.value), parseError, label);
+  assert.equal(errors.length, label === "model failed" ? 1 : 0, label);
 }
-console.log("order review, flag true: no judge disagreement when the judge was skipped or errored");
+console.log("order review, flag true: no judge disagreement when the judge was not sampled, failed or did not parse");
+
+// The events a held order's review sends, by who sends them: the SDK's for
+// each agent's run and each handoff into a node run with from, and the
+// store's for the graph, the specialists' handoffs to the decision, the
+// judge's score and whether it parsed.
+{
+  const { all } = await review({ flag: false, decision: held });
+  const count = (key, configKey) =>
+    all.filter((s) => s.key === key && (configKey === undefined || s.data.configKey === configKey)).length;
+  const agents = Object.keys(CHILDREN);
+  for (const agent of agents) {
+    assert.equal(count("$ld:ai:generation:success", agent), 1, agent);
+    assert.equal(count("$ld:ai:duration:total", agent), 1, agent);
+  }
+  assert.equal(count("$ld:ai:generation:error"), 0);
+  assert.equal(count("$ld:ai:tool_call"), 2);
+  assert.deepEqual(
+    all.filter((s) => s.key === "$ld:ai:graph:node").map((s) => [s.data.nodeKey, s.data.index]),
+    [
+      ["order-intake-agent", 0],
+      ["payment-risk-agent", 1],
+      ["shipping-check-agent", 2],
+      ["account-history-agent", 3],
+      ["fraud-decision-agent", 4],
+      ["case-note-agent", 5],
+    ],
+  );
+  assert.deepEqual(
+    all.filter((s) => s.key === "$ld:ai:graph:handoff_success").map((s) => `${s.data.sourceKey} > ${s.data.targetKey}`).sort(),
+    [
+      "account-history-agent > fraud-decision-agent",
+      "fraud-decision-agent > case-note-agent",
+      "order-intake-agent > account-history-agent",
+      "order-intake-agent > payment-risk-agent",
+      "order-intake-agent > shipping-check-agent",
+      "payment-risk-agent > fraud-decision-agent",
+      "shipping-check-agent > fraud-decision-agent",
+    ],
+  );
+  assert.equal(count("$ld:ai:graph:invocation_success"), 1);
+  assert.equal(count("$ld:ai:graph:duration:total"), 1);
+  assert.equal(count("$ld:ai:graph:invocation_failure"), 0);
+  const score = all.find((s) => s.key === POLICY_METRIC);
+  assert.equal(score.value, 0.9);
+  assert.equal(score.data.configKey, "fraud-decision-agent");
+  assert.equal(score.data.judgeConfigKey, POLICY_JUDGE);
+  assert.equal(count("$ld:ai:generation:success", POLICY_JUDGE), 1);
+  assert.deepEqual(all.filter((s) => s.key === "judge-parse-error").map((s) => [s.data.configKey, s.value]), [[POLICY_JUDGE, 0]]);
+  console.log("order review: every agent's run, the graph's events, the handoffs and the judge's score are sent");
+}
 
 // A send that throws leaves the review as it was.
 {

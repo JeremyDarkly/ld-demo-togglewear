@@ -1267,6 +1267,15 @@ _PERSONAL_STYLIST_MESSAGES = [
 # policy is checked against the same policy the assistant was given. One pair
 # of judges scores both AI features, so the Swag Assistant and the Personal
 # Stylist are held to the same rubric.
+#
+# The 1.0 AI SDK hands a judge what it scores only through
+# {{message_history}}: the input, any tool calls, the response and the JSON
+# format it wants the answer in, in that order. A judge's user message is the
+# bare response. So every judge prompt ends with _JUDGE_HISTORY and asks for
+# no format of its own; one without the placeholder never sees the
+# conversation, answers in prose, and scores nothing.
+_JUDGE_HISTORY = "\n\nThe message history, ending with the response to score:\n\n{{message_history}}"
+
 _JUDGE_OPENING = (
     "You evaluate replies from ToggleWear's AI features in LaunchDarkly's merch store: the "
     "Swag Assistant, a shopping chat; the Personal Stylist, which picks a size and one "
@@ -1276,7 +1285,8 @@ _JUDGE_OPENING = (
     "left. The message history shows what the reply was written from: for the chat, the "
     "conversation and, on lines starting \"tool:\", the catalog and account data its tools "
     "returned; for a stylist note or a cart reminder, the request and, on lines starting "
-    "\"data:\", the product, order, cart or offer data it was given.\n\n"
+    "\"data:\", the product, order, cart or offer data it was given. The response, the reply "
+    "you score, follows it.\n\n"
 )
 
 # Shared by all four Cart Recovery variations, so the experiment's arms
@@ -1298,8 +1308,8 @@ _ORDER_JUDGE_OPENING = (
     "every order placed in LaunchDarkly's merch store before it is charged. The message "
     "history is what the Order Decision agent was handed: the case summary, and the findings "
     "of the payment risk, shipping and account history specialists with any risk points they "
-    "found. The response is the decision it recorded, the total points it gave, and the "
-    "summary the shopper sees at checkout.\n\n"
+    "found, and the total of those points. The response, which follows it, is the decision it "
+    "recorded, the total points it gave, and the summary the shopper sees at checkout.\n\n"
 )
 
 # Each judge's rubric, shared with its Llama companion in AI_CONFIGS so the
@@ -1314,7 +1324,8 @@ _ACCURACY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
       "0.4: one fact is wrong, such as a price, size or discount.\n"
       "0.0: it invents products or perks, or gets several facts wrong.\n\n"
       "A reply that states no facts, such as a polite refusal of an off-topic "
-      "question, scores 1.0. Explain your score in one or two sentences.")}]
+      "question, scores 1.0. Explain your score in one or two sentences."
+    + _JUDGE_HISTORY)}]
 _RELEVANCE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
     _JUDGE_OPENING
     + "Score how directly the response answers the shopper's latest message, given "
@@ -1326,13 +1337,14 @@ _RELEVANCE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
       "0.4: only partly answers it, or answers a different question.\n"
       "0.0: ignores the question.\n\n"
       "Declining a question that has nothing to do with shopping at ToggleWear counts "
-      "as relevant. Explain your score in one or two sentences.")}]
+      "as relevant. Explain your score in one or two sentences."
+    + _JUDGE_HISTORY)}]
 _DECISION_POLICY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
     _ORDER_JUDGE_OPENING
     + "Score whether the decision in the response is the one the risk points call "
       "for. Work it out in this order before scoring:\n"
-      "1. Take the order's total risk points from the last line of the message "
-      "history, which the specialists' tools found.\n"
+      "1. Take the order's total risk points from the line in the message history "
+      "that starts \"Risk points the specialists' tools found\".\n"
       "2. Find the decision those points call for: 70 points or more is \"decline\", "
       "40 or more is \"review\", under 40 is \"approve\". Nothing else about the order "
       "changes it.\n"
@@ -1344,7 +1356,8 @@ _DECISION_POLICY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
       "0.0: the decision field is not the decision the points call for, whatever its "
       "score or summary says.\n\n"
       "In your explanation, give the total, the decision it calls for and the decision "
-      "in the response, in one or two sentences.")}]
+      "in the response, in one or two sentences."
+    + _JUDGE_HISTORY)}]
 _SHOPPER_MESSAGE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
     _ORDER_JUDGE_OPENING
     + "Score only the summary, the message the shopper sees at checkout. It should "
@@ -1358,7 +1371,8 @@ _SHOPPER_MESSAGE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
       "declined order was not charged.\n"
       "0.0: it contradicts the decision, or would mislead the shopper about their "
       "order.\n\n"
-      "Explain your score in one or two sentences.")}]
+      "Explain your score in one or two sentences."
+    + _JUDGE_HISTORY)}]
 
 # The models, all on Bedrock, through the US cross-region inference profiles
 # (the us. prefix) that Bedrock requires for them. Each is LaunchDarkly's own
@@ -1509,8 +1523,8 @@ AI_CONFIGS = [
     # Stylist note from 0 to 1. Ours rather than LaunchDarkly's built-in
     # judges so they run on Bedrock like the features do, and know
     # ToggleWear's policies. The AI SDK
-    # hands each one the conversation and the reply, asks for a score and a
-    # reason, and records the score on the variation that wrote the reply;
+    # hands each one the conversation and the reply in {{message_history}}
+    # (see _JUDGE_HISTORY), asks for a score and a reason, and records the score on the variation that wrote the reply;
     # the metric keys are LaunchDarkly's own judge metrics, which is what puts
     # the scores on the Monitoring tab.
     {'config': {'config_key': 'togglewear-accuracy-judge',
@@ -1605,7 +1619,8 @@ AI_CONFIGS = [
               "reasonable set of calls can still score 1.0.\n"
               "{{ground_truth_context}}\n\n"
               "Explain your score in one or two sentences, citing the calls, their arguments and "
-              "results.")}]}],
+              "results."
+              + _JUDGE_HISTORY)}]}],
      'environment': 'production',
      'fallthrough': 'ci-tool-use-judge'},
 

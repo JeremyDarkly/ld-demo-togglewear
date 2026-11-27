@@ -58,6 +58,7 @@ on:
       - .github/workflows/demo_provisioning_scripts/datasets/**
       - .github/workflows/demo_provisioning_scripts/ci_eval.py
       - .github/workflows/demo_provisioning_scripts/swag_tools.py
+      - .github/workflows/demo_provisioning_scripts/check_judge_prompts.py
       - .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
       - .github/workflows/evals.yml
       # What the Swag Assistant's stand-in tools run under and answer from
@@ -76,6 +77,7 @@ on:
       - .github/workflows/demo_provisioning_scripts/datasets/**
       - .github/workflows/demo_provisioning_scripts/ci_eval.py
       - .github/workflows/demo_provisioning_scripts/swag_tools.py
+      - .github/workflows/demo_provisioning_scripts/check_judge_prompts.py
       - .github/workflows/demo_provisioning_scripts/requirements-ci-eval.txt
       - .github/workflows/evals.yml
       # What the Swag Assistant's stand-in tools run under and answer from
@@ -152,6 +154,11 @@ jobs:
       # differently from the store's tools. No credentials needed.
       - name: Check the stand-in tools against the store's
         run: python "$SCRIPTS/swag_tools.py"
+
+      # Stops the run if a judge prompt lacks {{message_history}}, the only
+      # way the 1.0 AI SDK hands a judge what it scores. No credentials needed.
+      - name: Check every judge prompt has message_history
+        run: python "$SCRIPTS/check_judge_prompts.py"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6

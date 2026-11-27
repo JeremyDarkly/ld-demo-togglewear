@@ -895,29 +895,31 @@ ldClient.track('example-event-key');`,
         id: "ai-call",
         title: "Call a model",
         summary:
-          "The current AI SDKs fetch the config for the context, call the model it names and record tokens, duration and success. Register a handler for each provider you use, and the config decides which one runs.",
+          "The current AI SDKs fetch the config for the context, call the model it names and record tokens, duration and success. Hand the SDK the server client you already have, register a handler for the providers you use, and the config decides which one runs.",
         docs: `${DOCS}/sdk/ai/node-js`,
         status: "Open beta",
+        inToggleWear: "lib/aiServer.ts (getAiClient and the judges' handler)",
         snippets: [
           {
             lang: "node",
-            code: `// npm install @launchdarkly/ai-node @launchdarkly/ai-openai-messages
-import { config, shutdown } from '@launchdarkly/ai-server';
-import { createOpenAIHandler } from '@launchdarkly/ai-openai-messages';
-import { createClaudeMessagesHandler } from '@launchdarkly/ai-claude-messages';
+            code: `// npm install @launchdarkly/ai-node @launchdarkly/ai-langchain-messages
+import { initClient, config } from '@launchdarkly/ai-node';
+import { createLangChainMessagesHandler } from '@launchdarkly/ai-langchain-messages';
+
+// Once, with the app's own server SDK client. The SDK shares it, so
+// never call its shutdown(): that would close the client the flags use.
+await initClient(ldClient);
 
 const result = await config({
   key: 'my-ai-config-flag',
-  handler: [createOpenAIHandler(), createClaudeMessagesHandler()],
+  handler: createLangChainMessagesHandler(),
 }).invoke(
   'What is feature flagging?',
   { kind: 'user', key: 'user-123' },
-  { user_name: 'Ada' }, // fills {{user_name}} in the config's messages
+  { user_name: 'Ada' }, // fills {{user_name}}; {{ldContext.key}} is the context's key
 );
 
-console.log(result.response);
-
-await shutdown();`,
+console.log(result.response);`,
           },
           {
             lang: "python",
@@ -945,23 +947,37 @@ await shutdown()`,
         id: "ai-graph",
         title: "Run an agent graph",
         summary:
-          "An agent graph is a set of agent configs and the handoffs between them, edited in LaunchDarkly. The SDK walks it, calling each agent's model and tools, and reports the path and totals.",
+          "An agent graph is a set of agent configs and the handoffs between them, edited in LaunchDarkly. graph().invoke() walks it for you. Or resolve it for the context and run each node in the order your code decides: the SDK records each node's run and each handoff, and the graph's totals and the path taken are events you send.",
         docs: `${DOCS}/sdk/ai/node-js`,
         status: "Open beta",
+        inToggleWear: "The order review agents (pages/api/order-review/index.ts)",
         snippets: [
           {
             lang: "node",
-            code: `import { graph, shutdown } from '@launchdarkly/ai-server';
-import { createClaudeAgentsHandler } from '@launchdarkly/ai-claude-agents';
+            code: `import { randomUUID } from 'crypto';
+import { resolveGraph, getClient } from '@launchdarkly/ai-node';
 
-const result = await graph('support-graph', {
-  handlers: [createClaudeAgentsHandler()],
-}).invoke('I was double charged', { kind: 'user', key: 'user-123' }, { account_tier: 'pro' });
+const graph = await resolveGraph('support-graph', { context, handlers });
+if (!graph.enabled || !graph.root) return fallback(ticket);
 
-console.log(result.response); // final output
-console.log(result.usage); // aggregate token counts
+// The graph-level events are yours to send, on the graph's own key
+const data = { runId: randomUUID(), configKey: graph.key, graphKey: graph.key };
+const track = (event, value, extra = {}) =>
+  getClient().track(event, context, { ...data, ...extra }, value);
 
-await shutdown();`,
+const started = Date.now();
+const intake = graph.root;
+track('$ld:ai:graph:node', 1, { nodeKey: intake.key, index: 0 });
+const triage = await graph.runNode(intake, ticket);
+
+// from: sends $ld:ai:graph:handoff_success, or handoff_failure if it throws
+const [next] = graph.getChildNodes(intake.key);
+track('$ld:ai:graph:node', 1, { nodeKey: next.key, index: 1 });
+const reply = await graph.runNode(next, triage.response, { from: intake });
+
+track('$ld:ai:graph:duration:total', Date.now() - started);
+track('$ld:ai:graph:total_tokens', triage.usage.total + reply.usage.total);
+track('$ld:ai:graph:invocation_success', 1); // or invocation_failure on a throw`,
           },
           {
             lang: "python",
@@ -985,105 +1001,66 @@ await shutdown()`,
         ],
       },
       {
-        id: "ai-legacy-completion",
-        title: "Get a config and call the model yourself",
+        id: "ai-own-loop",
+        title: "Call the model with your own code",
         summary:
-          "The legacy AI SDKs return the config (model, parameters, messages) and leave the model call to you, with a tracker to record its metrics. Still supported, in maintenance mode; the docs have a migration guide.",
-        docs: `${DOCS}/sdk/ai/node-js-legacy`,
-        status: "Legacy",
+          "When the app needs its own model loop, to force a first tool call, ask again or answer in a schema, wrap it in a handler. The SDK fetches the config, hands your function its model, messages and tools with the variables, and records what it returns. invoke() throws when the config is off, so check first if you want a fallback.",
+        docs: `${DOCS}/sdk/ai/node-js`,
+        status: "Open beta",
         inToggleWear: "Smart search, the swag assistant and the personal stylist (pages/api/smart-search.ts)",
         snippets: [
           {
             lang: "node",
-            code: `import { init } from '@launchdarkly/node-server-sdk';
-import { initAi } from '@launchdarkly/server-sdk-ai';
+            code: `import { config, createHandler, inspectConfig } from '@launchdarkly/ai-node';
 
-const ldClient = init('YOUR_SDK_KEY');
-await ldClient.waitForInitialization({ timeout: 10 });
-const aiClient = initAi(ldClient);
+// invoke() has no fallback argument, so check the config first
+const { enabled, meta } = await inspectConfig('example-config-key', context);
+if (!enabled) return fallbackAnswer(question);
 
-const aiConfig = await aiClient.completionConfig(
-  'example-config-key',
+const handler = createHandler(['*', 'messages'], async (config, input, toolHandlers, variables) => {
+  // config.model, config.messages and config.tools are the served variation's.
+  // Fill in the {{placeholders}} from variables, then run your own LangChain loop.
+  const { text, usage } = await runMyLoop(config, input, toolHandlers, variables);
+  return { output: text, usage: { input: usage.input, output: usage.output } };
+});
+
+const result = await config({ key: 'example-config-key', handler }).invoke(
+  question,
   context,
-  { enabled: false }, // fallback if LaunchDarkly can't be reached
   { exampleCustomVariable: 'exampleCustomValue' },
-);
-
-if (aiConfig.enabled) {
-  const tracker = aiConfig.createTracker();
-  // call aiConfig.model.name with aiConfig.messages, then record the metrics
-}`,
-          },
-          {
-            lang: "python",
-            code: `import ldclient
-from ldclient.config import Config
-from ldai import LDAIClient, AICompletionConfigDefault
-
-ldclient.set_config(Config("YOUR_SDK_KEY"))
-aiclient = LDAIClient(ldclient.get())
-
-config = aiclient.completion_config(
-    "example-config-key",
-    context,
-    AICompletionConfigDefault(enabled=False),
-    {"example_custom_variable": "example_custom_value"},
-)
-
-tracker = config.create_tracker()`,
+);`,
           },
         ],
       },
       {
-        id: "ai-legacy-metrics",
+        id: "ai-metrics",
         title: "Record AI metrics",
         summary:
-          "With the legacy SDKs, wrap the provider call in the tracker so duration, tokens and success are recorded against the config variation that was served. Those are the numbers on the config's Monitoring tab.",
+          "invoke() records duration, tokens and success or error against the variation that was served, and a tool call each time the model uses a tool from the config. Those are the numbers on the config's Monitoring tab. A handler that returns counts as a success, so throw when the answer can't be used. Feedback comes later: keep the run's track data on the server and send it with the rating.",
         docs: `${DOCS}/sdk/features/ai-metrics`,
-        status: "Legacy",
-        inToggleWear: "lib/llmTrace.ts and pages/api/swag-assistant/index.ts",
+        status: "Open beta",
+        inToggleWear: "lib/aiServer.ts and pages/api/swag-assistant/feedback.ts",
         snippets: [
           {
             lang: "node",
-            code: `import { LDFeedbackKind } from '@launchdarkly/server-sdk-ai';
-import {
-  convertMessagesToLangChain,
-  createLangChainModel,
-  getAIMetricsFromResponse,
-} from '@launchdarkly/server-sdk-ai-langchain';
-import { HumanMessage } from '@langchain/core/messages';
+            code: `import { config, createHandler, getClient } from '@launchdarkly/ai-node';
 
-const llm = await createLangChainModel(aiConfig);
-const messages = [
-  ...convertMessagesToLangChain(aiConfig.messages ?? []),
-  new HumanMessage('What is the capital of France?'),
-];
+const handler = createHandler(['*', 'messages'], async (config, input, toolHandlers) => {
+  const answer = await runMyLoop(config, input, toolHandlers);
+  // Returning records generation:success, throwing records generation:error
+  if (!answer.text) throw new Error('The model returned an empty reply');
+  return { output: answer.text, usage: { input: answer.input, output: answer.output } };
+});
 
-const tracker = aiConfig.createTracker();
-const response = await tracker.trackMetricsOf(
-  getAIMetricsFromResponse,
-  () => llm.invoke(messages),
-);
+// Each call to a tool in config.tools sends $ld:ai:tool_call
+const result = await config({ key: 'example-config-key', handler, toolHandlers: tools })
+  .invoke(question, context);
 
-// Later, when the shopper rates the reply
-tracker.trackFeedback({ kind: LDFeedbackKind.Positive });`,
-          },
-          {
-            lang: "python",
-            code: `from ldai_openai import get_ai_metrics_from_response
+// Keep the run's track data on the server, by reply id
+replies.set(replyId, result.trackData);
 
-tracker = config.create_tracker()
-
-completion = tracker.track_metrics_of(
-    get_ai_metrics_from_response,
-    lambda: openai_client.chat.completions.create(
-        model=config.model.name,
-        messages=[message.to_dict() for message in config.messages or []],
-    ),
-)
-
-# Later, when the user rates the reply
-tracker.track_feedback({"kind": FeedbackKind.Positive})`,
+// Later, when the shopper rates the reply (or :negative)
+getClient().track('$ld:ai:feedback:user:positive', context, replies.get(replyId), 1);`,
           },
         ],
       },
@@ -1091,34 +1068,31 @@ tracker.track_feedback({"kind": FeedbackKind.Positive})`,
         id: "ai-judges",
         title: "Judges",
         summary:
-          "A judge is a config whose model scores another model's reply, for accuracy, relevance or toxicity. Attach judges to a config variation in LaunchDarkly, or call one from code to score any input and output pair.",
+          "A judge is a config whose model scores another model's reply, for accuracy, relevance or toxicity. Attach judges to a config variation in LaunchDarkly. invoke() runs them before it returns; with skipJudges it hands them back as tasks instead, to run after the reply has gone out, sending each score yourself.",
         docs: `${DOCS}/home/agentcontrol/judges`,
-        status: "Legacy",
+        status: "Open beta",
         inToggleWear: "lib/aiServer.ts (judge), the JUDGE lines in the Live tab",
         snippets: [
           {
             lang: "node",
-            code: `// Judges attached to the variation that was served
-for (const { key, samplingRate } of aiConfig.judgeConfiguration?.judges ?? []) {
-  const judge = await aiClient.createJudge(key, context, undefined, undefined, 'langchain', samplingRate);
-  const result = await judge?.evaluate(userInput, reply);
-  if (result?.sampled) tracker.trackJudgeResult(result);
+            code: `import { config, getClient, runJudge } from '@launchdarkly/ai-node';
+import { createLangChainMessagesHandler } from '@launchdarkly/ai-langchain-messages';
+
+const result = await config({ key, handler, toolHandlers: tools, skipJudges: true })
+  .invoke(input, context, variables);
+res.json({ text: result.response }); // the shopper doesn't wait for the judges
+
+// The judges attached to the variation that answered, already sampled
+for (const task of result.judgeTasks ?? []) {
+  // null when the judge's reply doesn't parse, throws when its model call fails
+  runJudge(task, [createLangChainMessagesHandler()])
+    .then((r) => {
+      if (r && task.evaluationMetricKey) {
+        getClient().track(task.evaluationMetricKey, context, r.trackData, r.score);
+      }
+    })
+    .catch((err) => console.warn('The judge could not score the reply', err));
 }`,
-          },
-          {
-            lang: "python",
-            code: `from ldai import AIJudgeConfigDefault
-
-judge = aiclient.create_judge(
-    "your-judge-key",
-    context,
-    AIJudgeConfigDefault(enabled=False),
-)
-
-if judge:
-    result = await judge.evaluate(input_text, output_text)
-    if result.sampled and result.success:
-        print(result.score, result.reasoning)`,
           },
         ],
       },

@@ -1,18 +1,12 @@
 import { randomUUID } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { LDObserve } from "@launchdarkly/observability-node";
-import type {
-  LDAICompletionConfig,
-  LDAIConfigTracker,
-  LDAIMetrics,
-  LDTokenUsage,
-} from "@launchdarkly/server-sdk-ai";
 import {
-  buildStructuredTools,
-  convertMessagesToLangChain,
-  createLangChainModel,
-  getAIUsageFromResponse,
-} from "@launchdarkly/server-sdk-ai-langchain";
+  config as aiConfig,
+  inspectConfig,
+  type AiConfigRep,
+  type TokenUsage,
+} from "@launchdarkly/ai-node";
 import {
   AIMessage,
   HumanMessage,
@@ -20,8 +14,27 @@ import {
   type BaseMessage,
 } from "@langchain/core/messages";
 import { activityGroup } from "@/lib/activity";
-import { addUsage, getAiClient, judge, rememberReply, textOf } from "@/lib/aiServer";
+import {
+  UnusableAnswer,
+  addUsage,
+  getAiClient,
+  judge,
+  rememberReply,
+  runTrackDataOf,
+  storeHandlers,
+  textOf,
+  toolFunctions,
+} from "@/lib/aiServer";
 import { guard, LIMITS } from "@/lib/apiGuard";
+import {
+  langChainModel,
+  renderedMessages,
+  structuredTools,
+  toLangChain,
+  toolDefinitions,
+  usageOf,
+  type ToolFunctions,
+} from "@/lib/langchainModel";
 import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { startAgentRun, type AgentRun } from "@/lib/llmTrace";
 import { productBySlug } from "@/lib/products";
@@ -54,12 +67,12 @@ import {
 // judge's score, and the thumbs in pages/api/swag-assistant/feedback.ts —
 // land on whichever variation answered.
 //
-// The model runs through LaunchDarkly's LangChain provider, which builds a
-// Bedrock model from the variation. The tool loop is ours: the AI SDK's own
-// managed model only runs tools for agent-mode configs, and this is a
-// completion-mode one. Everything it records goes through the same tracker
-// the managed model would use, so the Monitoring tab cannot tell the
-// difference.
+// The AI SDK runs the reply through a handler of the store's own and records
+// the run itself: duration, success or error, tokens and each tool call. The
+// tool loop inside it is ours rather than the SDK's LangChain handler,
+// because that one cannot ask the model again when it quotes a price no tool
+// gave it. The SDK counts a reply as a success whenever the handler returns,
+// so the handler throws on an empty reply to have it recorded as an error.
 //
 // With the config off, or LaunchDarkly unreachable, the scripted replies in
 // lib/swagAssistant.ts answer instead.
@@ -113,7 +126,7 @@ function toHistory(turns: Turn[]): BaseMessage[] {
 
 type Conversation = {
   content: string;
-  metrics: LDAIMetrics;
+  metrics: { success: boolean; tokens: TokenUsage; toolCalls: string[] };
   // Each tool call and what it returned, for the judges: an accuracy score
   // means little unless the judge can see the catalogue facts the reply was
   // supposed to repeat.
@@ -122,26 +135,25 @@ type Conversation = {
   lookedUp: boolean;
 };
 
+// config's messages are already filled in. functions are what the tools
+// run, which in the route are the SDK's, so it counts each call.
 export async function converse(
-  config: LDAICompletionConfig,
+  config: Pick<AiConfigRep, "model" | "provider" | "tools" | "messages">,
   history: BaseMessage[],
   question: string,
   tools: SwagAssistantTools,
   agentRun: AgentRun,
   reportToolCall: ReportToolCall,
+  functions: ToolFunctions = tools.registry,
 ): Promise<Conversation> {
-  const llm = await createLangChainModel(config);
-  const definitions = (config.model?.parameters?.tools as unknown[]) ?? [];
-  const lcTools = buildStructuredTools(definitions, tools.registry);
+  const llm = await langChainModel(config as AiConfigRep);
+  const lcTools = structuredTools(toolDefinitions(config as AiConfigRep), functions);
   const toolsByName = new Map(lcTools.map((t) => [t.name, t]));
   const model =
     lcTools.length && llm.bindTools ? llm.bindTools(lcTools) : llm;
 
-  const messages: BaseMessage[] = [
-    ...convertMessagesToLangChain(config.messages ?? []),
-    ...history,
-  ];
-  const tokens: LDTokenUsage = { total: 0, input: 0, output: 0 };
+  const messages: BaseMessage[] = [...toLangChain(config.messages ?? []), ...history];
+  const tokens: TokenUsage = { total: 0, input: 0, output: 0 };
   const toolCalls: string[] = [];
   const toolTranscript: string[] = [];
   let lookedUp = false;
@@ -156,10 +168,10 @@ export async function converse(
       shown,
       async () => {
         const response = (await model.invoke(messages)) as AIMessage;
-        return { response, usage: getAIUsageFromResponse(response) };
+        return { response, usage: usageOf(response) };
       },
     );
-    addUsage(tokens, getAIUsageFromResponse(response));
+    addUsage(tokens, usageOf(response));
     messages.push(response);
 
     const calls = response.tool_calls ?? [];
@@ -205,11 +217,6 @@ export async function converse(
       }
     }
   }
-}
-
-function servedBy(tracker: LDAIConfigTracker) {
-  const { variationKey, modelName } = tracker.getTrackData();
-  return servedByFor(variationKey, modelName);
 }
 
 // Cards for the products the reply names, in the order it names them, and
@@ -306,33 +313,32 @@ async function handler(
     const context = contextFromRequest(req.headers);
     const person = shopperById(typeof context.key === "string" ? context.key : "");
 
-    // Filled into the prompt's {{shopper_name}} and {{loyalty_tier}}. Sent
-    // as variables rather than read off the context in the prompt, so a
-    // guest reads as "a guest" instead of as an empty name.
-    const config = await aiClient.completionConfig(
-      CONFIG_KEY,
-      context,
-      { enabled: false },
-      {
-        shopper_name: isGuest(person) ? "a guest who has not signed in" : person.name,
-        loyalty_tier: TIER_LABELS[person.tier],
-      },
-    );
-
-    if (!config.enabled) {
+    // Whether the config is on, and which variation and model this shopper
+    // gets, before anything runs: invoke() throws for a config that is off
+    // rather than handing back a fallback.
+    const inspected = await inspectConfig(CONFIG_KEY, context);
+    if (!inspected.enabled || !inspected.config) {
       span.setAttribute("ai.config.enabled", false);
       res.status(200).json(replyTo(question.text));
       return;
     }
 
-    const tracker = config.createTracker();
+    // Filled into the prompt's {{shopper_name}} and {{loyalty_tier}}. Sent
+    // as variables rather than read off the context in the prompt, so a
+    // guest reads as "a guest" instead of as an empty name.
+    const variables = {
+      shopper_name: isGuest(person) ? "a guest who has not signed in" : person.name,
+      loyalty_tier: TIER_LABELS[person.tier],
+    };
+    const variationKey = inspected.meta?.variationKey ?? "";
+    const modelName = inspected.config.model.name;
     const tools = swagAssistantTools(context);
-    const reportToolCall = toolCallReporter(await getServerClient(), context, tracker.getTrackData());
-    const served = servedBy(tracker);
+    const client = await getServerClient();
+    const served = servedByFor(variationKey, modelName);
     const attributes = {
       "ai.config.key": CONFIG_KEY,
-      "ai.config.variation": tracker.getTrackData().variationKey,
-      "ai.model": tracker.getTrackData().modelName,
+      "ai.config.variation": variationKey,
+      "ai.model": modelName,
     };
     span.setAttributes(attributes);
 
@@ -340,22 +346,50 @@ async function handler(
       span,
       conversationIdFrom(req.body?.conversationId),
       "Swag Assistant",
-      (config.messages ?? []).filter((m) => m.role === "system").map((m) => m.content).join("\n\n"),
+      renderedMessages(inspected.config, { ...variables, ldContext: context })
+        .filter((m) => m.role === "system")
+        .map((m) => m.content)
+        .join("\n\n"),
       question.text,
     );
 
-    let result: Conversation;
-    try {
-      result = await tracker.trackMetricsOf(
-        (r: Conversation) => r.metrics,
-        () => converse(config, toHistory(turns), question.text, tools, agentRun, reportToolCall),
+    let conversation: Conversation | undefined;
+    const handler = storeHandlers(async (config, _input, toolHandlers = {}, vars) => {
+      const trackData = runTrackDataOf(vars);
+      conversation = await converse(
+        { ...config, messages: renderedMessages(config, vars) },
+        toHistory(turns),
+        question.text,
+        tools,
+        agentRun,
+        toolCallReporter(client, context, trackData),
+        toolFunctions(toolHandlers, tools.registry, context, trackData),
       );
+      if (!conversation.metrics.success) {
+        throw new UnusableAnswer(
+          "The swag assistant returned an empty reply",
+          conversation.content,
+          conversation.metrics.tokens,
+        );
+      }
+      return { output: conversation.content, usage: conversation.metrics.tokens };
+    });
+
+    let ran: Awaited<ReturnType<ReturnType<typeof aiConfig>["invoke"]>>;
+    try {
+      ran = await aiConfig({ key: CONFIG_KEY, handler, toolHandlers: tools.registry, skipJudges: true })
+        .invoke(question.text, context, variables);
     } catch (err) {
       agentRun.fail(err);
-      LDObserve.recordError(err as Error, secureSessionId, requestId, attributes, { span });
+      if (err instanceof UnusableAnswer) {
+        LDObserve.recordLog("Swag assistant returned an empty reply", "warn", secureSessionId, requestId, attributes);
+      } else {
+        LDObserve.recordError(err as Error, secureSessionId, requestId, attributes, { span });
+      }
       res.status(502).json({ error: "The swag assistant could not answer" });
       return;
     }
+    const result = conversation!;
 
     span.setAttributes({
       "ai.tool_calls": result.metrics.toolCalls?.join(",") ?? "",
@@ -363,16 +397,10 @@ async function handler(
       "ai.looked_up_unsourced_price": result.lookedUp,
     });
 
-    if (!result.metrics.success) {
-      agentRun.fail(new Error("The swag assistant returned an empty reply"));
-      LDObserve.recordLog("Swag assistant returned an empty reply", "warn", secureSessionId, requestId, attributes);
-      res.status(502).json({ error: "The swag assistant could not answer" });
-      return;
-    }
     agentRun.finish(result.content, true);
 
     const replyId = randomUUID();
-    rememberReply(replyId, tracker.resumptionToken);
+    rememberReply(replyId, ran.trackData);
 
     res.status(200).json({
       text: result.content,
@@ -387,11 +415,8 @@ async function handler(
       .map((t) => `${t.role}: ${t.text}`)
       .concat(result.toolTranscript.map((t) => `tool: ${t}`))
       .join("\n");
-    judge(aiClient, config, context, tracker, transcript, result.content)
-      .then(agentRun.scored)
-      .catch((err) => {
-        agentRun.scored();
-        LDObserve.recordError(err as Error, secureSessionId, requestId, attributes);
-      });
+    judge(ran.judgeTasks, context, transcript, result.content, (err) =>
+      LDObserve.recordError(err as Error, secureSessionId, requestId, attributes),
+    ).then(agentRun.scored, () => agentRun.scored());
   });
 }

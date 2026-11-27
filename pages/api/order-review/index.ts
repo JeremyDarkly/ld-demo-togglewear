@@ -1,20 +1,19 @@
 import { randomUUID } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { LDObserve } from "@launchdarkly/observability-node";
-import type {
-  LDAIAgentConfig,
-  LDAIClient,
-  LDAIMetrics,
-  LDTokenUsage,
-  ToolRegistry,
-} from "@launchdarkly/server-sdk-ai";
-import type { LDContext } from "@launchdarkly/node-server-sdk";
-import type { Span } from "@opentelemetry/api";
 import {
-  buildStructuredTools,
-  createLangChainModel,
-  getAIUsageFromResponse,
-} from "@launchdarkly/server-sdk-ai-langchain";
+  buildJudgeTasks,
+  getClient,
+  makeGraphTrackData,
+  parseTemplate,
+  resolveGraph,
+  type AiConfigRep,
+  type GraphNode,
+  type LDContext,
+  type TokenUsage,
+  type TrackData,
+} from "@launchdarkly/ai-node";
+import type { Span } from "@opentelemetry/api";
 import {
   HumanMessage,
   SystemMessage,
@@ -23,7 +22,16 @@ import {
   type BaseMessage,
 } from "@langchain/core/messages";
 import { activityGroup } from "@/lib/activity";
-import { addUsage, getAiClient, judge, textOf } from "@/lib/aiServer";
+import {
+  UnusableAnswer,
+  addUsage,
+  getAiClient,
+  judge,
+  runTrackDataOf,
+  storeHandlers,
+  textOf,
+  toolFunctions,
+} from "@/lib/aiServer";
 import {
   caseNoteCoversTheCase,
   codeChecksOn,
@@ -43,6 +51,13 @@ import {
   type FraudDecision,
 } from "@/lib/fraudAgent";
 import { guard, LIMITS, text } from "@/lib/apiGuard";
+import {
+  langChainModel,
+  structuredTools,
+  toolDefinitions,
+  usageOf,
+  type ToolFunctions,
+} from "@/lib/langchainModel";
 import { contextFromRequest, getServerClient } from "@/lib/ldServer";
 import { startAgentRun, type AgentRun as TracedRun } from "@/lib/llmTrace";
 import {
@@ -64,14 +79,17 @@ import {
 
 // The fraud review at checkout, run by the Order Review agent graph.
 //
-// The graph's shape is LaunchDarkly's, read from its edges: the root agent
-// (Order Intake) reads the order, its children (the three specialists) check
-// it at the same time, the agent they all hand to (Order Decision) makes the
-// call, and the one after that (Case Note) writes up an order that was not
-// approved. Each agent's model, instructions and tools come from its own
-// agent config, and each run is recorded on that agent's tracker, which
-// carries the graph's key, so the agents' Monitoring tabs and the graph's
-// own (path, handoffs, duration, tokens) both fill in.
+// The graph's shape is LaunchDarkly's, read from its edges with the AI SDK's
+// resolveGraph: the root agent (Order Intake) reads the order, its children
+// (the three specialists) check it at the same time, the agent they all hand
+// to (Order Decision) makes the call, and the one after that (Case Note)
+// writes up an order that was not approved. Each agent's model, instructions
+// and tools come from its own agent config, and each agent runs through the
+// SDK's runNode, which records the run on that agent with the graph's key
+// and sends the handoff into it. The SDK's own graph runner follows one edge
+// at a time, chosen by a model, so it cannot run the specialists side by
+// side or skip the case note for an approved order; the graph's own events
+// (each node, duration, tokens, success or failure) are sent here instead.
 //
 // The specialists are made to call their tool before they answer, since the
 // tool is where their facts come from, and the score is added up from what
@@ -106,7 +124,7 @@ type CodeChecks = Partial<Record<CodeCheckKey, () => CheckResult>>;
 const nameOf = (key: string) =>
   ORDER_REVIEW_AGENTS.find((agent) => agent.key === key)?.name ?? key;
 
-type AgentRun = { text: string; metrics: LDAIMetrics };
+type AgentRun = { text: string; metrics: { success: boolean; tokens: TokenUsage; toolCalls: string[] } };
 
 // The shape the Order Decision agent answers in. Bedrock makes the model
 // fill it in as a tool call, so the answer always has these fields rather
@@ -128,26 +146,27 @@ const DECISION_SCHEMA = {
 // One agent: its instructions as the system prompt, what it is handed as the
 // user message, and its tools, the first of which it has to call. With an
 // answer schema, the agent answers by filling it in, and its text is that
-// answer as JSON.
+// answer as JSON. config's instructions are already filled in. registry is
+// what the tools run, which in the route are the SDK's, so it counts each
+// call.
 export async function runAgent(
-  config: LDAIAgentConfig,
+  config: Pick<AiConfigRep, "model" | "provider" | "tools" | "instructions">,
   input: string,
-  registry: ToolRegistry,
+  registry: ToolFunctions,
   agentRun: TracedRun,
   reportToolCall: ReportToolCall,
   answerSchema?: Record<string, unknown>,
 ): Promise<AgentRun> {
   const modelName = config.model?.name ?? "";
-  const llm = await createLangChainModel(config);
-  const definitions = (config.model?.parameters?.tools as unknown[]) ?? [];
-  const lcTools = buildStructuredTools(definitions, registry);
+  const llm = await langChainModel(config as AiConfigRep);
+  const lcTools = structuredTools(toolDefinitions(config as AiConfigRep), registry);
   const toolsByName = new Map(lcTools.map((t) => [t.name, t]));
 
   const messages: BaseMessage[] = [
     new SystemMessage(config.instructions ?? ""),
     new HumanMessage(input),
   ];
-  const tokens: LDTokenUsage = { total: 0, input: 0, output: 0 };
+  const tokens: TokenUsage = { total: 0, input: 0, output: 0 };
   const toolCalls: string[] = [];
 
   if (answerSchema) {
@@ -160,13 +179,13 @@ export async function runAgent(
       const response = result.raw as AIMessage;
       return {
         response,
-        usage: getAIUsageFromResponse(response),
+        usage: usageOf(response),
         // The decision it filled in rather than a call to a tool that never
         // runs, since record_decision is only the shape of the answer.
         output: parsed ? JSON.stringify(parsed) : undefined,
       };
     });
-    addUsage(tokens, getAIUsageFromResponse(raw));
+    addUsage(tokens, usageOf(raw));
     const text = parsed ? JSON.stringify(parsed) : textOf(raw);
     return { text, metrics: { success: Boolean(parsed), tokens, toolCalls } };
   }
@@ -183,10 +202,10 @@ export async function runAgent(
       round === 0 ? [input] : [],
       async () => {
         const response = (await model.invoke(messages)) as AIMessage;
-        return { response, usage: getAIUsageFromResponse(response) };
+        return { response, usage: usageOf(response) };
       },
     );
-    addUsage(tokens, getAIUsageFromResponse(response));
+    addUsage(tokens, usageOf(response));
     messages.push(response);
 
     const calls = response.tool_calls ?? [];
@@ -256,10 +275,18 @@ function isRequest(body: unknown): body is OrderReviewRequest {
   );
 }
 
+// What the handler needs to run one agent, by the agent's key, which is how
+// the handler, shared by every node, tells them apart: the trace of its run
+// and the shape its answer takes, and back from it, what it wrote.
+type NodeRun = {
+  agentRun: TracedRun;
+  answerSchema?: Record<string, unknown>;
+  result?: AgentRun;
+};
+
 // Runs the graph, answering the shopper through answer as soon as the
 // decision is made. False if the graph is off, so nothing was answered.
 export async function runGraph(
-  aiClient: LDAIClient,
   context: LDContext,
   order: OrderReviewRequest,
   send: (event: OrderReviewEvent) => void,
@@ -267,32 +294,82 @@ export async function runGraph(
   span: Span,
   report: (err: unknown) => void,
 ): Promise<boolean> {
-  const graph = await aiClient.agentGraph(ORDER_REVIEW_GRAPH_KEY, context);
-  if (!graph.enabled) {
+  const tools = orderReviewTools(order, context);
+  const client = await getServerClient();
+  const nodeRuns = new Map<string, NodeRun>();
+
+  // Every agent's run, through the SDK, which records its duration, success
+  // or error, tokens and tool calls. An agent with no usable answer is
+  // thrown, so it is recorded as an error, as the legacy tracker's success:
+  // false was, and the review falls back.
+  const handlers = storeHandlers(async (config, input = "", toolHandlers = {}, vars = {}) => {
+    const trackData = runTrackDataOf(vars);
+    const key = trackData.configKey;
+    const node = nodeRuns.get(key);
+    if (!node) throw new Error(`No run was started for ${key}`);
+    const result = await runAgent(
+      { ...config, instructions: parseTemplate(config.instructions ?? "", vars) },
+      input,
+      toolFunctions(toolHandlers, tools.registry, context, trackData),
+      node.agentRun,
+      toolCallReporter(client, context, trackData),
+      node.answerSchema,
+    );
+    node.result = result;
+    // The start of what it did say, so the error in Observability shows
+    // what went wrong rather than only that something did.
+    if (!result.metrics.success) {
+      throw new UnusableAnswer(
+        `${key} returned no usable answer: ${result.text.slice(0, 200)}`,
+        result.text,
+        result.metrics.tokens,
+      );
+    }
+    return { output: result.text, usage: result.metrics.tokens };
+  });
+
+  const graph = await resolveGraph(ORDER_REVIEW_GRAPH_KEY, {
+    context,
+    handlers,
+    toolHandlers: tools.registry,
+  });
+  const intake = graph.root;
+  if (!graph.enabled || !intake) {
     span.setAttribute("ai.graph.enabled", false);
     return false;
   }
 
-  const graphTracker = graph.createTracker();
-  const tools = orderReviewTools(order, context);
-  const client = await getServerClient();
   // Read once per review, so its agents are all checked or none are.
   const checking = await codeChecksOn(client, context);
   const started = Date.now();
-  const path: string[] = [];
-  const tokens: LDTokenUsage = { total: 0, input: 0, output: 0 };
+  const tokens: TokenUsage = { total: 0, input: 0, output: 0 };
+  // The graph's own events, on one run of their own. resolveGraph does not
+  // hand back the graph variation's track data, so these carry no
+  // variation key.
+  const graphTrackData: TrackData = makeGraphTrackData(ORDER_REVIEW_GRAPH_KEY, randomUUID());
+  // A metric that failed to send is never worth a failed review.
+  const track = (key: string, data: object, value: number) => {
+    try {
+      getClient().track(key, context, data, value);
+    } catch (err) {
+      console.warn(`${key} could not be sent:`, err);
+    }
+  };
+  let entered = 0;
   // The whole review is one conversation in LaunchDarkly, found by the
   // order's number. Order numbers are random and only unique within a
   // session (lib/fraudAgent.ts), so the id adds a few characters of its own.
   const conversationId = `${order.ref}-${randomUUID().slice(0, 8)}`;
 
-  // Runs one node, records it on its own tracker, and streams it starting
-  // and finishing. show turns what the agent wrote into what the panel
-  // shows, which only differs for the Order Decision agent's JSON.
+  // Runs one node through the SDK, and streams it starting and finishing.
+  // from is the agent handing to it, for the SDK's handoff event. show turns
+  // what the agent wrote into what the panel shows, which only differs for
+  // the Order Decision agent's JSON.
   const run = async (
-    key: string,
+    node: GraphNode,
     input: string,
-    { show = (text: string) => text, answerSchema, judgeInput, codeChecks }: {
+    { from, show = (text: string) => text, answerSchema, judgeInput, codeChecks }: {
+      from?: GraphNode;
       show?: (text: string) => string;
       answerSchema?: Record<string, unknown>;
       // The offline evals' checks to run on what the agent wrote, while the
@@ -305,47 +382,60 @@ export async function runGraph(
       judgeInput?: string;
     } = {},
   ) => {
-    const node = graph.getNode(key);
-    if (!node) throw new Error(`The graph has no ${key} node`);
-    const config = node.getConfig();
-    const tracker = config.createTracker();
-    const { variationKey, modelName } = tracker.getTrackData();
-    const reportToolCall = toolCallReporter(client, context, tracker.getTrackData());
+    const key = node.key;
     const step: AgentStep = {
       key: key as OrderReviewAgentKey,
       status: "running",
-      model: servedByFor(variationKey, modelName).model,
+      model: servedByFor(node.meta.variationKey ?? "", node.config.model.name).model,
     };
     send({ type: "step", step });
 
-    const agentRun = startAgentRun(span, conversationId, nameOf(key), config.instructions ?? "", input);
+    const agentRun = startAgentRun(
+      span,
+      conversationId,
+      nameOf(key),
+      parseTemplate(node.config.instructions ?? "", { ldContext: context }),
+      input,
+    );
+    const nodeRun: NodeRun = { agentRun, answerSchema };
+    nodeRuns.set(key, nodeRun);
+    track("$ld:ai:graph:node", { ...graphTrackData, nodeKey: key, index: entered++ }, 1);
     const at = Date.now();
     try {
-      const result = await tracker.trackMetricsOf(
-        (r: AgentRun) => r.metrics,
-        () => runAgent(config, input, tools.registry, agentRun, reportToolCall, answerSchema),
+      // runNode runs the agent's judges itself and waits for them, with no
+      // way to skip them, which would hold the shopper at Place Order. So
+      // the node runs without its judges, and they are built from it
+      // afterwards and run in the background, as every other route's are.
+      const ran = await graph.runNode(
+        { ...node, config: { ...node.config, judgeConfiguration: undefined } },
+        input,
+        { from },
       );
-      // The start of what it did say, so the error in Observability shows
-      // what went wrong rather than only that something did.
-      if (!result.metrics.success) {
-        throw new Error(`${key} returned no usable answer: ${result.text.slice(0, 200)}`);
-      }
-      path.push(key);
-      addUsage(tokens, result.metrics.tokens);
-      agentRun.finish(result.text, judgeInput !== undefined);
+      const text = nodeRun.result?.text ?? String(ran.response);
+      addUsage(tokens, ran.usage);
+      agentRun.finish(text, judgeInput !== undefined);
       const checked =
         checking && codeChecks
-          ? runCodeChecks(client, context, tracker.getTrackData(), codeChecks(result.text))
+          ? runCodeChecks(client, context, ran.trackData, codeChecks(text))
           : null;
       if (judgeInput !== undefined) {
-        judge(aiClient, config, context, tracker, judgeInput, result.text)
+        buildJudgeTasks({
+          config: node.config,
+          userContext: context,
+          handler: handlers[1],
+          handlers,
+          llmResponse: text,
+          baseTrackData: ran.trackData,
+          userInput: judgeInput,
+        })
+          .then((tasks) => judge(tasks, context, judgeInput, text, report))
           .then((results) => {
             agentRun.scored(results);
             if (checked) {
               sendJudgeDisagreement(
                 client,
                 context,
-                tracker.getTrackData(),
+                ran.trackData,
                 checked["decision-matches-points"],
                 results.find((r) => r.judgeConfigKey === DECISION_POLICY_JUDGE_KEY),
               );
@@ -358,9 +448,9 @@ export async function runGraph(
       }
       send({
         type: "step",
-        step: { ...step, status: "done", text: show(result.text), ms: Date.now() - at },
+        step: { ...step, status: "done", text: show(text), ms: Date.now() - at },
       });
-      return result.text;
+      return text;
     } catch (err) {
       agentRun.fail(err);
       send({ type: "step", step: { ...step, status: "failed", ms: Date.now() - at } });
@@ -368,42 +458,26 @@ export async function runGraph(
     }
   };
 
-  // A handoff succeeded once the agent handed to has finished its part.
-  const handOff = async (
-    from: string,
-    to: string,
-    input: string,
-    options?: Parameters<typeof run>[2],
-  ) => {
-    try {
-      const text = await run(to, input, options);
-      graphTracker.trackHandoffSuccess(from, to);
-      return text;
-    } catch (err) {
-      graphTracker.trackHandoffFailure(from, to);
-      throw err;
-    }
-  };
-
   try {
-    const intake = graph.rootNode();
-    const summary = await run(intake.getKey(), `Order ${order.ref} has just been placed.`);
+    const summary = await run(intake, `Order ${order.ref} has just been placed.`);
 
-    const specialists = graph.getChildNodes(intake.getKey());
+    const specialists = graph.getChildNodes(intake.key);
     const findings = await Promise.all(
       specialists.map((node) =>
-        handOff(intake.getKey(), node.getKey(), `Case summary from Order Intake:\n${summary}`),
+        run(node, `Case summary from Order Intake:\n${summary}`, { from: intake }),
       ),
     );
     const reports = specialists
-      .map((node, i) => `${nameOf(node.getKey())}: ${findings[i]}`)
+      .map((node, i) => `${nameOf(node.key)}: ${findings[i]}`)
       .join("\n\n");
 
-    const decider = graph.getChildNodes(specialists[0].getKey())[0];
+    const decider = graph.getChildNodes(specialists[0].key)[0];
     if (!decider) throw new Error("The specialists hand to no decision agent");
     const decisionInput = `Order ${order.ref}.\n\nCase summary from Order Intake:\n${summary}\n\n${reports}`;
     const points = riskScore(tools.signals);
-    const verdictText = await run(decider.getKey(), decisionInput, {
+    // Without from: runNode takes one agent handing over, and all three
+    // specialists hand to the decision, so their handoffs are sent below.
+    const verdictText = await run(decider, decisionInput, {
       show: (text) => parseDecision(text)?.summary ?? text,
       answerSchema: DECISION_SCHEMA,
       // With the total the tools found, so the Decision Policy judge can
@@ -418,7 +492,11 @@ export async function runGraph(
       }),
     });
     for (const node of specialists) {
-      graphTracker.trackHandoffSuccess(node.getKey(), decider.getKey());
+      track(
+        "$ld:ai:graph:handoff_success",
+        { ...graphTrackData, sourceKey: node.key, targetKey: decider.key },
+        1,
+      );
     }
 
     const signals = tools.signals;
@@ -445,14 +523,14 @@ export async function runGraph(
     span.setAttribute("orderReview.decision", decision);
     span.setAttribute("orderReview.score", score);
 
-    const noteTaker = graph.getChildNodes(decider.getKey())[0];
+    const noteTaker = graph.getChildNodes(decider.key)[0];
     if (decision !== "approve" && noteTaker) {
-      await handOff(
-        decider.getKey(),
-        noteTaker.getKey(),
+      await run(
+        noteTaker,
         `Order ${order.ref} was ${decision === "review" ? "held for review" : "declined"}, ` +
           `with ${score} risk points.\n\nCase summary from Order Intake:\n${summary}\n\n${reports}`,
         {
+          from: decider,
           // The note's text, checked against the final decision and the
           // points the tools found rather than anything parsed from prose.
           codeChecks: (note) => ({
@@ -463,15 +541,13 @@ export async function runGraph(
       );
     }
 
-    graphTracker.trackPath(path);
-    graphTracker.trackDuration(Date.now() - started);
-    graphTracker.trackTotalTokens(tokens);
-    graphTracker.trackInvocationSuccess();
+    track("$ld:ai:graph:duration:total", graphTrackData, Date.now() - started);
+    if (tokens.total > 0) track("$ld:ai:graph:total_tokens", graphTrackData, tokens.total);
+    track("$ld:ai:graph:invocation_success", graphTrackData, 1);
     return true;
   } catch (err) {
-    graphTracker.trackPath(path);
-    graphTracker.trackDuration(Date.now() - started);
-    graphTracker.trackInvocationFailure();
+    track("$ld:ai:graph:duration:total", graphTrackData, Date.now() - started);
+    track("$ld:ai:graph:invocation_failure", graphTrackData, 1);
     throw err;
   }
 }
@@ -533,7 +609,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     let timer: NodeJS.Timeout | undefined;
     try {
       const ran = await Promise.race([
-        runGraph(aiClient, context, order, send, answer, span, (err) =>
+        runGraph(context, order, send, answer, span, (err) =>
           LDObserve.recordError(err as Error, secureSessionId, requestId, attributes),
         ),
         new Promise<never>((_, reject) => {

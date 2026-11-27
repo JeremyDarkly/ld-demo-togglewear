@@ -1,5 +1,5 @@
 import type { LDClient, LDContext } from "@launchdarkly/node-server-sdk";
-import type { LDJudgeResult } from "@launchdarkly/server-sdk-ai";
+import type { JudgeResult } from "@/lib/aiServer";
 
 // The offline evals' deterministic checks (code_checks.py, next to
 // ci_eval.py), run on the store's live replies while the
@@ -291,9 +291,9 @@ export function sendJudgeDisagreement(
   context: LDContext,
   trackData: object,
   check: CheckResult | undefined,
-  judged: LDJudgeResult | undefined,
+  judged: JudgeResult | undefined,
 ) {
-  if (!check || !judged?.sampled || !judged.success || judged.errorMessage || typeof judged.score !== "number") return;
+  if (!check || typeof judged?.score !== "number") return;
   const checkPassed = check.score >= 1;
   const judgePassed = judged.score >= JUDGE_PASSES_AT;
   send(
