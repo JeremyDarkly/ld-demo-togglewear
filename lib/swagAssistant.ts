@@ -155,7 +155,7 @@ function bySlug(...slugs: string[]) {
 const REPLIES: { match: RegExp; text: string; products: Product[] }[] = [
   {
     match: /\b(hoodies?|sweatshirts?|crewnecks?|warm)\b/i,
-    text: "The hoodie is heavyweight cotton-blend fleece and runs true to size. If you want something lighter, the crewneck is the same fabric without the hood.",
+    text: "The hoodie is midweight cotton-blend fleece and runs true to size. If you would rather skip the hood, the crewneck is the same fabric without it.",
     products: bySlug("togglewear-hoodie"),
   },
   {
