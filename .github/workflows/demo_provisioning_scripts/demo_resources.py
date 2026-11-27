@@ -1395,7 +1395,8 @@ _COHERENCE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
 _DECISION_POLICY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
     _ORDER_JUDGE_OPENING
     + "Score whether the decision in the response is the one the risk points call "
-      "for. Work it out in this order before scoring:\n"
+      "for. Work it out in this order before you answer, without writing the steps "
+      "out:\n"
       "1. Take the order's total risk points from the line in the message history "
       "that starts \"Risk points the specialists' tools found\".\n"
       "2. Find the decision those points call for: 70 points or more is \"decline\", "
@@ -1409,7 +1410,10 @@ _DECISION_POLICY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
       "0.0: the decision field is not the decision the points call for, whatever its "
       "score or summary says.\n\n"
       "In your explanation, give the total, the decision it calls for and the decision "
-      "in the response, in one or two sentences."
+      "in the response, in one or two sentences.\n\n"
+      "Your whole answer is the one JSON object the message history asks for, with "
+      "nothing before or after it: no steps, no working and no second answer. The "
+      "explanation goes in its reasoning field."
     + _JUDGE_HISTORY)}]
 _SHOPPER_MESSAGE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
     _ORDER_JUDGE_OPENING
