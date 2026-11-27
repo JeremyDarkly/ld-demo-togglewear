@@ -1508,7 +1508,8 @@ AI_TOOLS = [
                 'required': []}},
     {'tool_key': 'get-account-history',
      'description': 'Returns the account that placed the order: whether they are signed in, '
-                    'their loyalty tier, when they joined and their past orders.',
+                    'their loyalty tier, when they joined and their past orders, each with the '
+                    'address it shipped to, ZIP included.',
      'schema': {'type': 'object',
                 'properties': {},
                 'additionalProperties': False,
@@ -2124,7 +2125,10 @@ AGENT_CONFIGS = [
            + "You are the account history specialist. Call get-account-history and say in one "
              "or two sentences what the account tells the team about this order: how long "
              "they have been a customer, their tier, and how this order compares with their "
-             "past ones. A guest has no history, which is ordinary in itself. You add context "
+             "past ones. Say whether this order ships to an address the account has shipped "
+             "to before: compare the city, state and ZIP in the case summary with each past "
+             "order's, and treat an address with a different ZIP as a new one, even in the "
+             "same city. A guest has no history, which is ordinary in itself. You add context "
              "only and never add risk points. Plain text, no markdown.",
            tools=['get-account-history']),
     _agent('fraud-decision-agent', 'Order Decision',

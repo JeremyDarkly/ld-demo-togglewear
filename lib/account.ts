@@ -117,6 +117,11 @@ export type PastOrder = {
   // know the destination — Reno is either most of the way there or nowhere
   // near it, depending on where the parcel is headed.
   destination: string;
+  // The destination's ZIP or postcode, which the Order Review agents need to
+  // tell the shopper's usual address from another one in the same city: an
+  // order to Austin, TX 99999 is not going where Austin, TX 78704 orders went.
+  // Kept apart from destination, which the account page shows as a city.
+  destinationZip: string;
   // The estimate while a parcel is moving, the date it landed once it has
   // arrived. Carries a midday time rather than a bare date: a bare "2026-01-22"
   // parses as UTC midnight and then renders as the 21st anywhere west of
@@ -158,6 +163,7 @@ const ORDERS: Record<string, PastOrder[]> = {
       carrier: "ToggleShip Standard",
       tracking: "TS4820193847US",
       destination: "Austin, TX",
+      destinationZip: "78704",
       arrivesOn: "2026-03-17T12:00:00",
       events: [
         { label: "Order placed", on: "Mar 12", where: "Oakland, CA" },
@@ -188,6 +194,7 @@ const ORDERS: Record<string, PastOrder[]> = {
       carrier: "ToggleShip Standard",
       tracking: "TS4820188211US",
       destination: "Austin, TX",
+      destinationZip: "78704",
       arrivesOn: "2026-01-22T12:00:00",
       events: [
         { label: "Order placed", on: "Jan 18", where: "Oakland, CA" },
@@ -210,6 +217,7 @@ const ORDERS: Record<string, PastOrder[]> = {
       carrier: "ToggleShip Express",
       tracking: "TS4820195562US",
       destination: "Seattle, WA",
+      destinationZip: "98109",
       arrivesOn: "2026-03-18T12:00:00",
       events: [
         { label: "Order placed", on: "Mar 15", where: "Oakland, CA" },
@@ -239,6 +247,7 @@ const ORDERS: Record<string, PastOrder[]> = {
       carrier: "ToggleShip Express",
       tracking: "TS4820189034US",
       destination: "Seattle, WA",
+      destinationZip: "98109",
       arrivesOn: "2026-02-05T12:00:00",
       events: [
         { label: "Order placed", on: "Feb 2", where: "Oakland, CA" },
@@ -261,6 +270,7 @@ const ORDERS: Record<string, PastOrder[]> = {
       carrier: "ToggleShip International",
       tracking: "TS4820194120NL",
       destination: "Amsterdam, NL",
+      destinationZip: "1016 DZ",
       arrivesOn: "2026-03-20T12:00:00",
       events: [
         { label: "Order placed", on: "Mar 13", where: "Oakland, CA" },
@@ -289,6 +299,7 @@ const ORDERS: Record<string, PastOrder[]> = {
       carrier: "ToggleShip International",
       tracking: "TS4820190457NL",
       destination: "Amsterdam, NL",
+      destinationZip: "1016 DZ",
       arrivesOn: "2026-02-27T12:00:00",
       events: [
         { label: "Order placed", on: "Feb 20", where: "Oakland, CA" },
@@ -311,6 +322,7 @@ const ORDERS: Record<string, PastOrder[]> = {
       carrier: "ToggleShip Standard",
       tracking: "TS4820195978US",
       destination: "Denver, CO",
+      destinationZip: "80202",
       arrivesOn: "2026-03-18T12:00:00",
       events: [
         { label: "Order placed", on: "Mar 15", where: "Oakland, CA" },
@@ -331,6 +343,7 @@ const ORDERS: Record<string, PastOrder[]> = {
       carrier: "ToggleShip Standard",
       tracking: "TS4820192716US",
       destination: "Denver, CO",
+      destinationZip: "80202",
       arrivesOn: "2026-03-08T12:00:00",
       events: [
         { label: "Order placed", on: "Mar 4", where: "Oakland, CA" },
@@ -346,10 +359,10 @@ export function ordersFor(person: Person): PastOrder[] {
   return ORDERS[person.id] ?? [];
 }
 
-// Where each shopper's orders go, prefilled at checkout. In the same city
-// as their past orders above, so the Account History agent reads an order
+// Where each shopper's orders go, prefilled at checkout. The same city and
+// ZIP as their past orders above, so the Account History agent reads an order
 // placed as them as going where their orders always go, and changing the
-// address on stage is something it notices.
+// address on stage, even just the ZIP, is something it notices.
 export type HomeAddress = ShipTo & { country: "US" | "NL" };
 
 const ADDRESSES: Record<string, HomeAddress> = {
