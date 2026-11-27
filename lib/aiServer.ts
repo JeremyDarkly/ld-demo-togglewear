@@ -237,6 +237,15 @@ export async function judge(
   return results.flat();
 }
 
+// The shopper as a "data:" line, for the judges: the prompt is told their
+// name and tier, so a reply that rightly names the tier needs the judges told
+// too. Built from the variables the prompt was filled from, so a guest reads
+// as one who has not signed in. .github/workflows/demo_provisioning_scripts/
+// ci_eval.py writes the same line for the offline evals.
+export function shopperLine(variables: { shopper_name: string; loyalty_tier: string }): string {
+  return `data: shopper ${JSON.stringify({ name: variables.shopper_name, loyalty_tier: variables.loyalty_tier })}`;
+}
+
 // Whether a judge's reply parsed, recorded on the judge's own config and
 // variation: 1 when it did not, 0 when it did. runJudge returns null for a
 // reply it cannot parse, without an error, so this is the only sign of a

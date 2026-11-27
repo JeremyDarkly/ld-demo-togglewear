@@ -21,6 +21,7 @@ import {
   judge,
   rememberReply,
   runTrackDataOf,
+  shopperLine,
   storeHandlers,
   textOf,
   toolFunctions,
@@ -410,9 +411,10 @@ async function handler(
       servedBy: served,
     });
 
-    const transcript = turns
-      .slice(-MAX_HISTORY)
-      .map((t) => `${t.role}: ${t.text}`)
+    // Who the shopper is opens it, as the prompt was told, so a reply that
+    // rightly names their tier is not scored as having invented it.
+    const transcript = [shopperLine(variables)]
+      .concat(turns.slice(-MAX_HISTORY).map((t) => `${t.role}: ${t.text}`))
       .concat(result.toolTranscript.map((t) => `tool: ${t}`))
       .join("\n");
     judge(ran.judgeTasks, context, transcript, result.content, (err) =>
