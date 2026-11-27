@@ -479,6 +479,9 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
         # has it as JSON text, so the judges get that.
         if not judging and isinstance(output.get("output"), dict):
             output = {**output, "output": json.dumps(output["output"])}
+        if judging and "decision-policy" in config.get("evaluationMetricKey", ""):
+            print("DIAG judge", config.get("evaluationMetricKey"), "row", index_of.get(id(row)),
+                  "raw:", json.dumps(output.get("output", output.get("response")))[:1500], flush=True)
         threshold = thresholds.get(config.get("evaluationMetricKey", ""))
         if judging and threshold is not None:
             try:
