@@ -10,8 +10,11 @@ followed by its companions in JUDGE_COMPANIONS. An entry with tools gives the
 model stand-ins to call (swag_tools.py), and the judges see the calls the SDK
 recorded. The variation's model, parameters and prompt come from
 demo_resources.py rather than from LaunchDarkly, so a commit is evaluated
-before any project has it. The project in .env only has to hold the judges,
-and the evaluations land there.
+before any project has it. The judges come from the project in .env, the demo
+project demo_resources.py builds, and the evaluations land there. A judge the
+project doesn't have yet, such as one a branch adds or renames, is left out of
+its target, which runs on without it; the summary names it and says the
+project needs the change applied, and the script exits non-zero.
 
 The judge alone decides a row. A companion, the same rubric on another model,
 is there to compare with: the summary counts the rows each passed and how
@@ -22,8 +25,9 @@ outside ASCII stops the run, and a row too long for LaunchDarkly's upload
 screen is a warning in the summary.
 
 Results are advisory: a failed verdict is reported, not raised. The script
-exits non-zero only when a run can't be completed. It writes a Markdown
-summary to --summary-file, $GITHUB_STEP_SUMMARY in GitHub Actions.
+exits non-zero only when a run can't be completed or a judge was missing. It
+writes a Markdown summary to --summary-file, $GITHUB_STEP_SUMMARY in GitHub
+Actions.
 
 Needs requirements-ci-eval.txt, LD_API_KEY, LD_PROJECT_KEY and LD_SDK_KEY in
 .env or the environment, AWS credentials with Bedrock, and Node 22.18 or later
@@ -118,8 +122,12 @@ class Result:
     kinds: dict = field(default_factory=dict)
     # (judge key, companion key, threshold) for each companion that ran.
     companions: list = field(default_factory=list)
-    # Companions the project doesn't have, so they were left out.
+    # Judges and companions the project doesn't have, so they were left out.
+    missing_judges: list = field(default_factory=list)
     missing_companions: list = field(default_factory=list)
+    # Companions of a missing judge, left out since there's nothing to compare
+    # them with.
+    skipped_companions: list = field(default_factory=list)
     # What serves the variation, from served_variations: empty when only a
     # variations override or --variation picked it.
     served_by: list = field(default_factory=list)
@@ -435,8 +443,10 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
             if row is None:
                 raise RuntimeError("judge call for a row ci_eval.py can't find")
             view = judge_view or (lambda r, answer, **_: (r["input"], answer))
-            history, user_input = view(row, user_input, variables=variables, calls=tool_calls.get(id(row)))
-            variables = {**variables, "message_history": message_history(variables, history, user_input),
+            # Not history: that is the SDK's list of chat turns, passed on to
+            # the handler below, and a string there breaks every judge call.
+            judged, user_input = view(row, user_input, variables=variables, calls=tool_calls.get(id(row)))
+            variables = {**variables, "message_history": message_history(variables, judged, user_input),
                          "response_to_evaluate": user_input}
         elif tool_handlers:
             # The stand-ins answer as the row's shopper. Set here, in the
@@ -673,19 +683,23 @@ async def judge_thresholds(evals, judges, result):
     of or None), for judges_for's judges, since a judge call carries only the
     metric key.
 
-    A companion the project doesn't have yet, such as one built before the
-    companion was added, is left out and listed on result, rather than failing
-    the run.
+    A judge or companion the project doesn't have yet, such as one built
+    before it was added, is left out and listed on result, rather than failing
+    the run. A missing companion's judge still runs. A missing judge's
+    companions are left out too, since there's nothing to compare them with.
     """
     thresholds = {}
     for judge, threshold, companion_of in judges:
         key = judge["judgeConfigKey"]
+        if companion_of in result.missing_judges:
+            result.skipped_companions.append(key)
+            continue
         try:
             config = await asyncio.to_thread(ld_get, f"projects/{evals.project_key}/ai-configs/{key}")
         except EvaluationsError as error:
-            if companion_of is None or " failed with 404:" not in str(error):
+            if " failed with 404:" not in str(error):
                 raise
-            result.missing_companions.append(key)
+            (result.missing_judges if companion_of is None else result.missing_companions).append(key)
             continue
         if config["evaluationMetricKey"] in thresholds:
             raise EvaluationsError(f"{key} has the same evaluationMetricKey as "
@@ -737,7 +751,9 @@ async def run_target(evals, target, variation_key, args):
             + [Judge(key=j["judgeConfigKey"], ground_truth_context=j.get("ground_truth"),
                      **({"threshold": j["threshold"]} if "threshold" in j else {}))
                if companion_of is None else Judge(key=j["judgeConfigKey"], threshold=0.0)
-               for j, _, companion_of in judges if j["judgeConfigKey"] not in result.missing_companions],
+               for j, _, companion_of in judges
+               if j["judgeConfigKey"] not in
+               result.missing_judges + result.missing_companions + result.skipped_companions],
             concurrency=args.concurrency,
             poll_timeout_seconds=600,
         )
@@ -985,7 +1001,28 @@ def companion_table(results):
     missing = sorted({key for r in results for key in r.missing_companions})
     if missing:
         lines += ["", f"Not in the project, so not run: {', '.join(f'`{key}`' for key in missing)}. "
-                      "Rebuild the project from this branch to compare the judges with them."]
+                      "Add them to the project as `demo_resources.py` defines them to compare the judges "
+                      "with them."]
+    return lines
+
+
+def missing_judges_note(results):
+    """The summary's warning about judges the project doesn't have, which
+    their targets ran without."""
+    missing, skipped = {}, {key for r in results for key in r.skipped_companions}
+    for r in results:
+        for key in r.missing_judges:
+            missing.setdefault(key, []).append(f"`{r.config}/{r.variation}`" + (" with tools" if r.tools else ""))
+    if not missing:
+        return []
+    lines = ["", "**Judges missing from the project**", ""]
+    for key, names in sorted(missing.items()):
+        companions = [c for c in JUDGE_COMPANIONS.get(key, []) if c in skipped]
+        lines.append(f"- `{key}`, so {', '.join(names)} ran without it"
+                     + (f" and without its companions, which had nothing to compare with: "
+                        f"{', '.join(f'`{c}`' for c in companions)}." if companions else "."))
+    lines += ["", "The project doesn't have these judges as `demo_resources.py` defines them. Add or update "
+                  "each one in the project as `demo_resources.py` defines it before these evals can use it."]
     return lines
 
 
@@ -998,6 +1035,8 @@ def markdown(results, baseline=None):
             verdict, passed = f"error: {r.error[:150]}", "–"
         else:
             verdict = "passed" if r.passed else "failed"
+            if r.missing_judges:
+                verdict += ", without " + ", ".join(f"`{key}`" for key in r.missing_judges)
             passed = f"{r.summary.get('passed', 0)}/{r.summary.get('total', r.rows)}"
             if r.summary.get("errors"):
                 passed += f" ({r.summary['errors']} errors)"
@@ -1006,6 +1045,7 @@ def markdown(results, baseline=None):
         tools = ", ".join(f"`{t}`" for t in r.tools) or "none"
         lines.append(f"| `{r.config}` | `{r.variation}` | {served_by} | {tools} | `{r.dataset}` | {passed} | {verdict} "
                      f"| {run} |")
+    lines += missing_judges_note(results)
     lines += criteria_tables(results, baseline)
     lines += companion_table(results)
     for r in results:
@@ -1093,13 +1133,15 @@ async def main(args):
             json.dump(saved, f, indent=2)
     if args.baseline_out:
         # A run on main may evaluate only what changed, so the baseline keeps
-        # every other target's latest result and replaces this run's.
-        ran = {(r["config"], r["variation"], r["mode"], r["dataset"]) for r in saved if not r["error"]}
+        # every other target's latest result and replaces this run's. A result
+        # that errored or ran without a judge keeps the previous one.
+        complete = [r for r in saved if not r["error"] and not r["missing_judges"]]
+        ran = {(r["config"], r["variation"], r["mode"], r["dataset"]) for r in complete}
         kept = [b for b in baseline or []
                 if (b["config"], b["variation"], b.get("mode"), b.get("dataset")) not in ran]
         with open(args.baseline_out, "w", encoding="utf-8") as f:
-            json.dump(kept + [r for r in saved if not r["error"]], f, indent=2)
-    return 1 if any(r.error for r in results) else 0
+            json.dump(kept + complete, f, indent=2)
+    return 1 if any(r.error or r.missing_judges for r in results) else 0
 
 
 if __name__ == "__main__":

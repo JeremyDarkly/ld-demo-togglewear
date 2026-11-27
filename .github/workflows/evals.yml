@@ -3,8 +3,8 @@ name: Offline Evals
 # Evaluates the store's AI Configs against their datasets with
 # demo_provisioning_scripts/ci_eval.py, as demo_resources.py defines them, on
 # Bedrock. Advisory: it reports scores and links to each run in LaunchDarkly,
-# and fails only when a run can't be completed. Never make it a required
-# check.
+# and fails only when a run can't be completed, or a judge it needs isn't in
+# the project yet. Never make it a required check.
 #
 #   Manual run    The targets chosen, quick or full. GitHub lets only people
 #                 with write access to the repository start one.
@@ -18,20 +18,20 @@ name: Offline Evals
 #
 # Unlike the build workflows, this doesn't call authorize.yaml: who may run
 # the evals is decided by the repository's own access, not by a list of
-# accounts in this repository. What keeps that safe is the credentials, which
-# can only reach the CI project and Bedrock. The automatic triggers start for
-# whoever pushed, so they only run once the repository variable
-# EVALS_ON_CHANGES is "true". Turn it on only with the evals environment
-# holding credentials that can't touch anyone's demo:
+# accounts in this repository. The credentials reach this fork's own demo
+# project, the one demo_resources.py builds, and Bedrock, and a pull request
+# runs its branch's code with them. The automatic triggers start for whoever
+# pushed, so they only run once the repository variable EVALS_ON_CHANGES is
+# "true". The evals environment holds:
 #
-#   LD_CI_API_KEY        secret    a LaunchDarkly token limited to the CI project
-#   LD_CI_SDK_KEY        secret    the CI project's production SDK key
+#   LD_API_KEY           secret    a LaunchDarkly token for the demo project
+#   LD_SDK_KEY           secret    the demo project's production SDK key
 #   EVALS_AWS_ROLE_ARN   secret    a role GitHub assumes through OIDC that can
 #                                  only invoke the store's Bedrock models. A
 #                                  secret, not a variable, because the ARN
 #                                  names the AWS account and the logs are
 #                                  public.
-#   LD_CI_PROJECT_KEY    variable  the CI project's key
+#   LD_PROJECT_KEY       variable  the demo project's key
 #
 # Never LD_EAP_API_KEY or AWS_ACCESS_KEY here: they build and delete
 # environments, and a pull request runs this repository's code.
@@ -120,9 +120,9 @@ jobs:
       actions: read          # main's baseline artifact
       pull-requests: write   # the comment on the PR
     env:
-      LD_API_KEY: ${{ secrets.LD_CI_API_KEY }}
-      LD_SDK_KEY: ${{ secrets.LD_CI_SDK_KEY }}
-      LD_PROJECT_KEY: ${{ vars.LD_CI_PROJECT_KEY }}
+      LD_API_KEY: ${{ secrets.LD_API_KEY }}
+      LD_SDK_KEY: ${{ secrets.LD_SDK_KEY }}
+      LD_PROJECT_KEY: ${{ vars.LD_PROJECT_KEY }}
       AWS_REGION: us-east-1
       SCRIPTS: .github/workflows/demo_provisioning_scripts
 
@@ -255,8 +255,8 @@ jobs:
             --json-out results.json \
             --baseline baseline/baseline.json --baseline-out baseline.json \
             --summary-file summary.md || status=$?
-          # On the summary page even when a run couldn't be completed, which
-          # is the only time this step fails.
+          # On the summary page even when a run couldn't be completed or a
+          # judge was missing, the only times this step fails.
           [ -f summary.md ] && cat summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
