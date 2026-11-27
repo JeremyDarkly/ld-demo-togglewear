@@ -2152,8 +2152,8 @@ AGENT_CONFIGS = [
              "most 100) and a summary of one or two sentences to the shopper. The summary is "
              "shown to the shopper at checkout: "
              "say what happens to their order next, and for a held or declined order what "
-             "caught it, in plain words, without naming the agents or the points. Nobody is "
-             "charged for an order that is held or declined.\n\n"
+             "caught it, in plain words, without naming the agents, the points or any "
+             "threshold. Nobody is charged for an order that is held or declined.\n\n"
              + _snippet('togglewear-brand-voice'),
            judges=['togglewear-decision-policy-judge', 'togglewear-shopper-message-judge']),
     _agent('case-note-agent', 'Case Note',

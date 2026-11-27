@@ -81,7 +81,7 @@ export function paymentSignals(order: OrderUnderReview): RiskSignal[] {
 
   if (order.total > HIGH_VALUE_USD) {
     signals.push({
-      label: `Order value is above the $${HIGH_VALUE_USD} review threshold`,
+      label: `Order value is over $${HIGH_VALUE_USD}`,
       points: SOFT_SIGNAL_POINTS,
     });
   }
