@@ -386,3 +386,21 @@ test("a check that throws: no event of its own, code-check-error 1", async () =>
     ],
   );
 });
+
+// ---- order-decision-error, on every decision ----
+// Not a code check, but sent by the same route on the Order Decision agent's
+// run whatever the response-code-checks flag serves.
+const decisionErrors = (sent) =>
+  sent.filter((s) => s.key === "order-decision-error").map((s) => [s.data.configKey, s.data.variationKey, s.value]);
+
+test("a usable decision: order-decision-error 0 on the Order Decision agent's run", async () => {
+  const { all } = await review({ flag: false, decision: held });
+  assert.deepEqual(decisionErrors(all), [["fraud-decision-agent", "standard", 0]]);
+});
+
+test("no usable decision: order-decision-error 1, and the review throws to fall back", async () => {
+  const sent = stubClient(false);
+  scripted({ decision: null, note: GOOD_NOTE });
+  await assert.rejects(runGraph(context, order("94607", 900), () => {}, () => {}, span, () => {}));
+  assert.deepEqual(decisionErrors(sent), [["fraud-decision-agent", "standard", 1]]);
+});

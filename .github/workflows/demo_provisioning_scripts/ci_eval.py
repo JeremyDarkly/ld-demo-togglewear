@@ -2,13 +2,17 @@
 
     python ci_eval.py [--config fraud-decision-agent] [--variation claude-sonnet-4-6] [--quick]
 
-For each entry in CI_EVALS, and each variation its config's targeting serves,
-the AI SDK generates an answer for every row of its dataset in datasets/, on
-Bedrock with your AWS credentials, then runs the entry's scorers and the
+For each entry in CI_EVALS, and each variation its config's targeting serves
+and any in the entry's also, the AI SDK generates an answer for every row of
+its dataset in datasets/, on Bedrock with your AWS credentials, then runs the
+entry's scorers and the
 judges attached to the variation, and any of the entry's own, each judge
 followed by its companions in JUDGE_COMPANIONS. An entry with tools gives the
 model stand-ins to call (swag_tools.py), and the judges see the calls the SDK
-recorded. The variation's model, parameters and prompt come from
+recorded. A variation on a TypeSafe model config is Jev, which is asked
+through the store's own client instead of Bedrock (jev_handler), with
+TYPESAFE_API_KEY; without the key it is skipped, and the summary says so.
+The variation's model, parameters and prompt come from
 demo_resources.py rather than from LaunchDarkly, so a commit is evaluated
 before any project has it. The judges come from the project in .env, the demo
 project demo_resources.py builds, and the evaluations land there. A judge the
@@ -31,7 +35,7 @@ Actions.
 
 Needs requirements-ci-eval.txt, LD_API_KEY, LD_PROJECT_KEY and LD_SDK_KEY in
 .env or the environment, AWS credentials with Bedrock, and Node 22.18 or later
-for the stand-in tools.
+for the stand-in tools and Jev, which also needs TYPESAFE_API_KEY.
 """
 
 import argparse
@@ -134,6 +138,9 @@ class Result:
     # The stand-in tools the model was given, by key: empty for an entry
     # without tools.
     tools: list = field(default_factory=list)
+    # Why the variation wasn't run, such as Jev without TYPESAFE_API_KEY:
+    # neither an error nor a result.
+    skipped: str = ""
 
 
 # ---- Scorers ----
@@ -545,6 +552,67 @@ def agent_handler(llm):
                            providers=agents.providers)
 
 
+# ---- Jev ----
+#
+# A variation on a TypeSafe model config is Jev, TypeSafe's decision model,
+# which picks one of the options it is given instead of writing (lib/jev.ts).
+# It is asked through the store's own client, which Node runs as TypeScript
+# with no npm install (scripts/jev-decision.mjs), and its answer is the JSON
+# the store's route fills in, so the scorers and judges see what the store
+# would show.
+JEV_NODE = ["node", "--no-warnings", "--import", "./scripts/tool-call-errors-register.mjs",
+            "scripts/jev-decision.mjs"]
+
+# The bridge and the store code Jev's answer comes from, so --changed reruns a
+# Jev variation when any of them change.
+JEV_SOURCES = ["scripts/jev-decision.mjs", "lib/jev.ts", "lib/fraudAgent.ts"]
+
+
+def is_jev(variation):
+    """Whether the variation is on a TypeSafe model config, as lib/jev.ts's isJevConfig asks."""
+    return (variation or {}).get("ai_model_config_key", "").split(".")[0].lower() == "typesafe"
+
+
+def jev_handler(variation, rows):
+    """The handler for a Jev variation, in place of agent_handler.
+
+    The SDK hands the handler the variation's model and instructions but not
+    model.custom, which holds Jev's options and threshold, so those come from
+    demo_resources.py, as the rest of the variation does. The total points
+    are the row's risk_points, which the store's route adds up from the
+    specialists' tools and the Decision Policy judge is shown too. Jev
+    failing raises, which errors the row.
+    """
+    points = {r["input"]: (r.get("metadata") or {}).get("risk_points") for r in rows}
+
+    async def call(config, user_input=None, tool_handlers=None, variables=None, history=None):
+        if points.get(user_input) is None:
+            raise RuntimeError("a row with no risk_points, which Jev is asked with")
+        request = {"config": {"provider": {"name": "TypeSafe"},
+                              "model": {"name": config["model"]["name"],
+                                        "custom": variation["model"].get("custom", {})},
+                              "instructions": config.get("instructions", "")},
+                   "order": user_input, "points": points[user_input]}
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *JEV_NODE, cwd=swag_tools.ROOT, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE)
+            stdout, stderr = await process.communicate(json.dumps(request).encode())
+            reply = json.loads(stdout.decode() or "null")
+        except (OSError, ValueError) as error:
+            raise RuntimeError(f"Jev bridge failed: {type(error).__name__}: {error}") from error
+        if process.returncode or not isinstance(reply, dict) or not ("answer" in reply or "error" in reply):
+            raise RuntimeError(f"Jev bridge failed: scripts/jev-decision.mjs exited {process.returncode}: "
+                               f"{(stderr or stdout).decode()[-300:]}")
+        if "error" in reply:
+            raise RuntimeError(reply["error"])
+        usage = reply.get("usage") or {}
+        return {"output": reply["answer"],
+                "usage": {"input_tokens": usage.get("input", 0), "output_tokens": usage.get("output", 0)}}
+
+    return ProviderHandler(call, provides_for=("*", "agent"))
+
+
 def ld_get(path):
     """GET from the LaunchDarkly REST API, for the judge configs the SDK doesn't read for us.
 
@@ -749,8 +817,11 @@ async def run_target(evals, target, variation_key, args):
             # The SDK picks the handler by the config's mode: agent_handler
             # for AGENT_CONFIGS, the messages handler for the rest and for
             # every judge.
+            # A Jev variation gets jev_handler in agent_handler's place.
             handlers=[recording_handler(inner, result, rows, JUDGE_VIEWS.get(target["config"]), thresholds)
-                      for inner in (create_langchain_messages_handler(bedrock_model), agent_handler(bedrock_model))],
+                      for inner in (create_langchain_messages_handler(bedrock_model),
+                                    jev_handler(variation, rows) if is_jev(variation)
+                                    else agent_handler(bedrock_model))],
             # These replace the variation's tools. Without an entry's tools
             # there are none: the store's Order Review agents call theirs
             # before they're handed on, and the other datasets carry what the
@@ -807,7 +878,7 @@ def repo_path(name):
     return os.path.relpath(os.path.join(HERE, name), top)
 
 
-def definition(resources, config, dataset, variation_key, dataset_text, tool_sources=None):
+def definition(resources, config, dataset, variation_key, dataset_text, sources=None):
     configs = resources.get("AI_CONFIGS", []) + resources.get("AGENT_CONFIGS", [])
     spec = next((s for s in configs if s["config"]["config_key"] == config), None)
     target = next((t for t in resources.get("CI_EVALS", [])
@@ -831,7 +902,11 @@ def definition(resources, config, dataset, variation_key, dataset_text, tool_sou
         "companions": {j["judgeConfigKey"]: companions.get(j["judgeConfigKey"], []) for j in own},
         "snippets": resources.get("PROMPT_SNIPPETS", []),
         "optimization": optimization, "dataset": dataset_text,
-        "tool_sources": tool_sources if target.get("tools") else None,
+        "tool_sources": {p: (sources or {}).get(p) for p in swag_tools.SOURCES}
+        if target.get("tools") else None,
+        "jev_sources": {p: (sources or {}).get(p) for p in JEV_SOURCES}
+        if is_jev(next((v for v in spec["variations"] if v["ai_config_version_key"] == variation_key), None))
+        else None,
         # The schemas and descriptions eval_tools() hands the model.
         "tool_specs": [t for t in resources.get("AI_TOOLS", []) if t["tool_key"] in swag_tools.TOOL_KEYS]
         if target.get("tools") else None,
@@ -855,7 +930,7 @@ def changed_since(base, pairs):
     import demo_resources
     top = git("rev-parse", "--show-toplevel").stdout.strip()
     sources_now, sources_then = {}, {}
-    for path in swag_tools.SOURCES:
+    for path in swag_tools.SOURCES + JEV_SOURCES:
         with open(os.path.join(top, path), encoding="utf-8") as f:
             sources_now[path] = f.read()
         shown = git("show", f"{base}:{path}")
@@ -895,7 +970,7 @@ def comparison(results, baseline):
         return None
     lines = ["", "### Compared with `main`", ""]
     for r in results:
-        if r.error:
+        if r.error or r.skipped:
             continue
         then = baseline_for(r, baseline)
         name = f"`{r.config}/{r.variation}`" + (" with tools" if r.tools else "")
@@ -1047,6 +1122,8 @@ def markdown(results, baseline=None):
     for r in results:
         if r.error:
             verdict, passed = f"error: {r.error[:150]}", "–"
+        elif r.skipped:
+            verdict, passed = f"skipped: {r.skipped}", "–"
         else:
             verdict = "passed" if r.passed else "failed"
             if r.missing_judges:
@@ -1097,11 +1174,13 @@ async def main(args):
     targets = [t for t in CI_EVALS if not args.config or t["config"] in args.config]
     if not targets:
         sys.exit(f"error: no CI_EVALS entry for {', '.join(args.config)}")
-    # What targeting serves, unless the entry's variations or --variation
-    # says otherwise.
+    # What targeting serves and the entry's also, unless the entry's
+    # variations or --variation says otherwise. --variation runs one whether
+    # targeting serves it or not.
     served = {t["config"]: served_variations(spec_for(t["config"])) for t in targets}
     pairs = [(t, v) for t in targets
-             for v in ([args.variation] if args.variation else t.get("variations", list(served[t["config"]])))]
+             for v in ([args.variation] if args.variation else t.get(
+                 "variations", list(dict.fromkeys([*served[t["config"]], *t.get("also", [])]))))]
     unevaluated = {}
     for t in targets:
         if "variations" in t and not args.variation:
@@ -1131,7 +1210,17 @@ async def main(args):
     results = []
     try:
         for target, variation in pairs:
-            result = await run_target(evals, target, variation, args)
+            spec = next((v for v in spec_for(target["config"])["variations"]
+                         if v["ai_config_version_key"] == variation), None)
+            if is_jev(spec) and not os.getenv("TYPESAFE_API_KEY"):
+                # Advisory, like the rest: the other targets run on.
+                result = Result(target["config"], variation, target["dataset"],
+                                mode="quick" if args.quick else "full",
+                                skipped="TYPESAFE_API_KEY is empty, so Jev can't be called. Set the secret "
+                                        "in the evals environment to evaluate it.")
+                print(f"skipping {target['config']}/{variation}: {result.skipped}", flush=True)
+            else:
+                result = await run_target(evals, target, variation, args)
             result.served_by = served[target["config"]].get(variation, [])
             results.append(result)
     finally:
@@ -1149,7 +1238,7 @@ async def main(args):
         # A run on main may evaluate only what changed, so the baseline keeps
         # every other target's latest result and replaces this run's. A result
         # that errored or ran without a judge keeps the previous one.
-        complete = [r for r in saved if not r["error"] and not r["missing_judges"]]
+        complete = [r for r in saved if not r["error"] and not r["skipped"] and not r["missing_judges"]]
         ran = {(r["config"], r["variation"], r["mode"], r["dataset"]) for r in complete}
         kept = [b for b in baseline or []
                 if (b["config"], b["variation"], b.get("mode"), b.get("dataset")) not in ran]
