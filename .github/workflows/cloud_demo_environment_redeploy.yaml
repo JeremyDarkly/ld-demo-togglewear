@@ -140,12 +140,18 @@ jobs:
           NAMESPACE: ${{ env.DEMO_NAMESPACE }}
           IMAGE: ${{ steps.login-ecr.outputs.registry }}/ld-demo-togglewear:${{ env.DEMO_NAMESPACE }}-${{ github.run_id }}
 
+      # TYPESAFE_API_KEY is optional: only the Order Decision agent's
+      # jev-choice variation uses it, and without it that variation's
+      # decisions fail and the review falls back to the store's own rules.
       - name: Write the store's Secret
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
         run: |
           kubectl create secret generic ld-demo-togglewear-secrets -n "$DEMO_NAMESPACE" \
             --from-literal=LD_SDK_KEY="$LD_SDK_KEY" \
             --from-literal=LD_RESET_TOKEN="$LD_RESET_TOKEN" \
             --from-literal=DEMO_API_SECRET="$DEMO_API_SECRET" \
+            --from-literal=TYPESAFE_API_KEY="$TYPESAFE_API_KEY" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Applying deploy file to Kubernetes

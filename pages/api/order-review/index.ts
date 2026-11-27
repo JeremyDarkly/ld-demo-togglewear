@@ -15,10 +15,10 @@ import {
 } from "@launchdarkly/ai-node";
 import type { Span } from "@opentelemetry/api";
 import {
+  AIMessage,
   HumanMessage,
   SystemMessage,
   ToolMessage,
-  type AIMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
 import { activityGroup } from "@/lib/activity";
@@ -48,10 +48,12 @@ import {
   decisionFor,
   isBlockedZip,
   riskScore,
+  summaryFor,
   type FraudAssessment,
   type FraudDecision,
 } from "@/lib/fraudAgent";
 import { guard, LIMITS, text } from "@/lib/apiGuard";
+import { isJevConfig, jevDecision } from "@/lib/jev";
 import {
   langChainModel,
   structuredTools,
@@ -128,6 +130,12 @@ const DECISION_POLICY_JUDGE_KEY = "togglewear-decision-policy-judge";
 // something about their work too; the Shopper Message judge scores the
 // Order Decision agent's own wording, so it stays there.
 const SPECIALIST_POLICY_KEY = "specialist-judge-decision-policy";
+
+// 1 when the Order Decision agent gave no usable decision, whether a model
+// failed, its answer did not parse or Jev could not answer, and 0 when it
+// did, on every decision, so the metric is a rate a rollout to Jev can be
+// held to.
+const DECISION_ERROR_KEY = "order-decision-error";
 
 type CodeChecks = Partial<Record<CodeCheckKey, () => CheckResult>>;
 
@@ -256,6 +264,43 @@ function parseDecision(text: string): { decision: FraudDecision; summary: string
   }
 }
 
+// The Order Decision as Jev makes it (lib/jev.ts), answered the way the
+// LLM variations answer, filled in to DECISION_SCHEMA. Jev picks the
+// decision and writes nothing, so the shopper is shown the scripted
+// review's message for it. Jev failing throws, which the SDK records as the
+// run's error, and the review falls back as it does for a model failing.
+export async function runJev(
+  config: Parameters<typeof jevDecision>[0],
+  input: string,
+  points: number,
+  agentRun: TracedRun,
+  span?: Span,
+  options?: Parameters<typeof jevDecision>[3],
+): Promise<AgentRun> {
+  let made: Awaited<ReturnType<typeof jevDecision>> | undefined;
+  await agentRun.modelCall(config.model?.name ?? "", [input], async () => {
+    made = await jevDecision(config, input, points, options);
+    const output = JSON.stringify({
+      decision: made.decision,
+      score: points,
+      summary: summaryFor(made.decision),
+    });
+    return { response: new AIMessage(output), usage: made.usage, output };
+  });
+  const decision = made!;
+  span?.setAttributes({
+    "orderReview.jev.choice": decision.choice,
+    "orderReview.jev.confidence": decision.confidence,
+    "orderReview.jev.fellBack": decision.fellBack,
+  });
+  const text = JSON.stringify({
+    decision: decision.decision,
+    score: points,
+    summary: summaryFor(decision.decision),
+  });
+  return { text, metrics: { success: true, tokens: decision.usage, toolCalls: [] } };
+}
+
 // What a checkout form can hold, with room to spare. A cart has at most a few
 // dozen lines; an address field a few dozen characters.
 const MAX_LINES = 50;
@@ -292,6 +337,8 @@ type NodeRun = {
   agentRun: TracedRun;
   answerSchema?: Record<string, unknown>;
   result?: AgentRun;
+  // The SDK's run of it, once the handler has been called.
+  trackData?: TrackData;
 };
 
 // Runs the graph, answering the shopper through answer as soon as the
@@ -317,14 +364,21 @@ export async function runGraph(
     const key = trackData.configKey;
     const node = nodeRuns.get(key);
     if (!node) throw new Error(`No run was started for ${key}`);
-    const result = await runAgent(
-      { ...config, instructions: parseTemplate(config.instructions ?? "", vars) },
-      input,
-      toolFunctions(toolHandlers, tools.registry, context, trackData),
-      node.agentRun,
-      toolCallReporter(client, context, trackData),
-      node.answerSchema,
-    );
+    node.trackData = trackData;
+    const instructions = parseTemplate(config.instructions ?? "", vars);
+    // A variation on a TypeSafe model config is Jev, which only the Order
+    // Decision agent, the one with an answer schema, knows how to ask.
+    const result =
+      node.answerSchema && isJevConfig(config)
+        ? await runJev({ ...config, instructions }, input, riskScore(tools.signals), node.agentRun, span)
+        : await runAgent(
+            { ...config, instructions },
+            input,
+            toolFunctions(toolHandlers, tools.registry, context, trackData),
+            node.agentRun,
+            toolCallReporter(client, context, trackData),
+            node.answerSchema,
+          );
     node.result = result;
     // The start of what it did say, so the error in Observability shows
     // what went wrong rather than only that something did.
@@ -492,6 +546,9 @@ export async function runGraph(
     if (!decider) throw new Error("The specialists hand to no decision agent");
     const decisionInput = `Order ${order.ref}.\n\nCase summary from Order Intake:\n${summary}\n\n${reports}`;
     const points = riskScore(tools.signals);
+    // On the decision's own run, so it carries the variation that made it.
+    const decisionError = (value: number) =>
+      track(DECISION_ERROR_KEY, nodeRuns.get(decider.key)?.trackData ?? graphTrackData, value);
     // Without from: runNode takes one agent handing over, and all three
     // specialists hand to the decision, so their handoffs are sent below.
     const verdictText = await run(decider, decisionInput, {
@@ -523,6 +580,9 @@ export async function runGraph(
           );
         }
       },
+    }).catch((err) => {
+      decisionError(1);
+      throw err;
     });
     for (const node of specialists) {
       track(
@@ -535,6 +595,7 @@ export async function runGraph(
     const signals = tools.signals;
     const score = riskScore(signals);
     const verdict = parseDecision(verdictText);
+    decisionError(verdict ? 0 : 1);
     if (!verdict) {
       throw new Error(`The decision agent did not answer with a decision: ${verdictText.slice(0, 200)}`);
     }
