@@ -122,6 +122,8 @@ jobs:
     env:
       LD_API_KEY: ${{ secrets.LD_API_KEY }}
       LD_SDK_KEY: ${{ secrets.LD_SDK_KEY }}
+      # Jev's key, from the evals environment. Empty when the secret isn't set.
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
       LD_PROJECT_KEY: ${{ vars.LD_PROJECT_KEY }}
       AWS_REGION: us-east-1
       SCRIPTS: .github/workflows/demo_provisioning_scripts
