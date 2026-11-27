@@ -38,7 +38,8 @@ spec:
           imagePullPolicy: IfNotPresent
           # Nothing the server reads is in the image. The keys come from the
           # Secret the workflow writes just before this is applied
-          # (LD_SDK_KEY, LD_RESET_TOKEN, DEMO_API_SECRET); the rest is plain.
+          # (LD_SDK_KEY, LD_RESET_TOKEN, DEMO_API_SECRET, TYPESAFE_API_KEY); the
+          # rest is plain.
           envFrom:
             - secretRef:
                 name: ld-demo-togglewear-secrets

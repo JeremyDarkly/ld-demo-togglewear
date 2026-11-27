@@ -2,9 +2,10 @@ name: Offline Evals
 
 # Evaluates the store's AI Configs against their datasets with
 # demo_provisioning_scripts/ci_eval.py, as demo_resources.py defines them, on
-# Bedrock. Advisory: it reports scores and links to each run in LaunchDarkly,
-# and fails only when a run can't be completed, or a judge it needs isn't in
-# the project yet. Never make it a required check.
+# Bedrock, and on Jev for the Order Decision's Jev variation. Advisory: it
+# reports scores and links to each run in LaunchDarkly, and fails only when a
+# run can't be completed, or a judge it needs isn't in the project yet. Never
+# make it a required check.
 #
 #   Manual run    The targets chosen, quick or full. GitHub lets only people
 #                 with write access to the repository start one.
@@ -31,6 +32,9 @@ name: Offline Evals
 #                                  secret, not a variable, because the ARN
 #                                  names the AWS account and the logs are
 #                                  public.
+#   TYPESAFE_API_KEY     secret    Jev's key, for the Order Decision's
+#                                  jev-choice variation, which is skipped
+#                                  without it
 #   LD_PROJECT_KEY       variable  the demo project's key
 #
 # Never LD_EAP_API_KEY or AWS_ACCESS_KEY here: they build and delete
@@ -71,6 +75,11 @@ on:
       - lib/account.ts
       - lib/shopper.ts
       - lib/sizeGuide.ts
+      # What the Order Decision's Jev variation is asked through
+      # (JEV_SOURCES in ci_eval.py).
+      - scripts/jev-decision.mjs
+      - lib/jev.ts
+      - lib/fraudAgent.ts
   pull_request:
     paths:
       - .github/workflows/demo_provisioning_scripts/demo_resources.py
@@ -90,6 +99,11 @@ on:
       - lib/account.ts
       - lib/shopper.ts
       - lib/sizeGuide.ts
+      # What the Order Decision's Jev variation is asked through
+      # (JEV_SOURCES in ci_eval.py).
+      - scripts/jev-decision.mjs
+      - lib/jev.ts
+      - lib/fraudAgent.ts
   schedule:
     - cron: '0 9 * * *'
 

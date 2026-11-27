@@ -115,6 +115,12 @@ export function assessOrder(order: OrderUnderReview): FraudAssessment {
   return { decision, score, signals, summary: SUMMARIES[decision] };
 }
 
+// The scripted review's message to the shopper for a decision, which is
+// also what they are shown for a decision a model made without writing one.
+export function summaryFor(decision: FraudDecision) {
+  return SUMMARIES[decision];
+}
+
 const SUMMARIES: Record<FraudDecision, string> = {
   approve:
     "Nothing on this order looks unusual. Payment captured and the order is on its way to fulfilment.",

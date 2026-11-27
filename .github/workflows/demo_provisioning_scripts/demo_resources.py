@@ -464,6 +464,23 @@ METRICS = [
      'unit_aggregation_type': 'average',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'togglewear']},
+    # Sent by pages/api/order-review/index.ts on every Order Review decision, on
+    # the Order Decision agent's run: 1 when it gave no usable decision (a model
+    # failed, its answer did not parse, or Jev could not answer), so the review
+    # fell back to lib/fraudAgent.ts, 0 otherwise. The guardrail for a rollout
+    # to the jev-choice variation.
+    {'metric_key': 'order-decision-error',
+     'metric_name': 'Order Decision Error',
+     'event_key': 'order-decision-error',
+     'metric_description': ('Whether the Order Decision agent gave no usable decision, 1 or 0, so the review fell '
+                           'back to the store\'s own rules. The average is the share of decisions that failed.'),
+     'numeric': True,
+     'unit': 'errors',
+     'success_criteria': 'LowerThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'order-review', 'togglewear']},
     # Sent by pages/api/order-review/index.ts, through lib/codeChecks.ts, once the
     # Decision Policy judge has scored a decision decision-matches-points checked:
     # 1 when they disagree, the judge passing at 0.7 as in ci_eval.py, 0 when they
@@ -2076,7 +2093,8 @@ _AGENT_MODELS = {_HAIKU: ('claude-haiku-4-5', 'Claude Haiku 4.5', _HAIKU_ID),
 
 # Temperature 0 because the same order should get the same review every time
 # it is placed in a demo.
-def _agent(key, name, description, model, max_tokens, instructions, tools=(), judges=()):
+def _agent(key, name, description, model, max_tokens, instructions, tools=(), judges=(),
+           more_variations=()):
     variation_key, variation_name, model_id = _AGENT_MODELS[model]
     return {'config': {'config_key': key,
                        'config_name': name,
@@ -2090,11 +2108,50 @@ def _agent(key, name, description, model, max_tokens, instructions, tools=(), ju
                  'description': 'Reviews every order today.',
                  'model': {'modelName': model_id,
                            'parameters': {'maxTokens': max_tokens, 'temperature': 0}},
-                 'instructions': instructions}],
+                 'instructions': instructions},
+                *more_variations],
             'tools': list(tools),
             'judges': [{'judgeConfigKey': j, 'samplingRate': 1.0} for j in judges],
             'environment': 'production',
             'fallthrough': variation_key}
+
+# Jev, TypeSafe's decision model, as a second Order Decision variation.
+# It answers one choice question instead of writing: pages/api/order-review
+# asks it (lib/jev.ts) with these instructions and one option per decision,
+# and shows the shopper the store's own message for the one it picks. Under
+# choice_confidence_min the store uses the decision the points call for
+# instead. Served to no one: target it to try it, which needs the
+# TYPESAFE_API_KEY repository secret in the build (see the README). Pinned to
+# 1.14.0 rather than jev-latest, so the model can't change under a rollout.
+_JEV = 'TypeSafe.jev-1.14.0'
+_JEV_ID = 'jev-1.14.0'
+# Review first: Jev leans towards the first option, and holding an order
+# for a person is the safe direction. LaunchDarkly stores criteria with its
+# keys sorted, so the order is kept in criteria_order too.
+_JEV_CRITERIA = {
+    'review': 'The specialists found 40 to 69 risk points in all, so a person on the team should '
+              'check the order before it ships.',
+    'decline': 'The specialists found 70 risk points or more in all, so the order is stopped.',
+    'approve': 'The specialists found under 40 risk points in all, so the order goes through.',
+}
+_JEV_DECISION = {
+    'ai_config_version_key': 'jev-choice',
+    'ai_model_config_key': _JEV,
+    'ai_config_version_name': 'Jev 1.14, choice',
+    'description': 'Jev, TypeSafe\'s decision model, choosing approve, review or decline. Serves '
+                   'no one until it is targeted.',
+    'model': {'modelName': _JEV_ID,
+              'parameters': {},
+              'custom': {'question_type': 'choice',
+                         'choice_confidence_min': 0.7,
+                         'criteria': _JEV_CRITERIA,
+                         'criteria_order': list(_JEV_CRITERIA)}},
+    'instructions': (
+        "Decide what happens to this order in ToggleWear's merch store, from the risk points the "
+        "specialists found. risk_points is their total; the account history specialist adds "
+        "none. The points alone decide: a loyal member, a familiar address or a small total "
+        "never moves the decision."),
+}
 
 _ORDER_REVIEW_OPENING = (
     "You are part of ToggleWear's Order Review team, a set of agents that checks every order "
@@ -2155,7 +2212,9 @@ AGENT_CONFIGS = [
            'Weighs the three specialists\' findings and approves, holds or declines the order, '
            'with the explanation the shopper sees at checkout. Two judges score every decision, '
            'Decision Policy for making the call the points call for and Shopper Message for the '
-           'explanation, on its Monitoring tab.',
+           'explanation, on its Monitoring tab. A second variation, Jev 1.14, has Jev, '
+           'TypeSafe\'s decision model, choose the decision instead; it serves no one until '
+           'you target it.',
            _SONNET, 400,
            _ORDER_REVIEW_OPENING
            + "You make the call on each order once the three specialists have reported. Add "
@@ -2175,7 +2234,8 @@ AGENT_CONFIGS = [
              "caught it, in plain words, without naming the agents, the points or any "
              "threshold. Nobody is charged for an order that is held or declined.\n\n"
              + _snippet('togglewear-brand-voice'),
-           judges=['togglewear-decision-policy-judge', 'togglewear-shopper-message-judge']),
+           judges=['togglewear-decision-policy-judge', 'togglewear-shopper-message-judge'],
+           more_variations=[_JEV_DECISION]),
     _agent('case-note-agent', 'Case Note',
            'The last Order Review agent, which only runs when an order is held or declined. '
            'Writes the note a person on the review team picks the order up from.',
@@ -2327,8 +2387,10 @@ PLAYGROUNDS = [
 # --quick run takes: their metadata scenarios, or how many from the top.
 # Each variation the config's targeting serves is evaluated: its fallthrough,
 # each rule's, both sides of a guarded rollout and an adaptive trigger's
-# serve. variations, when set, is evaluated instead, and the summary lists
-# what it leaves out as served but not evaluated. user_message is
+# serve. also is more variations to evaluate besides those, such as one that
+# serves no one until it is targeted. variations, when set, is evaluated
+# instead, and the summary lists what it leaves out as served but not
+# evaluated. user_message is
 # added to a prompt that has none of its own, filled in from the row.
 # statements names an agent optimization whose acceptance statements are
 # judged too. tools gives the model stand-in tools to call, which replace the
@@ -2357,6 +2419,10 @@ CI_EVALS = [
      # demo-summary-names-decision is deliberately weak, there to compare
      # with the others (ci_eval.py's COMPARISON_ONLY).
      'scorers': ['decision-matches-points', 'demo-summary-names-decision'],
+     # Jev serves no one yet, so it is named to be evaluated with the
+     # variation targeting serves. ci_eval.py asks it through the store's
+     # client with TYPESAFE_API_KEY, and skips it without the key.
+     'also': ['jev-choice'],
      'quick': ['ordinary-member', 'just-under-value', 'high-value-platinum',
                'value-and-quantity', 'blocked-zip-gold', 'blocked-zip-small']},
     # No judges attached, so the case-note-quality optimization's acceptance
