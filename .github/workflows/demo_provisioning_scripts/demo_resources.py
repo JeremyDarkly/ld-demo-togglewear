@@ -1395,7 +1395,7 @@ _COHERENCE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
 _DECISION_POLICY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
     _ORDER_JUDGE_OPENING
     + "Score whether the decision in the response is the one the risk points call "
-      "for. Work it out in this order before scoring:\n"
+      "for. Work it out in this order:\n"
       "1. Take the order's total risk points from the line in the message history "
       "that starts \"Risk points the specialists' tools found\".\n"
       "2. Find the decision those points call for: 70 points or more is \"decline\", "
@@ -1408,8 +1408,12 @@ _DECISION_POLICY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
       "0.7: the decision field is right, but its score is not the total.\n"
       "0.0: the decision field is not the decision the points call for, whatever its "
       "score or summary says.\n\n"
-      "In your explanation, give the total, the decision it calls for and the decision "
-      "in the response, in one or two sentences."
+      "Answer with the one JSON object the message history asks for and nothing else: "
+      "no steps or working outside it, and no second answer after it. Write its "
+      "\"reasoning\" field first, giving the total, the decision it calls for and the "
+      "decision in the response in one or two sentences, and its \"score\" field "
+      "after that, so the score follows from them: "
+      "{\"reasoning\": \"...\", \"score\": ...}."
     + _JUDGE_HISTORY)}]
 _SHOPPER_MESSAGE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
     _ORDER_JUDGE_OPENING
@@ -1716,6 +1720,10 @@ AI_CONFIGS = [
          # Sonnet rather than Haiku like the other judges: the AI SDK has a
          # judge give its score before its reasoning, and Haiku scores a
          # mismatched decision 1.0 before working out that it does not match.
+         # The rubric now asks for the reasoning field first, which its Llama
+         # companion needed too: scoring first, Llama would give 0.0, then
+         # argue with itself after the JSON and give a second answer, which
+         # the SDK can't parse.
          {'ai_config_version_key': 'decision-policy-judge',
           'ai_model_config_key': _SONNET,
           'ai_config_version_name': 'Claude Sonnet 4.6',
