@@ -162,7 +162,7 @@ export const BEST_SELLERS: Product[] = [
     slug: "togglewear-hoodie",
     name: "ToggleWear Hoodie",
     priceUsd: 68,
-    description: "Heavyweight cotton-blend fleece",
+    description: "Midweight cotton-blend fleece",
     image: "/images/products/hoodie-blue-model.png",
     category: "apparel",
     isNew: true,
