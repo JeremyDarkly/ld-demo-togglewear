@@ -39,15 +39,24 @@ const answer = (choice, confidence) => ({
   usage: { input_tokens: 600 },
 });
 
+const timeout = () => Object.assign(new Error("timed out"), { name: "TimeoutError" });
+
+// A 200 whose body times out on the way, as an abort while it is read does.
+const stalledBody = () =>
+  new Response(new ReadableStream({ start: (controller) => controller.error(timeout()) }), { status: 200 });
+
 // A fetch that answers with each of replies in turn, a number being an HTTP
-// status with no body, and records what it was asked.
+// status with no body, a string a body as it is, a Response itself, and
+// records what it was asked.
 function scripted(...replies) {
   const calls = [];
   const fetchImpl = async (url, init) => {
     calls.push({ url, init, body: JSON.parse(init.body) });
     const reply = replies.shift();
     if (reply instanceof Error) throw reply;
+    if (reply instanceof Response) return reply;
     if (typeof reply === "number") return new Response("upstream trouble", { status: reply });
+    if (typeof reply === "string") return new Response(reply, { status: 200 });
     return Response.json(reply);
   };
   return { calls, options: { apiKey: "test-key", fetchImpl } };
@@ -84,9 +93,8 @@ test("under the threshold, the decision is the one the points call for", async (
   assert.equal(made.decision, "review");
 });
 
-test("a timeout or a 5xx is tried once more", async () => {
-  const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
-  for (const first of [timeout, 503]) {
+test("a timeout, a 5xx or a body that times out is tried once more", async () => {
+  for (const first of [timeout(), 503, stalledBody()]) {
     const { calls, options } = scripted(first, answer("approve", 0.99));
     assert.equal((await jevDecision(config, "Order TW-3.", 0, options)).decision, "approve");
     assert.equal(calls.length, 2);
@@ -102,12 +110,38 @@ test("each way Jev can fail is a JevError", async () => {
       scripted({ model: "jev-1.14.0", answers: { decision: { choice: "approve", probabilities: {} } }, usage: { input_tokens: 1 } }).options,
     ],
     "a choice that is not a decision": [scripted(answer("escalate", 0.9)).options],
+    "a body that times out twice": [scripted(stalledBody(), stalledBody()).options],
   };
+  // A confidence that is not a number from 0 to 1 would pass any threshold,
+  // or none, so it is no answer. JSON has no Infinity, but 1e999 parses to it.
+  for (const confidence of [1.5, -0.1, "0.9", null]) {
+    failures[`a confidence of ${confidence}`] = [scripted(answer("approve", confidence)).options];
+  }
+  failures["an infinite confidence"] = [
+    scripted(JSON.stringify(answer("approve", 0.9)).replace('"confidence":0.9', '"confidence":1e999')).options,
+  ];
   for (const [name, [options]] of Object.entries(failures)) {
     await assert.rejects(jevDecision(config, "Order TW-4.", 0, options), JevError, name);
   }
   const noCriteria = { ...config, model: { name: "jev-1.14.0", custom: {} } };
   await assert.rejects(jevDecision(noCriteria, "Order TW-4.", 0, scripted().options), JevError);
+});
+
+// A tracer that keeps each span's attributes by its name, for what the
+// route's spans say about the call.
+const spans = {};
+trace.setGlobalTracerProvider({
+  getTracer: () => ({
+    startSpan(name, options) {
+      const attributes = (spans[name] = { ...options?.attributes });
+      const recorded = {
+        setAttribute: (key, value) => ((attributes[key] = value), span),
+        setAttributes: (more) => (Object.assign(attributes, more), span),
+      };
+      const span = new Proxy(recorded, { get: (target, key) => target[key] ?? (() => span) });
+      return span;
+    },
+  }),
 });
 
 test("the route answers with Jev's decision and the store's message for it", async () => {
@@ -117,4 +151,7 @@ test("the route answers with Jev's decision and the store's message for it", asy
   assert.deepEqual(JSON.parse(ran.text), { decision: "review", score: 45, summary: summaryFor("review") });
   assert.equal(ran.metrics.success, true);
   assert.equal(ran.metrics.tokens.input, 600);
+  // TypeSafe serves the call, not Bedrock, on the agent's span and the call's.
+  assert.equal(spans["invoke_agent Order Decision"]["gen_ai.provider.name"], "typesafe");
+  assert.equal(spans["chat jev-1.14.0"]["gen_ai.provider.name"], "typesafe");
 });

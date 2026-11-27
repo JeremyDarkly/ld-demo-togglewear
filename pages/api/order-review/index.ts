@@ -53,7 +53,7 @@ import {
   type FraudDecision,
 } from "@/lib/fraudAgent";
 import { guard, LIMITS, text } from "@/lib/apiGuard";
-import { isJevConfig, jevDecision } from "@/lib/jev";
+import { isJevConfig, JEV_PROVIDER, jevDecision } from "@/lib/jev";
 import {
   langChainModel,
   structuredTools,
@@ -286,7 +286,7 @@ export async function runJev(
       summary: summaryFor(made.decision),
     });
     return { response: new AIMessage(output), usage: made.usage, output };
-  });
+  }, JEV_PROVIDER);
   const decision = made!;
   span?.setAttributes({
     "orderReview.jev.choice": decision.choice,

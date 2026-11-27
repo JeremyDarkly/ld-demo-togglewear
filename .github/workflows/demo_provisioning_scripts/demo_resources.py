@@ -2387,8 +2387,10 @@ PLAYGROUNDS = [
 # --quick run takes: their metadata scenarios, or how many from the top.
 # Each variation the config's targeting serves is evaluated: its fallthrough,
 # each rule's, both sides of a guarded rollout and an adaptive trigger's
-# serve. variations, when set, is evaluated instead, and the summary lists
-# what it leaves out as served but not evaluated. user_message is
+# serve. also is more variations to evaluate besides those, such as one that
+# serves no one until it is targeted. variations, when set, is evaluated
+# instead, and the summary lists what it leaves out as served but not
+# evaluated. user_message is
 # added to a prompt that has none of its own, filled in from the row.
 # statements names an agent optimization whose acceptance statements are
 # judged too. tools gives the model stand-in tools to call, which replace the
@@ -2417,6 +2419,10 @@ CI_EVALS = [
      # demo-summary-names-decision is deliberately weak, there to compare
      # with the others (ci_eval.py's COMPARISON_ONLY).
      'scorers': ['decision-matches-points', 'demo-summary-names-decision'],
+     # Jev serves no one yet, so it is named to be evaluated with the
+     # variation targeting serves. ci_eval.py asks it through the store's
+     # client with TYPESAFE_API_KEY, and skips it without the key.
+     'also': ['jev-choice'],
      'quick': ['ordinary-member', 'just-under-value', 'high-value-platinum',
                'value-and-quantity', 'blocked-zip-gold', 'blocked-zip-small']},
     # No judges attached, so the case-note-quality optimization's acceptance

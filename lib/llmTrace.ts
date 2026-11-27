@@ -73,11 +73,13 @@ function replyMessage(response: AIMessage): Message {
 
 export type AgentRun = {
   // One model call. input is what is new to the model on this call; the
-  // earlier turns are already in the conversation.
+  // earlier turns are already in the conversation. provider is who serves
+  // the model, as OpenTelemetry names it, when it is not Bedrock.
   modelCall: (
     model: string,
     input: string[],
     call: () => Promise<{ response: AIMessage; usage?: TokenUsage; output?: string }>,
+    provider?: string,
   ) => Promise<AIMessage>;
   tool: (call: { id?: string; name: string; args: unknown }, run: () => Promise<string>) => Promise<string>;
   // The answer, and the end of the run. With judges, their scores can still
@@ -124,14 +126,14 @@ export function startAgentRun(
   };
 
   return {
-    async modelCall(model, input, call) {
+    async modelCall(model, input, call, provider = PROVIDER) {
       const span = tracer.startSpan(
         `chat ${model}`,
         {
           attributes: {
             ...base,
             "gen_ai.operation.name": "chat",
-            "gen_ai.provider.name": PROVIDER,
+            "gen_ai.provider.name": provider,
             "gen_ai.request.model": model,
             ...(input.length && {
               "gen_ai.input.messages": JSON.stringify(input.map((t) => text("user", t))),
@@ -140,7 +142,7 @@ export function startAgentRun(
         },
         runContext,
       );
-      run.setAttribute("gen_ai.request.model", model);
+      run.setAttributes({ "gen_ai.provider.name": provider, "gen_ai.request.model": model });
       const startedAt = Date.now();
       try {
         const { response, usage, output } = await call();

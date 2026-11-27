@@ -24,6 +24,9 @@ const TIMEOUT_MS = 3_000;
 
 const DEFAULT_CONFIDENCE_MIN = 0.7;
 
+// Who serves Jev, on its trace spans (lib/llmTrace.ts), in place of Bedrock.
+export const JEV_PROVIDER = "typesafe";
+
 const DECISIONS: FraudDecision[] = ["approve", "review", "decline"];
 
 // Jev could not answer: no key, a timeout, an HTTP error or a body without
@@ -60,7 +63,8 @@ const need = (ok: boolean, field: string) => {
 };
 
 // Asks Jev questions about state. Retries once on a timeout or a 5xx, and
-// throws JevError on anything else that is not an answer to every question.
+// throws JevError on anything else that is not an answer to every question,
+// including a confidence that is not a number from 0 to 1.
 export async function askJev(
   model: string,
   state: Record<string, unknown>,
@@ -76,10 +80,15 @@ export async function askJev(
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
+  // The body is read inside the same try as the request, so a timeout while
+  // it arrives is retried like one before the headers, and a body that fails
+  // to arrive is a JevError.
   let res: Response | undefined;
+  let text = "";
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       res = await request();
+      text = await res.text();
     } catch (err) {
       const timedOut = (err as Error).name === "TimeoutError";
       if (timedOut && attempt === 0) continue;
@@ -91,12 +100,12 @@ export async function askJev(
     break;
   }
   if (!res?.ok) {
-    throw new JevError(`Jev answered HTTP ${res?.status}: ${(await res?.text())?.slice(0, 200)}`);
+    throw new JevError(`Jev answered HTTP ${res?.status}: ${text.slice(0, 200)}`);
   }
 
   let body: JevResponse;
   try {
-    body = await res.json();
+    body = JSON.parse(text);
   } catch {
     throw new JevError("Jev's answer is not JSON");
   }
@@ -105,7 +114,13 @@ export async function askJev(
   for (const name of Object.keys(questions)) {
     const answer = body.answers?.[name];
     need(typeof answer?.choice === "string", `answers.${name}.choice`);
-    need(typeof answer.confidence === "number", `answers.${name}.confidence`);
+    // A confidence outside 0 to 1 is no answer either: it would pass any
+    // threshold, or none.
+    const { confidence } = answer;
+    need(
+      typeof confidence === "number" && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1,
+      `answers.${name}.confidence between 0 and 1`,
+    );
     need(answer.probabilities !== null && typeof answer.probabilities === "object", `answers.${name}.probabilities`);
   }
   return body;
