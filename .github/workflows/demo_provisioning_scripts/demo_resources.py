@@ -315,6 +315,22 @@ METRICS = [
      'unit_aggregation_type': 'average',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'judge', 'togglewear']},
+    # Coherence is not one of LaunchDarkly's built-in judges (accuracy,
+    # relevance and toxicity), so, like the Order Review judges' metrics
+    # above, this one is made here.
+    {'metric_key': 'ai-judge-coherence',
+     'metric_name': 'AI Judge Coherence',
+     'event_key': '$ld:ai:judge:coherence',
+     'metric_description': 'The Coherence judge\'s score, from 0 to 1, for each Swag Assistant '
+                           'reply and Personal Stylist note it reads: whether it reads as one '
+                           'clear, finished message.',
+     'numeric': True,
+     'unit': 'score',
+     'success_criteria': 'HigherThanBaseline',
+     'exclude_empty_events': True,
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'judge', 'togglewear']},
     # Sent by the store (lib/aiServer.ts) after every judge reply, on the
     # judge's own AI Config: 1 when the reply could not be parsed and its score
     # was lost, 0 when it parsed. The AI SDK records nothing for a lost score,
@@ -1339,6 +1355,23 @@ _RELEVANCE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
       "Declining a question that has nothing to do with shopping at ToggleWear counts "
       "as relevant. Explain your score in one or two sentences."
     + _JUDGE_HISTORY)}]
+_COHERENCE_JUDGE_MESSAGES = [{'role': 'system', 'content': (
+    _JUDGE_OPENING
+    + "Score how coherent the response is as a message to the shopper: whether it reads "
+      "as one clear, finished reply in plain language, with each part following from the "
+      "last. Whether its facts are right, and whether it answers the question, are scored "
+      "separately, so leave them out.\n\n"
+      "1.0: reads cleanly from start to finish, as the store would want the shopper to "
+      "see it.\n"
+      "0.7: clear, with an awkward sentence or a small repetition that does not get in "
+      "the way.\n"
+      "0.4: hard to follow in places: it contradicts itself, repeats itself, trails off "
+      "or jumps between points.\n"
+      "0.0: it shows its workings instead of a reply, such as prompt headings, template "
+      "placeholders, raw tool output or notes to itself, or it is cut off or garbled.\n\n"
+      "A short reply, or a polite refusal of an off-topic question, scores 1.0 when it "
+      "reads cleanly. Explain your score in one or two sentences."
+    + _JUDGE_HISTORY)}]
 _DECISION_POLICY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
     _ORDER_JUDGE_OPENING
     + "Score whether the decision in the response is the one the risk points call "
@@ -1567,6 +1600,26 @@ AI_CONFIGS = [
           'messages': _RELEVANCE_JUDGE_MESSAGES}],
      'environment': 'production',
      'fallthrough': 'relevance-judge'},
+    {'config': {'config_key': 'togglewear-coherence-judge',
+                'config_name': 'ToggleWear Coherence Judge',
+                'description': 'Scores every Swag Assistant reply and Personal Stylist note from '
+                               '0 to 1 for whether it reads as one clear, finished message: no '
+                               'prompt headings, placeholders or workings showing, nothing cut '
+                               'off, contradicted or repeated. Runs on Claude Haiku 4.5; the '
+                               'scores appear on each config\'s Monitoring tab.',
+                'tags': ['ai-config', 'judge', 'togglewear'],
+                'mode': 'judge',
+                'evaluation_metric_key': '$ld:ai:judge:coherence',
+                'is_inverted': False},
+     'variations': [
+         {'ai_config_version_key': 'coherence-judge',
+          'ai_model_config_key': _HAIKU,
+          'ai_config_version_name': 'Claude Haiku 4.5',
+          'model': {'modelName': _HAIKU_ID,
+                    'parameters': {'maxTokens': 500, 'temperature': 0.0}},
+          'messages': _COHERENCE_JUDGE_MESSAGES}],
+     'environment': 'production',
+     'fallthrough': 'coherence-judge'},
 
     # The offline evals' tool-use judge (ci_eval.py), for the Swag Assistant
     # run with stand-in tools. No variation attaches it, so it never runs in
@@ -1680,6 +1733,9 @@ AI_CONFIGS = [
     _llama_companion('togglewear-relevance-judge', 'ToggleWear Relevance Judge', 'relevance-judge',
                      '$ld:ai:judge:relevance', 'Swag Assistant replies and Personal Stylist notes',
                      ['ai-config', 'judge', 'togglewear'], _RELEVANCE_JUDGE_MESSAGES),
+    _llama_companion('togglewear-coherence-judge', 'ToggleWear Coherence Judge', 'coherence-judge',
+                     '$ld:ai:judge:coherence', 'Swag Assistant replies and Personal Stylist notes',
+                     ['ai-config', 'judge', 'togglewear'], _COHERENCE_JUDGE_MESSAGES),
     _llama_companion('togglewear-decision-policy-judge', 'ToggleWear Decision Policy Judge',
                      'decision-policy-judge', '$ld:ai:judge:decision-policy', 'Order Review decisions',
                      ['ai-config', 'judge', 'order-review', 'togglewear'], _DECISION_POLICY_JUDGE_MESSAGES),
@@ -1704,10 +1760,11 @@ AI_CONFIGS = [
                                '(Claude Sonnet 4.6, fuller answers that compare options and '
                                'explain fit). Both run on Bedrock, call four tools against the '
                                'live catalog and the shopper\'s orders, and share the store '
-                               'policies and brand voice snippets from the Library. The Accuracy '
-                               'and Relevance judges score every reply. Duration, tokens, cost, '
-                               'tool calls, judge scores and shoppers\' thumbs up or down appear '
-                               'per variation on the Monitoring tab. Demo it: open the chat as '
+                               'policies and brand voice snippets from the Library. The Accuracy, '
+                               'Relevance and Coherence judges score every reply. Duration, '
+                               'tokens, cost, tool calls, judge scores and shoppers\' thumbs up '
+                               'or down appear per variation on the Monitoring tab. Demo it: '
+                               'open the chat as '
                                'Alex Rivera (Gold), ask "Help me pick a hoodie", then change the '
                                'Gold and Platinum rule to Standard here — the chat header switches '
                                'to Nova 2 Lite within a second. Switch the config off and the '
@@ -1747,7 +1804,8 @@ AI_CONFIGS = [
               + _SWAG_ASSISTANT_GROUNDING)}]}],
      'tools': ['search-products', 'get-product-details', 'get-member-perks', 'get-order-status'],
      'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0},
-                {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0}],
+                {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0},
+                {'judgeConfigKey': 'togglewear-coherence-judge', 'samplingRate': 1.0}],
      # The chat header reads this config's flag in the browser to show which
      # variation is serving, live.
      'client_side': True,
@@ -1809,7 +1867,8 @@ AI_CONFIGS = [
                     'parameters': {'maxTokens': 1000}},
           'messages': _PERSONAL_STYLIST_MESSAGES}],
      'judges': [{'judgeConfigKey': 'togglewear-accuracy-judge', 'samplingRate': 1.0},
-                {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0}],
+                {'judgeConfigKey': 'togglewear-relevance-judge', 'samplingRate': 1.0},
+                {'judgeConfigKey': 'togglewear-coherence-judge', 'samplingRate': 1.0}],
      'environment': 'production',
      'fallthrough': 'claude-sonnet-4-6',
      # Four even steps rather than LDPlatform's 1/5/10/25/50, which keeps Opus
@@ -2319,6 +2378,7 @@ CI_EVALS = [
 JUDGE_COMPANIONS = {
     'togglewear-accuracy-judge': ['togglewear-accuracy-judge-llama'],
     'togglewear-relevance-judge': ['togglewear-relevance-judge-llama'],
+    'togglewear-coherence-judge': ['togglewear-coherence-judge-llama'],
     'togglewear-decision-policy-judge': ['togglewear-decision-policy-judge-llama'],
     'togglewear-shopper-message-judge': ['togglewear-shopper-message-judge-llama'],
 }
