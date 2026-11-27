@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node --no-warnings --test \"scripts/*.test.mjs\"",
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@langchain/aws": "^1.4.7",

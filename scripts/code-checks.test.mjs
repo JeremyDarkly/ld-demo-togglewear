@@ -5,10 +5,16 @@
 // on. The graph runs through the AI SDK itself, which is handed the stub
 // client with initClient, so it never starts one of its own; the stub serves
 // the graph, its agents and the judge as flag values. No LaunchDarkly or AWS
-// credentials needed:
+// credentials needed. With the other tests:
 //
-//   node --no-warnings --import ./scripts/code-checks-register.mjs scripts/check-code-checks.mjs
+//   npm test
+//
+// or on its own:
+//
+//   node --no-warnings --test scripts/code-checks.test.mjs
+import "./code-checks-register.mjs";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { INVALID_SPAN_CONTEXT, trace } from "@opentelemetry/api";
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
@@ -33,14 +39,14 @@ const cases = JSON.parse(
   readFileSync(new URL("../.github/workflows/demo_provisioning_scripts/code_check_cases.json", import.meta.url)),
 );
 for (const c of cases) {
-  const result = CHECKS[c.check](c.output, c.input);
-  assert.deepEqual(
-    { passes: result.score >= 1, reasons: result.reasons },
-    { passes: c.passes, reasons: c.reasons },
-    `${c.check}: ${c.name}`,
-  );
+  test(`case ${c.check}: ${c.name}`, () => {
+    const result = CHECKS[c.check](c.output, c.input);
+    assert.deepEqual(
+      { passes: result.score >= 1, reasons: result.reasons },
+      { passes: c.passes, reasons: c.reasons },
+    );
+  });
 }
-console.log(`cases: all ${cases.length} match code_check_cases.json`);
 
 // ---- The Order Review graph, scripted ----
 
@@ -181,22 +187,20 @@ async function review({ flag, decision, note = GOOD_NOTE, judged = PASSES, sampl
 const held = { decision: "review", score: 45, summary: "Your order is under review before it ships." };
 
 // Flag off: no check runs, nothing is sent, the review is the same.
-{
+test("order review, flag false: no code-check events", async () => {
   const { assessment, events } = await review({ flag: false, decision: held });
   assert.deepEqual(events, []);
   assert.equal(assessment.decision, "review");
-  console.log("order review, flag false: no code-check events");
-}
+});
 
 // Flag unreadable: treated as off.
-{
+test("order review, flag unreadable: off, no code-check events", async () => {
   const { events } = await review({ flag: () => { throw new Error("no flag"); }, decision: held });
   assert.deepEqual(events, []);
-  console.log("order review, flag unreadable: off, no code-check events");
-}
+});
 
 // Flag on, a right decision the judge passes.
-{
+test("order review, flag true: each check 0, error 0, judge agrees 0", async () => {
   const { assessment, events } = await review({ flag: true, decision: held });
   assert.equal(assessment.decision, "review");
   assert.deepEqual(events, [
@@ -207,14 +211,13 @@ const held = { decision: "review", score: 45, summary: "Your order is under revi
     ["code-check-error", "fraud-decision-agent", 0],
     ["code-check-judge-disagreement", "fraud-decision-agent", 0],
   ]);
-  console.log("order review, flag true: each check 0, error 0, judge agrees 0");
-}
+});
 
 // Flag on, the model says review on a blocked ZIP: the check reads the
 // model's decision, the guard still declines, and the judge that passed it
 // disagrees with the check. The weak check passes a summary that names the
 // wrong decision, and the note is checked against the final decision.
-{
+test("order review, flag true: model's decision checked before the guard, judge disagreement 1", async () => {
   const { assessment, events, sent, all } = await review({
     flag: true,
     zip: "99999",
@@ -238,11 +241,10 @@ const held = { decision: "review", score: 45, summary: "Your order is under revi
   assert.deepEqual(sent[1].data, { ...decided.data, reason: sent[1].data.reason });
   assert.equal(sent[1].data.graphKey, GRAPH);
   assert.equal(sent[0].data.reason, "doesn't say it was declined");
-  console.log("order review, flag true: model's decision checked before the guard, judge disagreement 1");
-}
+});
 
 // The weak check fails a right decision put another way.
-{
+test("order review, flag true: weak check fails a right decision put another way", async () => {
   const { events } = await review({
     flag: true,
     decision: { ...held, summary: "We've held your order while someone takes a look." },
@@ -251,8 +253,7 @@ const held = { decision: "review", score: 45, summary: "Your order is under revi
     ["code-check-decision-matches-points", "fraud-decision-agent", 0],
     ["code-check-demo-summary-names-decision", "fraud-decision-agent", 1],
   ]);
-  console.log("order review, flag true: weak check fails a right decision put another way");
-}
+});
 
 // No disagreement when the judge was not sampled, its model failed, or its
 // reply did not parse. Only the last sends judge-parse-error 1; a judge that
@@ -262,19 +263,20 @@ for (const [label, options, parseError] of [
   ["model failed", { judged: new Error("model failed") }, []],
   ["reply did not parse", { judged: "Looks fine to me." }, [1]],
 ]) {
-  const { events, all, errors } = await review({ flag: true, decision: held, ...options });
-  assert.ok(!events.some(([key]) => key === "code-check-judge-disagreement"), label);
-  assert.ok(!all.some((s) => s.key === POLICY_METRIC), label);
-  assert.deepEqual(all.filter((s) => s.key === "judge-parse-error").map((s) => s.value), parseError, label);
-  assert.equal(errors.length, label === "model failed" ? 1 : 0, label);
+  test(`order review, flag true: no judge disagreement when the judge ${label === "not sampled" ? "was not sampled" : label}`, async () => {
+    const { events, all, errors } = await review({ flag: true, decision: held, ...options });
+    assert.ok(!events.some(([key]) => key === "code-check-judge-disagreement"));
+    assert.ok(!all.some((s) => s.key === POLICY_METRIC));
+    assert.deepEqual(all.filter((s) => s.key === "judge-parse-error").map((s) => s.value), parseError);
+    assert.equal(errors.length, label === "model failed" ? 1 : 0);
+  });
 }
-console.log("order review, flag true: no judge disagreement when the judge was not sampled, failed or did not parse");
 
 // The events a held order's review sends, by who sends them: the SDK's for
 // each agent's run and each handoff into a node run with from, and the
 // store's for the graph, the specialists' handoffs to the decision, the
 // judge's score and whether it parsed.
-{
+test("order review: every agent's run, the graph's events, the handoffs and the judge's score are sent", async () => {
   const { all } = await review({ flag: false, decision: held });
   const count = (key, configKey) =>
     all.filter((s) => s.key === key && (configKey === undefined || s.data.configKey === configKey)).length;
@@ -317,15 +319,13 @@ console.log("order review, flag true: no judge disagreement when the judge was n
   assert.equal(score.data.judgeConfigKey, POLICY_JUDGE);
   assert.equal(count("$ld:ai:generation:success", POLICY_JUDGE), 1);
   assert.deepEqual(all.filter((s) => s.key === "judge-parse-error").map((s) => [s.data.configKey, s.value]), [[POLICY_JUDGE, 0]]);
-  console.log("order review: every agent's run, the graph's events, the handoffs and the judge's score are sent");
-}
+});
 
 // A send that throws leaves the review as it was.
-{
+test("order review, flag true: a send that throws leaves the decision as it was", async () => {
   const { assessment } = await review({ flag: true, decision: held, trackThrows: true });
   assert.equal(assessment.decision, "review");
-  console.log("order review, flag true: a send that throws leaves the decision as it was");
-}
+});
 
 // ---- The Personal Stylist ----
 
@@ -336,20 +336,22 @@ const stylist = async (flag, raw) => {
   await checkReply(globalThis.stubClient, context, trackDataOf("personal-stylist"), raw, product, catalog);
   return sent.map((s) => [s.key, s.value, s.data.reason]);
 };
-assert.deepEqual(await stylist(false, '{"size": "XXL"}'), []);
-console.log("personal stylist, flag false: no code-check events");
-assert.deepEqual(await stylist(true, '{"size": "M", "pairing": "togglewear-cap", "note": "M fits."}'), [
-  ["code-check-stylist-reply-usable", 0, ""],
-  ["code-check-error", 0, ""],
-]);
-assert.deepEqual(await stylist(true, '```json\n{"size": "XXL", "pairing": "togglewear-cap", "note": "XXL fits."}\n```'), [
-  ["code-check-stylist-reply-usable", 1, "size 'XXL' isn't one of S, M, L"],
-  ["code-check-error", 0, ""],
-]);
-console.log("personal stylist, flag true: the raw reply is checked, before the page drops its size");
+test("personal stylist, flag false: no code-check events", async () => {
+  assert.deepEqual(await stylist(false, '{"size": "XXL"}'), []);
+});
+test("personal stylist, flag true: the raw reply is checked, before the page drops its size", async () => {
+  assert.deepEqual(await stylist(true, '{"size": "M", "pairing": "togglewear-cap", "note": "M fits."}'), [
+    ["code-check-stylist-reply-usable", 0, ""],
+    ["code-check-error", 0, ""],
+  ]);
+  assert.deepEqual(await stylist(true, '```json\n{"size": "XXL", "pairing": "togglewear-cap", "note": "XXL fits."}\n```'), [
+    ["code-check-stylist-reply-usable", 1, "size 'XXL' isn't one of S, M, L"],
+    ["code-check-error", 0, ""],
+  ]);
+});
 
 // ---- A check that throws ----
-{
+test("a check that throws: no event of its own, code-check-error 1", async () => {
   const sent = stubClient(true);
   const results = codeChecks.runCodeChecks(globalThis.stubClient, context, trackDataOf("x"), {
     "decision-matches-points": () => {
@@ -365,7 +367,4 @@ console.log("personal stylist, flag true: the raw reply is checked, before the p
       ["code-check-error", 1, "decision-matches-points: broke"],
     ],
   );
-  console.log("a check that throws: no event of its own, code-check-error 1");
-}
-
-console.log("All code check checks passed.");
+});

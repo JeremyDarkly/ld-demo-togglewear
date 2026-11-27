@@ -1,4 +1,4 @@
-// Module hooks for check-tool-call-errors.mjs, which runs the routes' tool
+// Module hooks for tool-call-errors.test.mjs, which runs the routes' tool
 // loops under plain Node: resolves the store's imports the way Next does,
 // leaves out the React components a route only imports types from, and swaps
 // the store's LangChain model and the AI SDK's LangChain handler, which runs

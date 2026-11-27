@@ -6,7 +6,7 @@ answer with nothing it can check passes.
 
 lib/codeChecks.ts runs the same checks on the store's live replies, and
 code_check_cases.json is the cases both are tested against
-(check_code_checks.py here, scripts/check-code-checks.mjs there). A change to
+(check_code_checks.py here, scripts/code-checks.test.mjs there). A change to
 one is a change to the other, and to the cases.
 
 No imports beyond the standard library, so the cases run without the AI SDK.
