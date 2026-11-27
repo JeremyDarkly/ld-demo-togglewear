@@ -216,8 +216,8 @@ const DECISION_WORDS: Record<string, string> = {
 // Passes when the decision's summary contains the decision's word. Weak on
 // purpose, a proxy for "the shopper is told the outcome": a wrong decision
 // whose summary names that wrong decision passes it, and a right one put
-// another way ("we've held your order") fails it. Live only, as a metric to
-// compare with the stronger checks.
+// another way ("we've held your order") fails it. Live, as a metric, and in
+// ci_eval.py for comparison only, to compare with the stronger checks.
 export function demoSummaryNamesDecision(output: string): CheckResult {
   const answer = answerOf(output) ?? {};
   const word =

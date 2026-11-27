@@ -7,6 +7,13 @@
         "mcp",
         "start"
       ]
+    },
+    "launchdarkly-token": {
+      "type": "http",
+      "url": "https://mcp.launchdarkly.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LD_ACCESS_TOKEN}"
+      }
     }
   }
 }
