@@ -31,6 +31,7 @@ import {
   storeHandlers,
   textOf,
   toolFunctions,
+  type JudgeResult,
 } from "@/lib/aiServer";
 import {
   caseNoteCoversTheCase,
@@ -118,6 +119,15 @@ const DECISIONS: FraudDecision[] = ["approve", "review", "decline"];
 // The judge code-check-judge-disagreement compares decision-matches-points
 // with, since both ask whether the decision follows from the points.
 const DECISION_POLICY_JUDGE_KEY = "togglewear-decision-policy-judge";
+
+// The Decision Policy judge's score, sent again on each specialist's run.
+// The judges are attached to the Order Decision agent alone, so their scores
+// carry its config and variation, and a rollout on a specialist would only
+// see them through the context. The Decision Policy judge checks the
+// decision against the points the specialists' tools found, so it says
+// something about their work too; the Shopper Message judge scores the
+// Order Decision agent's own wording, so it stays there.
+const SPECIALIST_POLICY_KEY = "specialist-judge-decision-policy";
 
 type CodeChecks = Partial<Record<CodeCheckKey, () => CheckResult>>;
 
@@ -356,6 +366,9 @@ export async function runGraph(
     }
   };
   let entered = 0;
+  // Each agent's run, as the SDK recorded it, for the specialists' copy of
+  // the Decision Policy judge's score.
+  const ranTrackData = new Map<string, TrackData>();
   // The whole review is one conversation in LaunchDarkly, found by the
   // order's number. Order numbers are random and only unique within a
   // session (lib/fraudAgent.ts), so the id adds a few characters of its own.
@@ -368,7 +381,7 @@ export async function runGraph(
   const run = async (
     node: GraphNode,
     input: string,
-    { from, show = (text: string) => text, answerSchema, judgeInput, codeChecks }: {
+    { from, show = (text: string) => text, answerSchema, judgeInput, codeChecks, onScored }: {
       from?: GraphNode;
       show?: (text: string) => string;
       answerSchema?: Record<string, unknown>;
@@ -380,6 +393,8 @@ export async function runGraph(
       // agent's input when they score its answer, without anything waiting
       // on them. No judging without it.
       judgeInput?: string;
+      // What the judges scored, once they all have.
+      onScored?: (results: JudgeResult[]) => void;
     } = {},
   ) => {
     const key = node.key;
@@ -412,6 +427,7 @@ export async function runGraph(
         { from },
       );
       const text = nodeRun.result?.text ?? String(ran.response);
+      ranTrackData.set(key, ran.trackData);
       addUsage(tokens, ran.usage);
       agentRun.finish(text, judgeInput !== undefined);
       const checked =
@@ -440,6 +456,7 @@ export async function runGraph(
                 results.find((r) => r.judgeConfigKey === DECISION_POLICY_JUDGE_KEY),
               );
             }
+            onScored?.(results);
           })
           .catch((err) => {
             agentRun.scored();
@@ -490,6 +507,22 @@ export async function runGraph(
         "decision-matches-points": () => decisionMatchesPoints(text, decisionFor(points), points),
         "demo-summary-names-decision": () => demoSummaryNamesDecision(text),
       }),
+      // On each specialist's run, with the judge's key, as the judge's own
+      // event is on the decision's. Nothing when the judge was not sampled,
+      // failed or did not parse, since it then has no score.
+      onScored: (results) => {
+        const policy = results.find((r) => r.judgeConfigKey === DECISION_POLICY_JUDGE_KEY);
+        if (typeof policy?.score !== "number") return;
+        for (const node of specialists) {
+          const trackData = ranTrackData.get(node.key);
+          if (!trackData) continue;
+          track(
+            SPECIALIST_POLICY_KEY,
+            { ...trackData, judgeConfigKey: DECISION_POLICY_JUDGE_KEY },
+            policy.score,
+          );
+        }
+      },
     });
     for (const node of specialists) {
       track(

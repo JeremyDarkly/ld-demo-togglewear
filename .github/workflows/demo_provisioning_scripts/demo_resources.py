@@ -266,6 +266,21 @@ METRICS = [
      'unit_aggregation_type': 'average',
      'randomization_units': ['user'],
      'tags': ['ai-config', 'judge', 'order-review', 'togglewear']},
+    # The Decision Policy judge's score again, sent by pages/api/order-review on
+    # each specialist's run (Payment Risk, Shipping Check, Account History),
+    # since the judge's own event carries the Order Decision agent's config and
+    # variation. So a rollout or experiment on a specialist can read the score.
+    {'metric_key': 'specialist-judge-decision-policy',
+     'metric_name': 'Specialist Judge Decision Policy',
+     'event_key': 'specialist-judge-decision-policy',
+     'metric_description': 'The Decision Policy judge\'s score for each Order Review decision, '
+                           'from 0 to 1, recorded on each specialist that reported to it.',
+     'numeric': True,
+     'unit': 'score',
+     'success_criteria': 'HigherThanBaseline',
+     'unit_aggregation_type': 'average',
+     'randomization_units': ['user'],
+     'tags': ['ai-config', 'judge', 'order-review', 'togglewear']},
     # The CI tool-use judge's score (ci_eval.py), recorded on the evaluations
     # it runs in. No variation in the store attaches the judge.
     {'metric_key': 'ci-tool-use',
