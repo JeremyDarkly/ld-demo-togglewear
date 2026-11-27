@@ -1339,6 +1339,11 @@ _ACCURACY_JUDGE_MESSAGES = [{'role': 'system', 'content': (
       "0.7: accurate, with a small imprecision that would not mislead the shopper.\n"
       "0.4: one fact is wrong, such as a price, size or discount.\n"
       "0.0: it invents products or perks, or gets several facts wrong.\n\n"
+      "A number can be stated in another form that comes to the same thing: the total "
+      "a shopper reaches instead of the amount still needed (240 points with 260 to go "
+      "is reaching 500), or the price after a discount instead of the discount itself. "
+      "Work out what the reply means before comparing it with the data; only a number "
+      "that disagrees with the data is wrong.\n\n"
       "A reply that states no facts, such as a polite refusal of an off-topic "
       "question, scores 1.0. Explain your score in one or two sentences."
     + _JUDGE_HISTORY)}]
