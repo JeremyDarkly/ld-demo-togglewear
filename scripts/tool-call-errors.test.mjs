@@ -1,9 +1,15 @@
 // Runs the Swag Assistant's and the Order Review's tool loops against a
 // scripted model and checks the ai-tool-call-error each tool call sends.
-// No LaunchDarkly or AWS credentials needed:
+// No LaunchDarkly or AWS credentials needed. With the other tests:
 //
-//   node --no-warnings --import ./scripts/tool-call-errors-register.mjs scripts/check-tool-call-errors.mjs
+//   npm test
+//
+// or on its own:
+//
+//   node --no-warnings --test scripts/tool-call-errors.test.mjs
+import "./tool-call-errors-register.mjs";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { INVALID_SPAN_CONTEXT, trace } from "@opentelemetry/api";
 import { AIMessage } from "@langchain/core/messages";
 
@@ -50,7 +56,7 @@ function expectSent(sent, expected) {
 }
 
 // Swag Assistant: an unknown tool, a bad slug, an empty search and a good lookup.
-{
+test("swag assistant: unknown tool 1, bad slug 1, empty search 0, good lookup 0", async () => {
   const { sent, report } = recorder();
   scripted([
     { name: "get-weather", args: {} },
@@ -71,11 +77,10 @@ function expectSent(sent, expected) {
     ["get-product-details", 0],
   ]);
   assert.deepEqual(result.metrics.toolCalls, ["get-weather", "get-product-details", "search-products", "get-product-details"]);
-  console.log("swag assistant: unknown tool 1, bad slug 1, empty search 0, good lookup 0");
-}
+});
 
 // Swag Assistant: a tool that throws is reported before the throw ends the reply.
-{
+test("swag assistant: throwing tool 1, and the error still reaches the route", async () => {
   const { sent, report } = recorder();
   scripted([{ name: "explode", args: {} }]);
   const tools = swagAssistantTools(context);
@@ -85,21 +90,19 @@ function expectSent(sent, expected) {
   const config = { model: { name: "scripted", parameters: { tools: toolDefs("explode") } }, messages: [] };
   await assert.rejects(converse(config, [], "question", tools, agentRun("Swag Assistant"), report), /tool broke/);
   expectSent(sent, [["explode", 1]]);
-  console.log("swag assistant: throwing tool 1, and the error still reaches the route");
-}
+});
 
 // A failed send never breaks the reply.
-{
+test("swag assistant: a send that throws leaves the reply as it was", async () => {
   scripted([{ name: "search-products", args: { query: "cap" } }]);
   const report = toolCallReporter({ track: () => { throw new Error("send failed"); } }, context, trackData);
   const config = { model: { name: "scripted", parameters: { tools: toolDefs("search-products") } }, messages: [] };
   const result = await converse(config, [], "question", swagAssistantTools(context), agentRun("Swag Assistant"), report);
   assert.equal(result.content, "Here is what I found.");
-  console.log("swag assistant: a send that throws leaves the reply as it was");
-}
+});
 
 // Order Review agent: an unknown tool and a good one.
-{
+test("order review: unknown tool 1, good call 0", async () => {
   const { sent, report } = recorder();
   scripted([
     { name: "get-weather", args: {} },
@@ -122,35 +125,34 @@ function expectSent(sent, expected) {
     ["get-weather", 1],
     ["check-payment-risk", 0],
   ]);
-  console.log("order review: unknown tool 1, good call 0");
-}
+});
 
 // The Swag Assistant's run through the AI SDK, with the store's handler, on
 // a stub LaunchDarkly client: the SDK sends $ld:ai:tool_call for each call
 // and the run's own events, and the store's ai-tool-call-error lands on the
 // same run, whether the variation carries its tools as 1.0 reads them or
 // only in model.parameters.tools, as the legacy SDK also read them.
-{
-  const { initClient, config: aiConfig } = await import("@launchdarkly/ai-node");
-  const { storeHandlers, runTrackDataOf, toolFunctions } = await import("../lib/aiServer.ts");
-  const { renderedMessages } = await import("../lib/langchainModel.ts");
+const { initClient, config: aiConfig } = await import("@launchdarkly/ai-node");
+const { storeHandlers, runTrackDataOf, toolFunctions, UnusableAnswer, ConfigChanged } = await import("../lib/aiServer.ts");
+const { renderedMessages } = await import("../lib/langchainModel.ts");
 
-  const sent = [];
-  const track = (key, ctx, data, value) => sent.push({ key, ctx, data, value });
-  let served;
-  await initClient({ variation: async () => served, track, flush: async () => {}, close: () => {} });
+const sent = [];
+const track = (key, ctx, data, value) => sent.push({ key, ctx, data, value });
+let served;
+await initClient({ variation: async () => served, track, flush: async () => {}, close: () => {} });
 
-  const definition = (name) => ({ type: "function", name, parameters: { type: "object", properties: {} } });
-  const shapes = {
-    "top-level tools": {
-      model: { name: "scripted" },
-      tools: { "search-products": definition("search-products"), "get-product-details": definition("get-product-details") },
-    },
-    "model.parameters.tools": {
-      model: { name: "scripted", parameters: { tools: toolDefs("search-products", "get-product-details") } },
-    },
-  };
-  for (const [shape, carried] of Object.entries(shapes)) {
+const definition = (name) => ({ type: "function", name, parameters: { type: "object", properties: {} } });
+const shapes = {
+  "top-level tools": {
+    model: { name: "scripted" },
+    tools: { "search-products": definition("search-products"), "get-product-details": definition("get-product-details") },
+  },
+  "model.parameters.tools": {
+    model: { name: "scripted", parameters: { tools: toolDefs("search-products", "get-product-details") } },
+  },
+};
+for (const [shape, carried] of Object.entries(shapes)) {
+  test(`swag assistant through the SDK, ${shape}: one $ld:ai:tool_call per call, errors on the same run`, async () => {
     sent.length = 0;
     served = {
       _ldMeta: { enabled: true, variationKey: "standard", version: 3, mode: "completion" },
@@ -209,13 +211,13 @@ function expectSent(sent, expected) {
       assert.equal(s.data.variationKey, "standard");
       assert.equal(s.data.configKey, "swag-assistant");
     }
-    console.log(`swag assistant through the SDK, ${shape}: one $ld:ai:tool_call per call, errors on the same run`);
-  }
+  });
+}
 
-  // An answer the handler throws away is a generation error that still
-  // spends its tokens, on the same run, since the SDK sends tokens only for
-  // an answer a handler returns.
-  const { UnusableAnswer, ConfigChanged } = await import("../lib/aiServer.ts");
+// An answer the handler throws away is a generation error that still
+// spends its tokens, on the same run, since the SDK sends tokens only for
+// an answer a handler returns.
+test("an unusable answer: generation:error, with its tokens on the same run", async () => {
   served = {
     _ldMeta: { enabled: true, variationKey: "standard", version: 3, mode: "completion" },
     provider: { name: "bedrock" },
@@ -243,10 +245,11 @@ function expectSent(sent, expected) {
   );
   assert.equal(new Set(thrown.map((s) => s.data.runId)).size, 1);
   assert.deepEqual(thrown[0].ctx, context);
-  console.log("an unusable answer: generation:error, with its tokens on the same run");
+});
 
-  // A handler told which variation the route inspected runs only on that
-  // one; invoke() serving another throws ConfigChanged before any model call.
+// A handler told which variation the route inspected runs only on that
+// one; invoke() serving another throws ConfigChanged before any model call.
+test("a pinned handler: runs on the inspected variation, throws ConfigChanged on another", async () => {
   let ranModel = false;
   const pinned = (meta) =>
     storeHandlers(async () => {
@@ -262,7 +265,4 @@ function expectSent(sent, expected) {
   const same = await aiConfig({ key: "swag-assistant", handler: pinned({ variationKey: "standard", version: 3 }), skipJudges: true })
     .invoke("question", context);
   assert.equal(same.response, "ok");
-  console.log("a pinned handler: runs on the inspected variation, throws ConfigChanged on another");
-}
-
-console.log("All tool call error checks passed.");
+});

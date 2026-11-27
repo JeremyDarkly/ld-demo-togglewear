@@ -371,8 +371,8 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 │   ├── events.ts             The metric events the store sends
 │   └── generator/            What each Cmd+K generator does
 ├── public/                   Images and icons
-├── scripts/                  check-tool-call-errors.mjs: runs the tool loops on a scripted model, no credentials
-│                             check-code-checks.mjs: runs the code checks over the shared cases, no credentials
+├── scripts/                  tool-call-errors.test.mjs: runs the tool loops on a scripted model, no credentials
+│                             code-checks.test.mjs: runs the code checks over the shared cases, no credentials
 │                             swag-tool-results.mjs: regenerates the Swag Assistant dataset's tool results
 │                             swag-tools.mjs: calls the Swag Assistant's tools, for the offline evals' stand-ins
 ├── styles/                   Global CSS and the Söhne fonts
@@ -406,6 +406,14 @@ Every workflow begins by checking the name it was given against `^[a-z0-9-]{1,30
 ```
 
 ## Making changes
+
+**Checking a change before a pull request.** The store's tests are on Node's own test runner, in `scripts/*.test.mjs`, and need no credentials or `.env`. The **PR Checks** workflow (`pr_checks.yml`) runs all three on every pull request:
+
+```bash
+npm test             # node --test over scripts/*.test.mjs
+npm run typecheck    # next typegen, then tsc --noEmit
+npm run build        # next build
+```
 
 **All LaunchDarkly resources come from `demo_resources.py`.** Nothing should be created by hand in a project, because the next Rebuild won't have it. The tables there say which `LDPlatform` method each one is passed to.
 
@@ -462,7 +470,7 @@ The **Offline Evals** workflow (`evals.yml`) runs the same thing: by hand from t
 
 ```bash
 python .github/workflows/demo_provisioning_scripts/check_code_checks.py
-node --no-warnings --import ./scripts/code-checks-register.mjs scripts/check-code-checks.mjs
+node --no-warnings --test scripts/code-checks.test.mjs
 ```
 
 **Changing the fraud rules.** The thresholds are in `lib/fraudAgent.ts`: review at 40 points, decline at 70, and 45 points each for a total over $800 or five of one item. When you change them, also update:

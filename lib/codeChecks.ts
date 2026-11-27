@@ -5,7 +5,7 @@ import type { JudgeResult } from "@/lib/aiServer";
 // ci_eval.py), run on the store's live replies while the
 // response-code-checks flag serves true. Same inputs, same results, same
 // reasons: code_check_cases.json is the cases both are tested against
-// (scripts/check-code-checks.mjs here, check_code_checks.py there), so a
+// (scripts/code-checks.test.mjs here, check_code_checks.py there), so a
 // change to one is a change to the other, and to the cases.
 //
 // A check looks for what is wrong, so an answer with nothing it can check

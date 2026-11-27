@@ -1,5 +1,5 @@
 """Runs code_checks.py over code_check_cases.json, the cases lib/codeChecks.ts
-is tested against too (scripts/check-code-checks.mjs), and exits non-zero
+is tested against too (scripts/code-checks.test.mjs), and exits non-zero
 when a check doesn't give a case's result or reasons.
 
     python check_code_checks.py
