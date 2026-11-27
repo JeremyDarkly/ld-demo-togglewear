@@ -58,6 +58,8 @@ const GRAPH = "order-review";
 const TOOLS = { "payment-risk-agent": "check-payment-risk", "shipping-check-agent": "check-shipping-address" };
 const POLICY_JUDGE = "togglewear-decision-policy-judge";
 const POLICY_METRIC = "$ld:ai:judge:decision-policy";
+const SPECIALIST_POLICY = "specialist-judge-decision-policy";
+const SPECIALISTS = ["payment-risk-agent", "shipping-check-agent", "account-history-agent"];
 const CHILDREN = {
   "order-intake-agent": ["payment-risk-agent", "shipping-check-agent", "account-history-agent"],
   "payment-risk-agent": ["fraud-decision-agent"],
@@ -267,6 +269,7 @@ for (const [label, options, parseError] of [
     const { events, all, errors } = await review({ flag: true, decision: held, ...options });
     assert.ok(!events.some(([key]) => key === "code-check-judge-disagreement"));
     assert.ok(!all.some((s) => s.key === POLICY_METRIC));
+    assert.ok(!all.some((s) => s.key === SPECIALIST_POLICY));
     assert.deepEqual(all.filter((s) => s.key === "judge-parse-error").map((s) => s.value), parseError);
     assert.equal(errors.length, label === "model failed" ? 1 : 0);
   });
@@ -319,6 +322,21 @@ test("order review: every agent's run, the graph's events, the handoffs and the 
   assert.equal(score.data.judgeConfigKey, POLICY_JUDGE);
   assert.equal(count("$ld:ai:generation:success", POLICY_JUDGE), 1);
   assert.deepEqual(all.filter((s) => s.key === "judge-parse-error").map((s) => [s.data.configKey, s.value]), [[POLICY_JUDGE, 0]]);
+});
+
+// The Decision Policy judge's score lands on each specialist's run too, as
+// the SDK recorded it, with the judge's key; the intake, the decision and
+// the case note get none.
+test("order review: the Decision Policy judge's score is sent on each specialist", async () => {
+  const { all } = await review({ flag: false, decision: held });
+  const sent = all.filter((s) => s.key === SPECIALIST_POLICY);
+  assert.deepEqual(sent.map((s) => s.data.configKey).sort(), [...SPECIALISTS].sort());
+  for (const s of sent) {
+    assert.equal(s.ctx, context);
+    assert.equal(s.value, 0.9);
+    const ran = all.find((r) => r.key === "$ld:ai:generation:success" && r.data.configKey === s.data.configKey);
+    assert.deepEqual(s.data, { ...ran.data, judgeConfigKey: POLICY_JUDGE });
+  }
 });
 
 // A send that throws leaves the review as it was.
