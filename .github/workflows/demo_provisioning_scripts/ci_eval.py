@@ -467,6 +467,9 @@ def recording_handler(inner, result, rows, judge_view, thresholds):
             if generating is not None:
                 tool_calls[id(generating)] = []
                 swag_tools.CALLS.set(tool_calls[id(generating)])
+        if judging and "decision-policy" in config.get("evaluationMetricKey", ""):
+            import demo_resources as _dr
+            config = {**config, "messages": _dr._DECISION_POLICY_JUDGE_MESSAGES}
         try:
             output = await inner(config, user_input, tool_handlers, variables, history)
         except Exception as error:
